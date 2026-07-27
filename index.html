@@ -1499,10 +1499,11 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
       inSel(custFilter, r.cust) &&
       inSel(groupFilter, r.grp)
     );
-    // mo[]  = SL KH update từng tháng (quá khứ = thực hiện, hiện tại/tương lai = KH update) — giống 'SL update' ở tab chi tiết
+    // moKh[]  = SL KH update từng tháng (kế hoạch đã update, mọi tháng)
+    // moAct[] = SL thực hiện từng tháng (chỉ có số ở tháng đã qua / tháng hiện tại)
     // thYtd = tổng thực hiện luỹ kế (các tháng đã qua)
-    // khYtd = tổng KH update THÔ luỹ kế (các tháng đã qua) → dùng để tính KH còn lại
-    const blank = () => ({ mo: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
+    // khYtd = tổng KH update THÔ luỹ kế (các tháng đã qua) → dùng để tính % TH YTD
+    const blank = () => ({ moKh: MONTHS.map(() => 0), moAct: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
     const prodMap = new Map();
     for (const r of filtered) {
       const i = MONTHS.indexOf(r.mo);
@@ -1517,28 +1518,32 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
       const act = Number(r.act) || 0;
       const planUpd = (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null)
         ? (Number(r.revUpd) || 0) : (Number(r.rev) || 0);
-      const val = isPast ? act : planUpd;
       // Tổng Quota: qOld+qMain+qAdd (chỉ nằm ở 1 dòng đại diện, các dòng khác = 0 nên cộng dồn = tổng)
       const dQuota = (Number(r.qOld) || 0) + (Number(r.qMain) || 0) + (Number(r.qAdd) || 0);
-      cell.mo[i] += val;
+      cell.moKh[i] += planUpd;
+      cell.moAct[i] += act;
       cell.quota += dQuota;
       if (isPast) { cell.thYtd += act; cell.khYtd += planUpd; }
       // Cấp Khách hàng dưới Miền
       const cKey = r.cust || '—';
       if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: r.custId, ...blank() });
       const cc = cell.custMap.get(cKey);
-      cc.mo[i] += val;
+      cc.moKh[i] += planUpd;
+      cc.moAct[i] += act;
       cc.quota += dQuota;
       if (isPast) { cc.thYtd += act; cc.khYtd += planUpd; }
     }
-    const fold = () => ({ mo: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
-    const add = (a, c) => { for (let i = 0; i < 12; i++) a.mo[i] += c.mo[i]; a.thYtd += c.thYtd; a.khYtd += c.khYtd; a.quota += c.quota; return a; };
+    const fold = () => ({ moKh: MONTHS.map(() => 0), moAct: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
+    const add = (a, c) => {
+      for (let i = 0; i < 12; i++) { a.moKh[i] += c.moKh[i]; a.moAct[i] += c.moAct[i]; }
+      a.thYtd += c.thYtd; a.khYtd += c.khYtd; a.quota += c.quota; return a;
+    };
     const sumMo = mo => mo.reduce((s, v) => s + v, 0);
     const prods = Array.from(prodMap.values()).map(p => {
       const regs = Array.from(p.regMap.values()).map(rg => {
         const custs = Array.from(rg.custMap.values());
-        custs.sort((a, b) => sumMo(b.mo) - sumMo(a.mo));
-        return { region: rg.region, custs, mo: rg.mo, thYtd: rg.thYtd, khYtd: rg.khYtd, quota: rg.quota };
+        custs.sort((a, b) => sumMo(b.moKh) - sumMo(a.moKh));
+        return { region: rg.region, custs, moKh: rg.moKh, moAct: rg.moAct, thYtd: rg.thYtd, khYtd: rg.khYtd, quota: rg.quota };
       });
       regs.sort((a, b) => a.region.localeCompare(b.region, 'vi'));
       return { prod: p.prod, grp: p.grp, regs, ...regs.reduce(add, fold()) };
@@ -1549,19 +1554,64 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
 
   const toggle = (k) => setOpen(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
-  const moHead = () => MONTH_LABELS.map((m, i) => h('th', {
-    key: 'mh' + i,
-    className: `px-2 py-1.5 text-right text-[10px] font-semibold uppercase border-r border-b border-slate-200 ${MONTHS[i] < CURRENT_MONTH ? 'bg-teal-50/60 text-teal-700' : MONTHS[i] === CURRENT_MONTH ? 'bg-blue-100/60 text-blue-700' : 'bg-blue-50/40 text-blue-600'}`
-  }, m));
-
-  const moCells = (arr, extra) => arr.map((v, i) => h('td', {
-    key: 'mc' + i,
-    className: `px-2 py-1.5 text-right text-[12px] tabular-nums border-r border-slate-100 ${MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : ''} ${extra || ''}`
-  }, fmtInt(v)));
-
   // KH còn lại YTD = tổng SL KH update từ THÁNG HIỆN TẠI đến cuối năm (gồm cả tháng hiện tại)
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
   const sumFromNow = (mo) => mo.reduce((s, v, i) => (i >= curIdx ? s + v : s), 0);
+  // Tháng đã qua + tháng hiện tại mới có thực hiện → hiện đủ 3 cột con; tháng tương lai chỉ 1 cột KH update
+  const hasAct = (i) => i <= curIdx;
+  const N_COLS = 1 + MONTHS.reduce((s, _, i) => s + (hasAct(i) ? 3 : 1), 0) + 3 + 3;
+
+  const pctTxt = (th, kh) => (kh > 0 ? Math.round(th / kh * 100) + '%' : '—');
+  const pctCls = (th, kh) => {
+    if (!(kh > 0)) return 'text-slate-300';
+    const r = th / kh;
+    return r >= 1 ? 'text-green-700' : r >= 0.8 ? 'text-amber-600' : 'text-red-600';
+  };
+  // Nền xen kẽ theo block tháng để mắt không lạc giữa 3 cột con
+  const moBg = (i) => MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/50' : (i % 2 ? 'bg-slate-50/60' : '');
+
+  const moHead = () => {
+    const out = [];
+    MONTH_LABELS.forEach((m, i) => {
+      const tone = MONTHS[i] < CURRENT_MONTH ? 'bg-teal-50/60 text-teal-700'
+        : MONTHS[i] === CURRENT_MONTH ? 'bg-blue-100/60 text-blue-700' : 'bg-blue-50/40 text-blue-600';
+      out.push(h('th', {
+        key: 'mh' + i,
+        colSpan: hasAct(i) ? 3 : undefined,
+        rowSpan: hasAct(i) ? undefined : 2,
+        className: `px-2 py-1.5 text-[10px] font-semibold uppercase border-r border-b border-slate-200 align-bottom ${hasAct(i) ? 'text-center' : 'text-right'} ${tone}`
+      }, m));
+    });
+    return out;
+  };
+  const subHead = (key, tone) => [
+    h('th', { key: key + 'k', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 ${tone}` }, 'KH'),
+    h('th', { key: key + 'a', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 ${tone}` }, 'TH'),
+    h('th', { key: key + 'p', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-r border-b border-slate-200 ${tone}` }, '%')
+  ];
+
+  const moCells = (node, extra) => {
+    const out = [];
+    for (let i = 0; i < 12; i++) {
+      const bg = moBg(i);
+      const kh = node.moKh[i], act = node.moAct[i];
+      if (!hasAct(i)) {
+        out.push(h('td', { key: 'k' + i, className: `px-2 py-1.5 text-right text-[12px] tabular-nums border-r border-slate-100 ${bg} ${extra || ''}` }, fmtInt(kh)));
+        continue;
+      }
+      out.push(h('td', { key: 'k' + i, className: `px-2 py-1.5 text-right text-[12px] tabular-nums ${bg} ${extra || ''}` }, fmtInt(kh)));
+      out.push(h('td', { key: 'a' + i, className: `px-2 py-1.5 text-right text-[12px] tabular-nums text-orange-600 ${bg} ${extra || ''}` }, fmtInt(act)));
+      out.push(h('td', { key: 'p' + i, className: `px-2 py-1.5 text-right text-[11.5px] tabular-nums border-r border-slate-200 ${pctCls(act, kh)} ${bg}` }, pctTxt(act, kh)));
+    }
+    return out;
+  };
+
+  // Luỹ kế YTD (các tháng đã hoàn thành, không tính tháng hiện tại)
+  const ytdCells = (node, extra) => [
+    h('td', { key: 'yk', className: `px-3 py-1.5 text-right text-[12px] tabular-nums bg-amber-50/40 ${extra || ''}` }, fmtInt(node.khYtd)),
+    h('td', { key: 'ya', className: `px-3 py-1.5 text-right text-[12px] tabular-nums text-orange-700 bg-amber-50/40 ${extra || ''}` }, fmtInt(node.thYtd)),
+    h('td', { key: 'yp', className: `px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold border-r border-slate-200 bg-amber-50/40 ${pctCls(node.thYtd, node.khYtd)}` }, pctTxt(node.thYtd, node.khYtd))
+  ];
 
   const conLai = (v) => h('td', {
     className: 'px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-blue-700 border-r border-slate-100'
@@ -1572,7 +1622,10 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
   // Quota khả dụng còn lại = tổng quota − (thực hiện YTD + KH còn lại YTD) — giống màn chi tiết
   const khaDungCell = (node, cls) => h('td', {
     className: `px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-slate-700 ${cls || ''}`
-  }, fmtInt((node.quota || 0) - (node.thYtd + sumFromNow(node.mo))));
+  }, fmtInt((node.quota || 0) - (node.thYtd + sumFromNow(node.moKh))));
+
+  // Cột nhãn dính trái khi cuộn ngang — nền phải đục, không dùng màu trong suốt
+  const stickyLabel = (bg) => `sticky left-0 z-10 border-r border-slate-200 ${bg}`;
 
   return h('div', { className: 'px-6 pb-8' },
     h(ExcelBtn, { onClick: () => exportProductSummary(data) }),
@@ -1581,29 +1634,32 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
         h('table', { className: 'w-full border-collapse' },
           h('thead', null,
             h('tr', { className: 'bg-slate-100' },
-              h('th', { rowSpan: 2, className: 'px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 border-r border-b border-slate-200 align-bottom', style: { minWidth: 220 } }, 'Sản phẩm / Miền / KH'),
-              h('th', { colSpan: 12, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-blue-800 border-r border-b border-slate-200 bg-blue-50/60' }, 'SL KH update theo tháng'),
+              h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 border-b align-bottom ${stickyLabel('bg-slate-100')}`, style: { minWidth: 220 } }, 'Sản phẩm / Miền / KH'),
+              ...moHead(),
+              h('th', { colSpan: 3, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-800 border-r border-b border-slate-200 bg-amber-50/60' }, 'Luỹ kế YTD'),
               h('th', { rowSpan: 2, className: 'px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600 border-r border-b border-slate-200 align-bottom' }, 'Tổng Quota'),
-              h('th', { rowSpan: 2, className: 'px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-orange-700 border-r border-b border-slate-200 align-bottom' }, 'Thực hiện YTD'),
               h('th', { rowSpan: 2, className: 'px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600 border-r border-b border-slate-200 align-bottom' }, 'KH còn lại YTD'),
               h('th', { rowSpan: 2, className: 'px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600 border-b border-slate-200 align-bottom' }, 'Quota khả dụng còn lại')
             ),
-            h('tr', { className: 'bg-slate-100' }, moHead())
+            h('tr', { className: 'bg-slate-100' },
+              ...MONTHS.flatMap((_, i) => hasAct(i) ? subHead('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []),
+              ...subHead('sytd', 'bg-amber-50/40')
+            )
           ),
           h('tbody', null,
             data.prods.length === 0
-              ? h('tr', null, h('td', { colSpan: 17, className: 'px-4 py-12 text-center text-slate-400 text-sm' }, rows.length === 0 ? 'Sheet trống' : 'Không có sản phẩm nào khớp bộ lọc'))
+              ? h('tr', null, h('td', { colSpan: N_COLS, className: 'px-4 py-12 text-center text-slate-400 text-sm' }, rows.length === 0 ? 'Sheet trống' : 'Không có sản phẩm nào khớp bộ lọc'))
               : data.prods.map(p => {
                   const isOpen = open.has(p.prod);
                   const out = [
-                    h('tr', { key: p.prod, className: 'bg-slate-50 hover:bg-slate-100 cursor-pointer border-b border-slate-200', onClick: () => toggle(p.prod) },
-                      h('td', { className: 'px-4 py-2 text-[12.5px] font-semibold text-slate-800 border-r border-slate-200' },
+                    h('tr', { key: p.prod, className: 'bg-slate-50 cursor-pointer border-b border-slate-200', onClick: () => toggle(p.prod) },
+                      h('td', { className: `px-4 py-2 text-[12.5px] font-semibold text-slate-800 ${stickyLabel('bg-slate-50')}` },
                         h('span', { className: 'inline-block w-3 text-slate-400' }, isOpen ? '▾' : '▸'), ' ', p.prod
                       ),
-                      ...moCells(p.mo, 'font-medium'),
+                      ...moCells(p, 'font-medium'),
+                      ...ytdCells(p, 'font-semibold'),
                       quotaCell(p.quota, 'font-semibold text-slate-700'),
-                      h('td', { className: 'px-3 py-2 text-right text-[12.5px] tabular-nums font-semibold text-orange-700 border-r border-slate-100' }, fmtInt(p.thYtd)),
-                      conLai(sumFromNow(p.mo)),
+                      conLai(sumFromNow(p.moKh)),
                       khaDungCell(p, 'font-semibold text-slate-800')
                     )
                   ];
@@ -1613,29 +1669,29 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
                       const rOpen = open.has(rKey);
                       const hasCust = rg.custs && rg.custs.length > 0;
                       out.push(
-                        h('tr', { key: rKey, className: 'border-b border-slate-100 bg-slate-50/40' + (hasCust ? ' hover:bg-slate-100/60 cursor-pointer' : ''), onClick: hasCust ? () => toggle(rKey) : undefined },
-                          h('td', { className: 'pl-10 pr-4 py-1.5 text-[12px] font-medium text-slate-700 border-r border-slate-100' },
+                        h('tr', { key: rKey, className: 'border-b border-slate-100 bg-slate-50/40' + (hasCust ? ' cursor-pointer' : ''), onClick: hasCust ? () => toggle(rKey) : undefined },
+                          h('td', { className: `pl-10 pr-4 py-1.5 text-[12px] font-medium text-slate-700 ${stickyLabel('bg-slate-50')}` },
                             h('span', { className: 'inline-block w-3 text-slate-400' }, hasCust ? (rOpen ? '▾' : '▸') : ''), ' ', rg.region
                           ),
-                          ...moCells(rg.mo),
+                          ...moCells(rg),
+                          ...ytdCells(rg),
                           quotaCell(rg.quota),
-                          h('td', { className: 'px-3 py-1.5 text-right text-[12px] tabular-nums text-orange-600 border-r border-slate-100' }, fmtInt(rg.thYtd)),
-                          conLai(sumFromNow(rg.mo)),
+                          conLai(sumFromNow(rg.moKh)),
                           khaDungCell(rg)
                         )
                       );
                       if (rOpen) {
                         for (const cu of rg.custs) {
                           out.push(
-                            h('tr', { key: rKey + '||' + cu.cust, className: 'border-b border-slate-100 hover:bg-slate-50/40' },
-                              h('td', { className: 'pl-16 pr-4 py-1.5 text-[11.5px] text-slate-500 border-r border-slate-100' },
+                            h('tr', { key: rKey + '||' + cu.cust, className: 'border-b border-slate-100' },
+                              h('td', { className: `pl-16 pr-4 py-1.5 text-[11.5px] text-slate-500 ${stickyLabel('bg-white')}` },
                                 h('span', { className: 'truncate' }, cu.cust), ' ',
                                 h('span', { className: 'text-[10px] text-slate-400 font-mono' }, cu.custId)
                               ),
-                              ...moCells(cu.mo),
+                              ...moCells(cu),
+                              ...ytdCells(cu),
                               quotaCell(cu.quota),
-                              h('td', { className: 'px-3 py-1.5 text-right text-[12px] tabular-nums text-orange-500 border-r border-slate-100' }, fmtInt(cu.thYtd)),
-                              conLai(sumFromNow(cu.mo)),
+                              conLai(sumFromNow(cu.moKh)),
                               khaDungCell(cu)
                             )
                           );
@@ -1646,12 +1702,22 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
                   return out;
                 }),
             h('tr', { className: 'bg-slate-800 text-white font-semibold' },
-              h('td', { className: 'px-4 py-2.5 text-[12.5px] border-t-2 border-slate-900' }, 'TỔNG CỘNG'),
-              ...data.grand.mo.map((v, i) => h('td', { key: 'gm' + i, className: 'px-2 py-2.5 text-right text-[12px] tabular-nums' }, fmtInt(v))),
+              h('td', { className: `px-4 py-2.5 text-[12.5px] border-t-2 border-slate-900 sticky left-0 z-10 bg-slate-800` }, 'TỔNG CỘNG'),
+              ...MONTHS.flatMap((_, i) => {
+                const kh = data.grand.moKh[i], act = data.grand.moAct[i];
+                const cells = [h('td', { key: 'gk' + i, className: 'px-2 py-2.5 text-right text-[12px] tabular-nums' }, fmtInt(kh))];
+                if (hasAct(i)) {
+                  cells.push(h('td', { key: 'ga' + i, className: 'px-2 py-2.5 text-right text-[12px] tabular-nums text-orange-200' }, fmtInt(act)));
+                  cells.push(h('td', { key: 'gp' + i, className: 'px-2 py-2.5 text-right text-[11.5px] tabular-nums text-slate-300' }, pctTxt(act, kh)));
+                }
+                return cells;
+              }),
+              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt(data.grand.khYtd)),
+              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200' }, fmtInt(data.grand.thYtd)),
+              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, pctTxt(data.grand.thYtd, data.grand.khYtd)),
               h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt(data.grand.quota)),
-              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt(data.grand.thYtd)),
-              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt(sumFromNow(data.grand.mo))),
-              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt((data.grand.quota || 0) - (data.grand.thYtd + sumFromNow(data.grand.mo))))
+              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt(sumFromNow(data.grand.moKh))),
+              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt((data.grand.quota || 0) - (data.grand.thYtd + sumFromNow(data.grand.moKh))))
             )
           )
         )
@@ -1723,17 +1789,48 @@ function exportProductSummary(data) {
   if (!XLSX) { alert('Chưa tải được thư viện Excel, vui lòng tải lại trang rồi thử lại.'); return; }
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
   const conLai = mo => mo.reduce((s, v, i) => (i >= curIdx ? s + v : s), 0);
-  const H1 = ['Sản phẩm / Miền / KH', 'SL KH update theo tháng', ...Array(11).fill(''), 'Tổng Quota', 'Thực hiện YTD', 'KH còn lại YTD', 'Quota khả dụng còn lại'];
-  const H2 = ['', ...MONTH_LABELS, '', '', '', ''];
+  const hasAct = i => i <= curIdx;
+  // Header 2 tầng: tháng đã qua/hiện tại gộp 3 cột con (KH update / Thực hiện / % TH), tháng tương lai 1 cột
+  const H1 = ['Sản phẩm / Miền / KH'], H2 = [''];
+  const merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];
+  const cols = [{ wch: 34 }];
+  const pctCols = [];
+  let c = 1;
+  for (let i = 0; i < 12; i++) {
+    if (hasAct(i)) {
+      H1.push(MONTH_LABELS[i], '', ''); H2.push('KH update', 'Thực hiện', '% TH');
+      merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
+      cols.push({ wch: 9 }, { wch: 9 }, { wch: 7 });
+      pctCols.push(c + 2); c += 3;
+    } else {
+      H1.push(MONTH_LABELS[i]); H2.push('KH update');
+      cols.push({ wch: 9 }); c += 1;
+    }
+  }
+  H1.push('Luỹ kế YTD', '', ''); H2.push('KH update', 'Thực hiện', '% TH');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
+  cols.push({ wch: 11 }, { wch: 11 }, { wch: 8 });
+  pctCols.push(c + 2); c += 3;
+  for (const t of [['Tổng Quota', 11], ['KH còn lại YTD', 14], ['Quota khả dụng còn lại', 18]]) {
+    H1.push(t[0]); H2.push('');
+    merges.push({ s: { r: 0, c }, e: { r: 1, c } });
+    cols.push({ wch: t[1] }); c += 1;
+  }
+  const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
   const push = (level, label, d) => {
-    const cl = conLai(d.mo), quota = Number(d.quota) || 0, thYtd = Number(d.thYtd) || 0;
-    aoa.push([
-      '   '.repeat(level) + label,
-      ...d.mo.map(v => Math.round(v || 0)),
-      Math.round(quota), Math.round(thYtd), Math.round(cl), Math.round(quota - (thYtd + cl))
-    ]);
+    const cl = conLai(d.moKh), quota = Number(d.quota) || 0, thYtd = Number(d.thYtd) || 0, khYtd = Number(d.khYtd) || 0;
+    const row = ['   '.repeat(level) + label];
+    for (let i = 0; i < 12; i++) {
+      const kh = Math.round(d.moKh[i] || 0);
+      if (!hasAct(i)) { row.push(kh); continue; }
+      const act = Math.round(d.moAct[i] || 0);
+      row.push(kh, act, kh > 0 ? act / kh : '');
+    }
+    row.push(Math.round(khYtd), Math.round(thYtd), khYtd > 0 ? thYtd / khYtd : '');
+    row.push(Math.round(quota), Math.round(cl), Math.round(quota - (thYtd + cl)));
+    aoa.push(row);
     levels.push(level);
   };
   for (const p of data.prods) {
@@ -1745,14 +1842,13 @@ function exportProductSummary(data) {
   }
   push(0, 'TỔNG CỘNG', data.grand);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 0, c: 12 } },
-    { s: { r: 0, c: 13 }, e: { r: 1, c: 13 } }, { s: { r: 0, c: 14 }, e: { r: 1, c: 14 } },
-    { s: { r: 0, c: 15 }, e: { r: 1, c: 15 } }, { s: { r: 0, c: 16 }, e: { r: 1, c: 16 } }
-  ];
-  ws['!cols'] = [{ wch: 34 }, ...Array(12).fill({ wch: 7 }), { wch: 11 }, { wch: 13 }, { wch: 14 }, { wch: 18 }];
+  ws['!merges'] = merges;
+  ws['!cols'] = cols;
   ws['!rows'] = levels.map(l => l == null ? {} : { level: l });
-  for (let r = 2; r < aoa.length; r++) for (let c = 1; c <= 16; c++) _fmt(ws, r, c, '#,##0');
+  const pctSet = new Set(pctCols);
+  for (let r = 2; r < aoa.length; r++) {
+    for (let cc = 1; cc <= LAST_COL; cc++) _fmt(ws, r, cc, pctSet.has(cc) ? '0%' : '#,##0');
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Tong hop theo SP');
   XLSX.writeFile(wb, `TongHop_theo_SP_${_today()}.xlsx`);
