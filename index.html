@@ -422,7 +422,7 @@ function LoginGate({
     setError('');
     setInfo('');
     if (isChange) {
-      if (!username || !pw || !newPw || !confirmPw) return;
+      if (!username || !pw || !newPw || !confirmPw) { setError('Vui lòng nhập đầy đủ thông tin'); return; }
       if (newPw !== confirmPw) { setError(msgOf('mismatch')); return; }
       if (newPw.length < 6) { setError(msgOf('weak_password')); return; }
       if (newPw === pw) { setError(msgOf('same_password_client')); return; }
@@ -440,7 +440,7 @@ function LoginGate({
       setBusy(false);
       return;
     }
-    if (!username || !pw) return;
+    if (!username || !pw) { setError('Vui lòng nhập tài khoản và mật khẩu'); return; }
     setBusy(true);
     try {
       const res = await api('login', {
@@ -592,20 +592,21 @@ function LoginGate({
   }, /*#__PURE__*/React.createElement(AlertCircle, {
     size: 12
   }), " ", error), (() => {
-    const disabled = busy || !username || !pw || (isChange && (!newPw || !confirmPw));
+    // Nút luôn hiển thị trạng thái active (xanh); chỉ mờ khi đang gửi request.
     return /*#__PURE__*/React.createElement("button", {
-      disabled,
+      disabled: busy,
       style: {
         width: '100%',
         marginTop: 16,
-        background: disabled ? '#dadde1' : '#1877f2',
+        background: '#1877f2',
         color: '#fff',
         padding: '8px 12px',
         borderRadius: 6,
         fontSize: 15,
         fontWeight: 700,
         border: 'none',
-        cursor: disabled ? 'not-allowed' : 'pointer'
+        opacity: busy ? 0.7 : 1,
+        cursor: busy ? 'not-allowed' : 'pointer'
       }
     }, busy ? (isChange ? 'Đang đổi…' : 'Đang xác thực…') : (isChange ? 'Đổi mật khẩu' : 'Đăng nhập'));
   })(), /*#__PURE__*/React.createElement("div", {
@@ -1530,7 +1531,8 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
       if (isPast) { cell.thYtd += act; cell.khYtd += planUpd; }
       // Cấp Khách hàng dưới Miền
       const cKey = r.cust || '—';
-      if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: r.custId, ...blank() });
+      // oop = dòng ngoài kế hoạch → không có quota nên không tính "khả dụng còn lại"
+      if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: r.custId, oop: cKey === OOP_CUST, ...blank() });
       const cc = cell.custMap.get(cKey);
       cc.moKh[i] += planUpd;
       cc.moAct[i] += act;
@@ -1624,9 +1626,10 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
     className: `px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-slate-600 border-r border-slate-100 ${cls || ''}`
   }, fmtInt(v));
   // Quota khả dụng còn lại = tổng quota − (thực hiện YTD + KH còn lại YTD) — giống màn chi tiết
+  // Dòng "Ngoài kế hoạch" không có quota → hiện "—" thay vì số âm
   const khaDungCell = (node, cls) => h('td', {
-    className: `px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-slate-700 ${cls || ''}`
-  }, fmtInt((node.quota || 0) - (node.thYtd + sumFromNow(node.moKh))));
+    className: `px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${node.oop ? 'text-slate-300' : 'text-slate-700'} ${cls || ''}`
+  }, node.oop ? '—' : fmtInt((node.quota || 0) - (node.thYtd + sumFromNow(node.moKh))));
 
   // Cột nhãn dính trái khi cuộn ngang — nền phải đục, không dùng màu trong suốt
   const stickyLabel = (bg) => `sticky left-0 z-10 border-r border-slate-200 ${bg}`;
@@ -1752,7 +1755,7 @@ function exportSummaryPS(data) {
       '   '.repeat(level) + label,
       Number.isFinite(d.custCount) ? d.custCount : '',
       Number.isFinite(d.prodCount) ? d.prodCount : '',
-      Math.round(d.quotaFY || 0), Math.round(d.ytd || 0), Math.round(d.quotaAvail || 0), Math.round(d.sl || 0),
+      Math.round(d.quotaFY || 0), Math.round(d.ytd || 0), d.quotaAvail == null ? '-' : Math.round(d.quotaAvail), Math.round(d.sl || 0),
       tr(dt), tr(d.dtYtd), tr(dtUpd), tr(ch),
       dt ? ch / dt : '', note || ''
     ]);
@@ -1835,7 +1838,7 @@ function exportProductSummary(data) {
       row.push(kh, act, kh > 0 ? act / kh : '');
     }
     row.push(Math.round(khYtd), Math.round(thYtd), khYtd > 0 ? thYtd / khYtd : '');
-    row.push(Math.round(quota), Math.round(cl), Math.round(quota - (thYtd + cl)));
+    row.push(Math.round(quota), Math.round(cl), d.oop ? '-' : Math.round(quota - (thYtd + cl)));
     aoa.push(row);
     levels.push(level);
   };
@@ -1897,6 +1900,7 @@ function SummaryView({
       if (!ps.custMap.has(cKey)) ps.custMap.set(cKey, {
         cust: cKey,
         custId: r.custId,
+        oop: cKey === OOP_CUST, // ngoài kế hoạch → không có quota, không tính khả dụng còn lại
         note: '',
         sl: 0,
         dt: 0,
@@ -1975,18 +1979,20 @@ function SummaryView({
     const regions = Array.from(regMap.values()).map(reg => {
       const psList = Array.from(reg.psMap.values()).map(ps => {
         const custs = Array.from(ps.custMap.values()).map(c => {
+          // KH ngoài kế hoạch: quotaAvail = null → hiển thị "—" (không tính, không để âm)
+          const avail = (o) => c.oop ? null : o.quotaFY - o.slUpd;
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
           const grps = Array.from(c.grpMap.values()).map(gp => {
             const prods = Array.from(gp.prodMap.values()).map(pp => ({
               ...pp,
-              quotaAvail: pp.quotaFY - pp.slUpd
+              quotaAvail: avail(pp)
             }));
             prods.sort((a, b) => b.dt - a.dt);
             return {
               ...gp,
               prods,
               prodCount: prods.length,
-              quotaAvail: gp.quotaFY - gp.slUpd
+              quotaAvail: avail(gp)
             };
           });
           grps.sort((a, b) => b.dt - a.dt);
@@ -1994,7 +2000,7 @@ function SummaryView({
             ...c,
             grps,
             prodCount: c.prods.size,
-            quotaAvail: c.quotaFY - c.slUpd
+            quotaAvail: avail(c)
           };
         });
         custs.sort((a, b) => b.dt - a.dt);
@@ -2136,8 +2142,8 @@ function StatCells({
   }, fmtInt(d.quotaFY)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-medium text-orange-${size === 'sm' ? '600' : '700'}`
   }, fmtInt(d.ytd)), /*#__PURE__*/React.createElement("td", {
-    className: `px-3 ${p} text-right tabular-nums font-medium ${num}`
-  }, fmtInt(d.quotaAvail)), /*#__PURE__*/React.createElement("td", {
+    className: `px-3 ${p} text-right tabular-nums font-medium ${d.quotaAvail == null ? 'text-slate-300' : num}`
+  }, d.quotaAvail == null ? '—' : fmtInt(d.quotaAvail)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-medium ${num} border-r border-slate-100`
   }, fmtInt(d.sl)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-medium ${num}`
@@ -2832,6 +2838,14 @@ function App() {
       id
     })).sort((a, b) => a.cust.localeCompare(b.cust));
   }, [rows, psFilter, regionFilter]);
+  // Tổng số khách hàng có kế hoạch (không phụ thuộc bộ lọc) — dùng cho header.
+  const totalCustCount = useMemo(() => {
+    const s = new Set();
+    rows.forEach(r => {
+      if (r.cust) s.add(r.custId || r.cust);
+    });
+    return s.size;
+  }, [rows]);
   // Danh sách PS đầy đủ (không lọc) cho panel "Thêm sản phẩm" — vì dm_khach_hang không có PS.
   const allPsList = useMemo(() => Array.from(new Set(rows.map(r => r.ps).filter(Boolean))).sort(), [rows]);
   // Nguồn KH cho panel thêm SP: ưu tiên dm_khach_hang (getCustomers); nếu backend chưa
@@ -3072,7 +3086,7 @@ function App() {
     onChange: setViewBu
   }) : null), /*#__PURE__*/React.createElement("p", {
     className: "text-[12px] text-slate-500 leading-tight"
-  }, auth.username, (auth.ho_ten ? ` - ${auth.ho_ten}` : ''), " - ", rows.length, " dòng KH"))), /*#__PURE__*/React.createElement("div", {
+  }, (auth.ho_ten || auth.username), " - ", fmtInt(totalCustCount), " khách hàng"))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 flex-wrap"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex-1"
@@ -3129,11 +3143,11 @@ function App() {
   }), /*#__PURE__*/React.createElement(TabBtn, {
     active: tab === 'summary',
     onClick: () => setTab('summary'),
-    label: "Tổng hợp theo PS / KH"
+    label: "Tổng hợp theo PS"
   }), /*#__PURE__*/React.createElement(TabBtn, {
     active: tab === 'prodsum',
     onClick: () => setTab('prodsum'),
-    label: "Tổng hợp theo sản phẩm"
+    label: "Tổng hợp theo SP"
   })), error && /*#__PURE__*/React.createElement("div", {
     className: "px-6 py-2 bg-red-50 border-t border-red-200 text-[12px] text-red-800 flex items-center gap-2"
   }, /*#__PURE__*/React.createElement(AlertCircle, {
@@ -3158,9 +3172,9 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4"
   }, /*#__PURE__*/React.createElement(StatCard, {
-    label: "SL kế hoạch đầu năm",
-    value: fmtInt(stats.plan),
-    sublabel: `${stats.customers} KH · ${stats.productCount} SP`,
+    label: "Số lượng account",
+    value: fmtInt(stats.customers),
+    sublabel: "khách hàng có kế hoạch",
     accent: "emerald"
   }), /*#__PURE__*/React.createElement(StatCard, {
     label: "DThu KH đầu năm",
