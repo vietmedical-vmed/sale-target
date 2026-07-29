@@ -100,6 +100,24 @@ function applyScope(query, sess, payload = {}) {
   return q.eq("ps", sess.s); // mặc định: hẹp nhất
 }
 
+// Phạm vi quyền dưới dạng tham số cho RPC ghi dữ liệu (update_sale_target_cells).
+// Phải khớp applyScope() ở trên: null = không giới hạn theo cột đó.
+// applyScope dùng cho phần ĐỌC (query builder), hàm này cho phần GHI (RPC) —
+// sửa một bên thì phải sửa bên kia.
+function scopeParams(sess) {
+  const role = String(sess.r || "").toLowerCase();
+  const nil = { p_bu: null, p_mien: null, p_ps: null, p_groups: null };
+  // admin/manager: xem & sửa mọi team (giống applyScope khi không có payload.bu)
+  if (role === "admin" || role === "manager") return nil;
+  if (role === "product_manager") {
+    const groups = String(sess.s || "").split(",").map((x) => x.trim()).filter(Boolean);
+    // chưa gán ngành hàng -> không khớp dòng nào (giống "__none__" ở applyScope)
+    return { ...nil, p_groups: groups.length ? groups : ["__none__"] };
+  }
+  if (role === "area_manager") return { ...nil, p_bu: sess.b, p_mien: sess.s };
+  return { ...nil, p_bu: sess.b, p_ps: sess.s }; // ps + mặc định: hẹp nhất
+}
+
 function admin() {
   return createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -282,8 +300,17 @@ Deno.serve(async (req) => {
       }
       if (byRow.size > 0) {
         const p_updates = Array.from(byRow, ([id, patch]) => ({ id, patch }));
-        const { error } = await db.rpc("update_sale_target_cells", { p_updates });
-        if (error) throw new Error(error.message);
+        // Phạm vi quyền do RPC kiểm tra: có id nào ngoài phạm vi -> lỗi 42501,
+        // KHÔNG ghi dòng nào (client vẫn giữ nguyên draft để thử lại).
+        const { error } = await db.rpc("update_sale_target_cells", {
+          p_updates, ...scopeParams(sess),
+        });
+        if (error) {
+          if (String(error.message || "").includes("out_of_scope")) {
+            return json({ ok: false, error: "forbidden_rows" }, 403);
+          }
+          throw new Error(error.message);
+        }
       }
       return json({ ok: true, rev: await getRev(db) });
     }
@@ -307,8 +334,11 @@ Deno.serve(async (req) => {
       const fy = any1 && any1[0] ? any1[0].nam_tai_chinh : "FY26";
       const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
+      // PS chỉ được thêm sản phẩm cho CHÍNH MÌNH: không tin payload.ps (client
+      // có thể gửi tên PS khác). Admin thì giữ nguyên PS đã chọn trên giao diện.
+      const psName = sess.r === "admin" ? s.ps : sess.s;
       const rowsIns = MONTHS.map((mo) => ({
-        nam_tai_chinh: fy, thang_ke_hoach: mo, mien: s.region, ps: s.ps,
+        nam_tai_chinh: fy, thang_ke_hoach: mo, mien: s.region, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
         san_pham: s.prod, bo_vat_tu: s.mset, don_gia: s.price,
         bu: sess.b, // sản phẩm mới thêm luôn gắn theo bu của người tạo (kể cả admin/manager)

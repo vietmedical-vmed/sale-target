@@ -2778,7 +2778,11 @@ function App() {
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
-      setError('Lưu thất bại: ' + err.message + '. Các thay đổi vẫn được giữ, thử lại.');
+      // forbidden_rows: có dòng ngoài phạm vi quyền hoặc đã bị xóa ở nơi khác.
+      // Backend không ghi dòng nào trong trường hợp này -> bảo người dùng tải lại.
+      setError(err.message === 'forbidden_rows'
+        ? 'Lưu thất bại: có dòng không thuộc phạm vi của bạn hoặc đã bị xóa ở nơi khác. Chưa có thay đổi nào được ghi — hãy Reload rồi nhập lại.'
+        : 'Lưu thất bại: ' + err.message + '. Các thay đổi vẫn được giữ, thử lại.');
     }
     setSaving(false);
   }, [drafts]);
