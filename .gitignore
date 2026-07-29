@@ -6,6 +6,3 @@
 # Supabase CLI state cục bộ (không dùng chung)
 supabase/.temp/
 supabase/.branches/
-
-# File .env.example dang chua service_role key that -> khong commit
-.env.example
