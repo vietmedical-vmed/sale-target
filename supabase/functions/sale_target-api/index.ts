@@ -157,6 +157,37 @@ async function fetchAll(db, sess, payload) {
   return out.filter(Boolean);
 }
 
+// ---- Actual NGOÀI KẾ HOẠCH ----
+// Các dòng thực hiện không khớp dòng kế hoạch nào (view v_actual_ngoai_ke_hoach).
+// Trả về DƯỚI DẠNG RIÊNG (oopRows), KHÔNG trộn vào rows: app chỉ dùng ở 2 màn tổng
+// hợp cho đủ số, còn màn chi tiết vẫn chỉ hiển thị/sửa được dòng kế hoạch thật.
+// Nhãn khách hàng cố định = "Ngoài kế hoạch" → khi app gộp theo KH sẽ ra đúng 1 dòng.
+const OOP_CUST = "Ngoài kế hoạch";
+
+async function fetchOutOfPlan(db, sess, payload) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = db.from("v_actual_ngoai_ke_hoach")
+      .select("thang_ke_hoach,mien,ps,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien")
+      .range(from, from + PAGE - 1);
+    q = applyScope(q, sess, payload); // cùng phân quyền như sale_target
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    out.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  // Ánh xạ sang đúng thứ tự FIELDS; các cột kế hoạch để rỗng (KHÔNG phải 0)
+  // để app hiển thị "—" và không tính % hoàn thành cho dòng này.
+  return out.map((r) => {
+    const o = {
+      mo: r.thang_ke_hoach, region: r.mien, ps: r.ps,
+      cust: OOP_CUST, grp: r.nhom_san_pham, prod: r.san_pham,
+      mset: r.bo_vat_tu, act: r.sl_thuc_hien,
+    };
+    return FIELDS.map((f) => (o[f] === null || o[f] === undefined ? "" : o[f]));
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "method" }, 405);
@@ -181,9 +212,11 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      // fetchAll và getRev độc lập → chạy song song để tiết kiệm 1 lượt chờ.
-      const [dbRows, rev] = await Promise.all([
+      // fetchAll / fetchOutOfPlan / getRev độc lập → chạy song song để tiết kiệm lượt chờ.
+      // fetchOutOfPlan hỏng KHÔNG được làm sập getData (vd view chưa tạo) → nuốt lỗi, trả [].
+      const [dbRows, oopRows, rev] = await Promise.all([
         fetchAll(db, sess, payload),
+        fetchOutOfPlan(db, sess, payload).catch(() => []),
         getRev(db),
       ]);
       const rows = dbRows.map((r) => FIELDS.map((f) => {
@@ -192,7 +225,7 @@ Deno.serve(async (req) => {
       }));
       const rowNums = dbRows.map((r) => r.id);
       return json({
-        ok: true, fields: FIELDS, rows, rowNums, rev,
+        ok: true, fields: FIELDS, rows, rowNums, oopRows, rev,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
       });
     }

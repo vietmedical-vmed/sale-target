@@ -195,6 +195,10 @@ const fmtCust = name => {
 // Bộ lọc đa lựa chọn: mảng rỗng = không lọc (tất cả); ngược lại giá trị phải nằm trong mảng.
 const inSel = (sel, v) => !sel || sel.length === 0 || sel.includes(v);
 
+// Nhãn khách hàng của dòng THỰC HIỆN NGOÀI KẾ HOẠCH (backend trả về đúng chuỗi này).
+// Chỉ xuất hiện ở 2 màn tổng hợp; các dòng này không có kế hoạch nên cột KH để trống.
+const OOP_CUST = 'Ngoài kế hoạch';
+
 // ============ API (Supabase Edge Functions) ============
 const SUPABASE_URL = "https://nrfxymnfmjhbsgpipvkb.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yZnh5bW5mbWpoYnNncGlwdmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4ODk2OTQsImV4cCI6MjA5ODQ2NTY5NH0.cN-jTdPOLWKd9kNa1nNMENzHcY0_BftyYgPEbuVTWeo";
@@ -1685,8 +1689,10 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
                           out.push(
                             h('tr', { key: rKey + '||' + cu.cust, className: 'border-b border-slate-100' },
                               h('td', { className: `pl-16 pr-4 py-1.5 text-[11.5px] text-slate-500 ${stickyLabel('bg-white')}` },
-                                h('span', { className: 'truncate' }, cu.cust), ' ',
-                                h('span', { className: 'text-[10px] text-slate-400 font-mono' }, cu.custId)
+                                h('span', { className: 'truncate' + (cu.cust === OOP_CUST ? ' text-amber-700 font-medium' : '') }, cu.cust), ' ',
+                                cu.cust === OOP_CUST
+                                  ? h('span', { className: 'text-[9.5px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium whitespace-nowrap' }, 'Ngoài KH')
+                                  : h('span', { className: 'text-[10px] text-slate-400 font-mono' }, cu.custId)
                               ),
                               ...moCells(cu),
                               ...ytdCells(cu),
@@ -2228,8 +2234,10 @@ function SummaryCustRow({
   }) : /*#__PURE__*/React.createElement("span", {
     style: { width: 12, display: 'inline-block' }
   }), /*#__PURE__*/React.createElement("span", {
-    className: "truncate"
-  }, c.cust), " ", /*#__PURE__*/React.createElement("span", {
+    className: "truncate" + (c.cust === OOP_CUST ? " text-amber-700 font-medium" : "")
+  }, c.cust), " ", c.cust === OOP_CUST ? /*#__PURE__*/React.createElement("span", {
+    className: "text-[9.5px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium whitespace-nowrap"
+  }, "Ngoài KH") : /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400 font-mono"
   }, c.custId))), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-400 border-r border-slate-100"
@@ -2538,6 +2546,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [rows, setRows] = useState([]);
+  // Dòng thực hiện NGOÀI KẾ HOẠCH — chỉ dùng cho 2 màn tổng hợp, không vào màn chi tiết.
+  const [oopRows, setOopRows] = useState([]);
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -2607,6 +2617,21 @@ function App() {
         objs[i] = o;
       }
       setRows(objs);
+      // Dòng THỰC HIỆN NGOÀI KẾ HOẠCH: giữ RIÊNG, không trộn vào rows.
+      // Chỉ 2 màn tổng hợp dùng tới (cho đủ số); màn chi tiết không thấy, không sửa được.
+      // Không đặt _row → mọi thao tác sửa/xoá theo id đều không đụng tới các dòng này.
+      const oopArr = r.oopRows || [];
+      const oopObjs = new Array(oopArr.length);
+      for (let i = 0; i < oopArr.length; i++) {
+        const row = oopArr[i];
+        const o = { _oop: true };
+        for (let j = 0; j < fields.length; j++) {
+          const v = row[j];
+          if (v !== '' && v !== null && v !== undefined) o[fields[j]] = v;
+        }
+        oopObjs[i] = o; // KHÔNG fmtCust: nhãn "Ngoài kế hoạch" phải giữ nguyên
+      }
+      setOopRows(oopObjs);
       if (typeof r.rev === 'number') setDataRev(r.rev);
       setStale(false);
       if (r.role) setAuth({
@@ -2771,6 +2796,12 @@ function App() {
       return out;
     });
   }, [rows, drafts, draftCount]);
+  // Dữ liệu cho 2 MÀN TỔNG HỢP: kế hoạch + dòng ngoài kế hoạch (để tổng đủ số).
+  // Màn chi tiết, export, sửa/xoá vẫn dùng effectiveRows -> không thấy các dòng này.
+  const summaryRows = useMemo(
+    () => (oopRows.length ? effectiveRows.concat(oopRows) : effectiveRows),
+    [effectiveRows, oopRows]
+  );
   const draftKeys = useMemo(() => new Set(Object.keys(drafts)), [drafts]);
   const regionList = useMemo(() => Array.from(new Set(rows.map(r => r.region).filter(Boolean))).sort(), [rows]);
   const psList = useMemo(() => {
@@ -2993,6 +3024,7 @@ function App() {
     sessionStorage.removeItem(TOK_KEY);
     setAuthed(false);
     setRows([]);
+    setOopRows([]);
     setDrafts({});
     setAuth({
       role: '',
@@ -3213,13 +3245,13 @@ function App() {
     regionOptions: regionList,
     onConfirm: addProduct
   }) : null, tab === 'summary' ? /*#__PURE__*/React.createElement(SummaryView, {
-    rows: effectiveRows,
+    rows: summaryRows,
     psFilter: psFilter,
     regionFilter: regionFilter,
     custFilter: custFilter,
     groupFilter: groupFilter
   }) : tab === 'prodsum' ? /*#__PURE__*/React.createElement(ProductSummaryView, {
-    rows: effectiveRows,
+    rows: summaryRows,
     psFilter: psFilter,
     regionFilter: regionFilter,
     custFilter: custFilter,
