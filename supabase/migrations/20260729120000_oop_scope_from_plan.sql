@@ -20,10 +20,9 @@
 -- và các cấp trên (area_manager theo miền, manager/admin theo BU) cũng xem được.
 --
 -- Cột của view giữ nguyên tên/thứ tự → edge function không phải đổi gì.
+-- Dùng CREATE OR REPLACE (KHÔNG drop): v_th_theo_ps và v_th_theo_sp phụ thuộc view này.
 
-DROP VIEW IF EXISTS v_actual_ngoai_ke_hoach;
-
-CREATE VIEW v_actual_ngoai_ke_hoach AS
+CREATE OR REPLACE VIEW v_actual_ngoai_ke_hoach AS
 WITH ps_ref AS (
   -- PS (chuẩn hoá) -> cách viết chuẩn + BU + Miền, theo tổ hợp xuất hiện nhiều nhất
   SELECT ps_n, ps_canon, bu, mien
