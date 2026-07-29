@@ -326,6 +326,22 @@ Deno.serve(async (req) => {
       return json({ ok: true, rev: await getRev(db) });
     }
 
+    if (action === "deleteCustomer") {
+      // Xóa TOÀN BỘ kế hoạch của 1 khách hàng — CHỈ admin.
+      // Client gửi payload.rows = [id, ...] (đúng những dòng nó đang có), nên không
+      // phải đoán theo tên/mã KH. 1 KH có thể vài nghìn dòng mà .in() đi trong query
+      // string -> phải xóa theo lô, không thì URL quá dài.
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ids = (payload.rows || []).map(Number).filter((n) => Number.isFinite(n));
+      if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
+      const CHUNK = 200;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const { error } = await db.from("sale_target").delete().in("id", ids.slice(i, i + CHUNK));
+        if (error) throw new Error(error.message);
+      }
+      return json({ ok: true, deleted: ids.length, rev: await getRev(db) });
+    }
+
     if (action === "addProduct") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const s = payload;
@@ -344,9 +360,23 @@ Deno.serve(async (req) => {
         bu: sess.b, // sản phẩm mới thêm luôn gắn theo bu của người tạo (kể cả admin/manager)
         sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
       }));
-      const { error } = await db.from("sale_target").insert(rowsIns);
+      // Trả luôn 12 dòng vừa tạo (đúng thứ tự FIELDS) để app chèn thẳng vào state,
+      // khỏi phải getData lại toàn bộ ~20k dòng sau mỗi lần thêm sản phẩm.
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
+      const { data: ins, error } = await db.from("sale_target").insert(rowsIns).select(cols);
       if (error) throw new Error(error.message);
-      return json({ ok: true });
+      const inserted = ins || [];
+      return json({
+        ok: true,
+        rows: inserted.map((r) =>
+          FIELDS.map((f) => {
+            const v = r[COL[f]];
+            return v === null || v === undefined ? "" : v;
+          })
+        ),
+        rowNums: inserted.map((r) => r.id),
+        rev: await getRev(db),
+      });
     }
 
     return json({ ok: false, error: "unknown_action" }, 400);
