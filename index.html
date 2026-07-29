@@ -2760,16 +2760,17 @@ function App() {
       const res = await api('updateCells', {
         updates: batch
       });
+      // Gom patch theo _row trước (Map) thay vì filter cả batch cho từng dòng:
+      // với ~23k dòng và vài trăm ô sửa, cách cũ là hàng chục triệu phép so sánh.
+      const patchByRow = new Map();
+      batch.forEach(u => {
+        let p = patchByRow.get(u.row);
+        if (!p) { p = {}; patchByRow.set(u.row, p); }
+        p[u.key] = u.value;
+      });
       setRows(prev => prev.map(r => {
-        const ups = batch.filter(u => u.row === r._row);
-        if (!ups.length) return r;
-        const nr = {
-          ...r
-        };
-        ups.forEach(u => {
-          nr[u.key] = u.value;
-        });
-        return nr;
+        const p = patchByRow.get(r._row);
+        return p ? { ...r, ...p } : r;
       }));
       setDrafts({});
       if (typeof res.rev === 'number') setDataRev(res.rev);

@@ -266,14 +266,23 @@ Deno.serve(async (req) => {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const isAdmin = sess.r === "admin";
       const updates = payload.updates || [];
+      // Gom mọi ô đã sửa theo id dòng -> 1 patch/dòng, rồi ghi TẤT CẢ bằng đúng
+      // 1 lượt RPC (update_sale_target_cells). Trước đây update tuần tự từng ô:
+      // 600 ô = 600 lượt gọi nối tiếp ~ 30-40s.
+      const byRow = new Map();
       for (const u of updates) {
         // cột thường: ai edit được (admin/ps); cột nhận diện (mset/prod): chỉ admin.
         const allowed = EDITABLE.has(u.key) || (isAdmin && ADMIN_EDITABLE.has(u.key));
         if (!allowed) continue; // bỏ qua cột không cho sửa / không đủ quyền
-        const col = COL[u.key];
-        const patch = {};
-        patch[col] = u.value === "" ? null : u.value;
-        const { error } = await db.from("sale_target").update(patch).eq("id", Number(u.row));
+        const id = Number(u.row);
+        if (!Number.isFinite(id)) continue;
+        let patch = byRow.get(id);
+        if (!patch) { patch = {}; byRow.set(id, patch); }
+        patch[COL[u.key]] = u.value === "" ? null : u.value;
+      }
+      if (byRow.size > 0) {
+        const p_updates = Array.from(byRow, ([id, patch]) => ({ id, patch }));
+        const { error } = await db.rpc("update_sale_target_cells", { p_updates });
         if (error) throw new Error(error.message);
       }
       return json({ ok: true, rev: await getRev(db) });
