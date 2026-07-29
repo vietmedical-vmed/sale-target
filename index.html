@@ -1390,6 +1390,7 @@ function CustomerCard({
   showBasePlan,
   onToggleBasePlan,
   catIdx,
+  groupsByPs,
   onAddProduct,
   onDeleteCustomer
 }) {
@@ -1516,6 +1517,7 @@ function CustomerCard({
     size: 15
   })))), open && /*#__PURE__*/React.createElement("div", null, adding && canEdit && catIdx && /*#__PURE__*/React.createElement(ProductPickerForm, {
     catIdx: catIdx,
+    groupsByPs: groupsByPs,
     psOptions: psList,
     existing: existingKeys,
     onSubmit: s => onAddProduct({
@@ -2468,7 +2470,7 @@ function buildCatalogIndex(catalog) {
 // Form chọn sản phẩm (nhóm SP → bộ vật tư → sản phẩm) — dùng chung cho thẻ KH đã có
 // và thẻ KH vừa thêm. KH / miền đã biết sẵn nên không hỏi lại.
 // existing = Set('ps||grp||mset||prod') để chặn thêm trùng sản phẩm cho cùng 1 PS.
-function ProductPickerForm({ catIdx, psOptions, existing, onSubmit }) {
+function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }) {
   const h = React.createElement;
   const opts = psOptions && psOptions.length ? psOptions : [];
   const [ps, setPs] = useState(opts.length === 1 ? opts[0] : '');
@@ -2478,6 +2480,18 @@ function ProductPickerForm({ catIdx, psOptions, existing, onSubmit }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  // Nhóm SP được phép chọn = nhóm PS đó ĐANG phụ trách (lấy từ dữ liệu kế hoạch, vốn
+  // đã lọc theo team đang xem) ∩ danh mục. Không cho PS thêm sang nhóm không phải của mình.
+  const groups = useMemo(() => {
+    if (!ps) return [];
+    const allowed = groupsByPs.get(ps);
+    if (!allowed) return [];
+    return catIdx.groups.filter(g => allowed.has(g));
+  }, [catIdx, groupsByPs, ps]);
+  // Đổi PS thì nhóm/bộ vật tư/sản phẩm đã chọn có thể không còn hợp lệ → xoá chọn.
+  useEffect(() => {
+    setGrp(''); setMset(''); setProd(''); setMsg('');
+  }, [ps]);
   const msets = useMemo(() => grp ? catIdx.msetsOf(grp) : [], [catIdx, grp]);
   const prods = useMemo(() => grp ? catIdx.prodsOf(grp, mset) : [], [catIdx, grp, mset]);
   const selected = useMemo(() => prods.find(c => c.prod === prod), [prods, prod]);
@@ -2507,13 +2521,16 @@ function ProductPickerForm({ catIdx, psOptions, existing, onSubmit }) {
           h("option", { value: "" }, "— Chọn PS —"),
           opts.map(p => h("option", { key: p, value: p }, p)))),
       h("div", null,
-        h("label", { className: lbl }, "Nhóm sản phẩm"),
+        h("label", { className: lbl }, "Nhóm sản phẩm",
+          ps && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · theo PS ", ps)),
         h("select", {
           value: grp,
           onChange: e => { setGrp(e.target.value); setMset(''); setProd(''); setMsg(''); },
+          disabled: !ps || groups.length === 0,
           className: sel
-        }, h("option", { value: "" }, "— Chọn nhóm —"),
-          catIdx.groups.map(g => h("option", { key: g, value: g }, g)))),
+        }, h("option", { value: "" },
+            !ps ? "— Chọn PS trước —" : groups.length ? "— Chọn nhóm —" : "(PS này chưa có nhóm SP nào)"),
+          groups.map(g => h("option", { key: g, value: g }, g)))),
       h("div", null,
         h("label", { className: lbl }, "Bộ vật tư"),
         h("select", {
@@ -2615,7 +2632,7 @@ function AddCustomerPanel({ customers, psOptions, regionOptions, regionsByPs, ex
 // Thẻ KH vừa thêm nhưng CHƯA có sản phẩm nào → chưa có dòng nào trong DB.
 // Chỉ tồn tại ở client cho tới khi thêm sản phẩm đầu tiên (lúc đó KH xuất hiện
 // trong danh sách thật và thẻ tạm này tự biến mất).
-function NewCustomerCard({ cust, catIdx, onAddProduct, onDismiss }) {
+function NewCustomerCard({ cust, catIdx, groupsByPs, onAddProduct, onDismiss }) {
   const h = React.createElement;
   return h("div", { className: "bg-white rounded-lg border-2 border-dashed border-emerald-300 mb-3 overflow-hidden" },
     h("div", { className: "flex items-stretch" },
@@ -2634,6 +2651,7 @@ function NewCustomerCard({ cust, catIdx, onAddProduct, onDismiss }) {
         }, h(XIcon, { size: 15 })))),
     h(ProductPickerForm, {
       catIdx,
+      groupsByPs,
       psOptions: [cust.ps],
       existing: null,
       onSubmit: s => onAddProduct({ ...s, custId: cust.custId, cust: cust.cust, region: cust.region })
@@ -3035,16 +3053,27 @@ function App() {
   }, [custIndex]);
   // Chỉ số danh mục SP dựng 1 lần cho mọi form thêm sản phẩm.
   const catIdx = useMemo(() => buildCatalogIndex(catalog), [catalog]);
-  // PS → các miền PS đó đang phụ trách (suy từ dữ liệu). Panel thêm KH dùng để tự điền miền.
-  const regionsByPs = useMemo(() => {
-    const m = new Map();
+  // PS → miền + nhóm SP mà PS đó đang phụ trách, suy từ chính dữ liệu kế hoạch.
+  // rows đã được backend lọc theo quyền/team đang xem nên đây luôn là "trong cùng BU"
+  // (chỉ khi admin xem TẤT CẢ team, 1 tên PS trùng ở 2 team mới bị gộp).
+  // Dùng cho: panel thêm KH tự điền miền, và form thêm SP giới hạn nhóm SP theo PS.
+  const { regionsByPs, groupsByPs } = useMemo(() => {
+    const reg = new Map();
+    const grp = new Map();
+    const bump = (m, k, v) => {
+      let s = m.get(k);
+      if (!s) { s = new Set(); m.set(k, s); }
+      s.add(v);
+    };
     rows.forEach(r => {
-      if (!r.ps || !r.region) return;
-      let s = m.get(r.ps);
-      if (!s) { s = new Set(); m.set(r.ps, s); }
-      s.add(r.region);
+      if (!r.ps) return;
+      if (r.region) bump(reg, r.ps, r.region);
+      if (r.grp) bump(grp, r.ps, r.grp);
     });
-    return new Map(Array.from(m, ([k, v]) => [k, Array.from(v).sort()]));
+    return {
+      regionsByPs: new Map(Array.from(reg, ([k, v]) => [k, Array.from(v).sort()])),
+      groupsByPs: grp
+    };
   }, [rows]);
   // KH vừa thêm nhưng chưa có sản phẩm nào -> chỉ nằm ở client (xem NewCustomerCard).
   const [newCusts, setNewCusts] = useState([]);
@@ -3486,6 +3515,7 @@ function App() {
     key: 'new:' + (c.custId || c.cust),
     cust: c,
     catIdx: catIdx,
+    groupsByPs: groupsByPs,
     onAddProduct: addProduct,
     onDismiss: () => setNewCusts(prev => prev.filter(x => (x.custId || x.cust) !== (c.custId || c.cust)))
   })), tree.length === 0 ? pendingCusts.length === 0 && /*#__PURE__*/React.createElement("div", {
@@ -3502,6 +3532,7 @@ function App() {
     showBasePlan: showBasePlan,
     onToggleBasePlan: () => setShowBasePlan(v => !v),
     catIdx: catalog.length > 0 ? catIdx : null,
+    groupsByPs: groupsByPs,
     onAddProduct: addProduct,
     onDeleteCustomer: deleteCustomer
   })))));
