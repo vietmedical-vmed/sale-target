@@ -16,6 +16,22 @@ function json(body, status = 200) {
     status, headers: { ...cors, "Content-Type": "application/json" },
   });
 }
+// Lỗi từ các RPC địa bàn -> mã HTTP + nội dung cho app.
+// Các lỗi CÓ CHI TIẾT (thiếu tháng nào, tháng nào không hợp lệ) trả nguyên văn
+// message để người cấu hình biết phải sửa gì; loại còn lại trả khoá ngắn cho app dịch.
+function diaBanErr(error) {
+  const msg = String(error && error.message || "");
+  if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
+  if (msg.includes("dup_dia_ban")) return json({ ok: false, error: "dup_dia_ban" }, 409);
+  if (msg.includes("khoang_trong")) return json({ ok: false, error: msg }, 409);
+  if (msg.includes("khong_ton_tai")) return json({ ok: false, error: "khong_ton_tai" }, 404);
+  if (msg.includes("thang_khong_hop_le") || msg.includes("trung_ps")) {
+    return json({ ok: false, error: msg }, 400);
+  }
+  if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+  return json({ ok: false, error: msg }, 500);
+}
+
 const enc = new TextEncoder();
 function b64url(bytes) {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -459,7 +475,7 @@ Deno.serve(async (req) => {
       const out = [];
       for (let from = 0; ; from += PAGE) {
         let q = db.from("dm_dia_ban")
-          .select("id, bu, ma_khach_hang, khach_hang, nhom_san_pham, mien, ps, active")
+          .select("id, bu, ma_khach_hang, khach_hang, nhom_san_pham, mien, ps, active, tu_thang, den_thang")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         q = applyScope(q, sess, payload);
@@ -471,6 +487,7 @@ Deno.serve(async (req) => {
             id: d.id, bu: d.bu ?? "", custId: d.ma_khach_hang ?? "",
             cust: d.khach_hang ?? "", grp: d.nhom_san_pham ?? "",
             mien: d.mien ?? "", ps: d.ps ?? "", active: d.active !== false,
+            tuThang: d.tu_thang ?? "", denThang: d.den_thang ?? "",
           });
         }
         if (data.length < PAGE) break;
@@ -521,18 +538,41 @@ Deno.serve(async (req) => {
           mien: mienCache.get(ps) || oldMien.get(id) || "",
           ps,
           active: r.active !== false,
+          // Khoảng hiệu lực: thêm mới không gửi thì RPC lấy đầu năm tài chính;
+          // dòng sửa không gửi thì giữ nguyên khoảng đang có.
+          tu_thang: r.tuThang ?? "",
+          den_thang: r.denThang ?? "",
         });
       }
       const { data, error } = await db.rpc("upsert_dm_dia_ban", {
         p_rows, ...scopeParams(sess),
       });
-      if (error) {
-        const msg = String(error.message || "");
-        if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
-        if (msg.includes("dup_dia_ban")) return json({ ok: false, error: "dup_dia_ban" }, 409);
-        if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: "thieu_du_lieu" }, 400);
-        throw new Error(msg);
+      if (error) return diaBanErr(error);
+      return json({ ok: true, stats: data });
+    }
+
+    // Chuyển địa bàn sang PS khác TỪ MỘT THÁNG: đóng bản cũ + mở bản mới.
+    // Đây là đường dùng khi đổi người phụ trách giữa năm — tháng cũ giữ PS cũ.
+    if (action === "chuyenDiaBan") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const id = Number(payload.id);
+      const psMoi = String(payload.ps || "").trim();
+      const tuThang = String(payload.tuThang || "").trim();
+      if (!Number.isFinite(id) || !psMoi || !tuThang) {
+        return json({ ok: false, error: "thieu_du_lieu" }, 400);
       }
+      const sc = scopeParams(sess);
+      const { data, error } = await db.rpc("chuyen_dia_ban", {
+        p_id: id,
+        p_ps_moi: psMoi,
+        p_mien: await mienForPs(db, psMoi), // miền theo PS mới, không tin client
+        p_tu_thang: tuThang,
+        p_bu: sc.p_bu,
+        p_mien_scope: sc.p_mien,
+        p_ps_scope: sc.p_ps,
+        p_groups: sc.p_groups,
+      });
+      if (error) return diaBanErr(error);
       return json({ ok: true, stats: data });
     }
 
@@ -540,23 +580,23 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
-      const { error } = await db.from("dm_dia_ban").delete().in("id", ids);
-      if (error) throw new Error(error.message);
+      // Qua RPC (không phải .delete() trực tiếp) để việc kiểm khoảng trống nằm
+      // trong CÙNG giao dịch với lệnh xóa.
+      const { data, error } = await db.rpc("delete_dm_dia_ban", {
+        p_ids: ids, ...scopeParams(sess),
+      });
+      if (error) return diaBanErr(error);
       // Xoá khai báo KHÔNG đụng tới dòng kế hoạch đã có (dữ liệu kế hoạch vẫn
       // thuộc PS cũ) → không cần trả rev.
-      return json({ ok: true, deleted: ids.length });
+      return json({ ok: true, stats: data });
     }
 
     if (action === "applyDiaBan") {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
-      // fromMonth rỗng/không gửi = áp dụng CẢ NĂM (kể cả tháng đã qua) — app phải
-      // gửi tháng hiện tại nếu muốn giữ nguyên lịch sử khớp actual.
-      const fromMonth = payload.fromMonth ? String(payload.fromMonth) : null;
-      const { data, error } = await db.rpc("apply_dia_ban_to_plan", {
-        p_ids: ids, p_from_month: fromMonth,
-      });
+      // Không còn tham số tháng: mỗi bản khai báo chỉ ghi vào các tháng nó phủ.
+      const { data, error } = await db.rpc("apply_dia_ban_to_plan", { p_ids: ids });
       if (error) throw new Error(error.message);
       return json({ ok: true, stats: data, rev: await getRev(db) });
     }

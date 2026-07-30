@@ -2736,80 +2736,156 @@ function NewCustomerCard({ cust, catIdx, groupsByPs, onAddProduct, onDismiss }) 
     }));
 }
 
-// ============ CẤU HÌNH ĐỊA BÀN (Khách hàng × Ngành hàng → PS) ============
-// Bảng dm_dia_ban là nơi KHAI BÁO ai phụ trách ngành hàng nào của khách hàng nào
-// (trước đây chỉ suy được từ dữ liệu kế hoạch đã có → KH/ngành hàng chưa có dòng
-// nào thì không khai báo trước được, và gõ sai PS không ai chặn).
+// ============ CẤU HÌNH ĐỊA BÀN (Khách hàng × Ngành hàng → PS, có thời gian hiệu lực) ============
+// dm_dia_ban khai báo ai phụ trách ngành hàng nào của khách hàng nào, VÀ TỪ THÁNG
+// NÀO ĐẾN THÁNG NÀO. Đổi người phụ trách giữa năm KHÔNG sửa bản cũ mà "Chuyển PS":
+// đóng bản cũ ở tháng liền trước + mở bản mới → tháng cũ vĩnh viễn thuộc PS cũ, dù
+// sau đó cấu hình đổi bao nhiêu lần.
 //
-// Kế hoạch KHÔNG tự đổi theo khai báo: sửa PS ở đây rồi bấm "Áp dụng" mới ghi
-// xuống sale_target — vì đổi PS của tháng ĐÃ QUA làm lệch khoá khớp actual
-// (tháng|PS|maKH|bộVT|SP) khiến số thực hiện cũ rơi ra "ngoài kế hoạch". Mặc định
-// chỉ áp dụng từ tháng hiện tại trở đi; muốn cả năm phải tự tick.
+// Kế hoạch KHÔNG tự đổi theo khai báo: phải bấm "Áp dụng", và mỗi bản chỉ ghi vào
+// các tháng nó phủ nên bản mới không bao giờ ghi đè tháng đã qua (khoá khớp actual
+// tháng|PS|maKH|bộVT|SP của quá khứ được giữ nguyên).
+//
+// Ràng buộc: tổ hợp (KH × ngành hàng) ĐÃ khai báo thì MỌI tháng đang có dòng kế
+// hoạch phải được một bản nào đó phủ. Thiếu tháng = "khoảng trống" → backend chặn
+// lưu; màn hình cảnh báo ngay tại chỗ để không phải thử rồi mới biết.
 const MAX_DIA_BAN_ROWS = 500; // bảng phẳng (không gập nhóm như màn chi tiết) → phải có trần
+const MO_ALL = 'all';         // giá trị ô "Xem theo tháng" = xem cả lịch sử
 
 // Khoá đối chiếu khách hàng giữa dm_dia_ban và sale_target: ưu tiên mã KH, rỗng
 // thì rơi về tên GỐC trong DB (cust đã fmtCust không dùng được để so khớp).
 // Phải khớp đúng cột sinh cust_key của dm_dia_ban.
 const dbCustKey = (custId, cust) => String(custId || '').trim() || String(cust || '').trim();
+// '2026-07' -> 'T7/26'
+const fmtMo = mo => {
+  if (!mo) return '';
+  const p = String(mo).split('-');
+  return p.length < 2 ? String(mo) : 'T' + Number(p[1]) + '/' + p[0].slice(2);
+};
+const fmtHieuLuc = (tu, den) => (tu ? fmtMo(tu) : fmtMo(MONTHS[0])) + ' → ' + (den ? fmtMo(den) : 'nay');
+// Bản khai báo có phủ tháng mo không (tu rỗng = từ đầu năm, den rỗng = còn hiệu lực)
+const phuThang = (v, mo) => (!v.tuThang || v.tuThang <= mo) && (!v.denThang || v.denThang >= mo);
+// Tháng đang có kế hoạch mà không bản nào phủ. versions rỗng = chưa khai báo gì →
+// KHÔNG tính là khoảng trống (đó là mục "chưa khai báo", backend cũng bỏ qua).
+const khoangTrong = (planMonths, versions) => {
+  if (!planMonths || planMonths.size === 0 || !versions || versions.length === 0) return [];
+  return MONTHS.filter(mo => planMonths.has(mo) && !versions.some(v => phuThang(v, mo)));
+};
+
+// Dịch lỗi backend địa bàn sang câu cho người cấu hình. Loại có CHI TIẾT (thiếu
+// tháng nào, tháng nào không hợp lệ) được backend trả nguyên văn kèm dữ liệu cụ thể
+// → chỉ bỏ tiền tố mã lỗi, giữ nguyên phần nội dung.
+const diaBanErrMsg = m => {
+  const s = String(m || '');
+  if (s === 'dup_dia_ban') return 'địa bàn này đã được khai báo cho PS đó từ cùng một tháng.';
+  if (s === 'forbidden') return 'chỉ admin được sửa cấu hình địa bàn.';
+  if (s === 'forbidden_rows') return 'có dòng ngoài phạm vi quyền của bạn.';
+  if (s === 'thieu_du_lieu') return 'thiếu khách hàng / ngành hàng / PS.';
+  if (s === 'khong_ton_tai') return 'bản khai báo này không còn tồn tại — hãy tải lại.';
+  if (s.startsWith('khoang_trong:')) {
+    return 'sẽ có tháng không ai phụ trách — ' + s.slice('khoang_trong:'.length).trim();
+  }
+  const i = s.indexOf(':');
+  if (i > 0 && /^[a-z_]+$/.test(s.slice(0, i))) return s.slice(i + 1).trim();
+  return s;
+};
 
 // mienByPs: PS -> Miền (suy từ dữ liệu kế hoạch, chỉ khi PS đó thuộc đúng 1 miền).
 // Miền KHÔNG phải trường nhập tay: nó là thuộc tính của PS, chọn tay chỉ tạo cơ hội
 // gán lệch miền cho cùng một PS. Backend cũng tự suy lại khi lưu, không tin client.
 function DiaBanView({
   rows, diaBan, customers, psOptions, mienByPs, groupOptions, canEdit,
-  psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, busy
+  psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, onMove, busy
 }) {
   const h = React.createElement;
   const [edits, setEdits] = useState({}); // { id: ps } — PS đã đổi, chưa lưu
   const [search, setSearch] = useState('');
-  const [applyPast, setApplyPast] = useState(false);
+  const [viewMo, setViewMo] = useState(CURRENT_MONTH); // tháng đang xem (MO_ALL = cả lịch sử)
   const [showMissing, setShowMissing] = useState(false);
   const [closed, setClosed] = useState(() => new Set()); // KH đang gập
-  const [nRow, setNRow] = useState({ custKey: '', grp: '', ps: '' });
+  const [move, setMove] = useState(null); // { id, ps, tuThang } — form "Chuyển PS"
+  const [nRow, setNRow] = useState({ custKey: '', grp: '', ps: '', tuThang: MONTHS[0] });
 
-  // (Khách hàng × ngành hàng) -> các PS đang THẬT SỰ có dòng kế hoạch.
+  // (Khách hàng × ngành hàng) -> PS đang THẬT SỰ có dòng kế hoạch, TÁCH THEO THÁNG
+  // (khai báo có khoảng hiệu lực nên đối chiếu cũng phải theo tháng).
   const planIdx = useMemo(() => {
     const m = new Map();
     rows.forEach(r => {
-      if (!r.grp || !r.ps) return;
+      if (!r.grp || !r.ps || !r.mo) return;
       const k = dbCustKey(r.custId, r.custRaw || r.cust);
       if (!k) return;
       const mk = k + '||' + r.grp;
       let e = m.get(mk);
       if (!e) {
-        e = { custId: r.custId || '', cust: r.custRaw || r.cust, grp: r.grp, mien: r.region || '', ps: new Set() };
+        e = { custId: r.custId || '', cust: r.custRaw || r.cust, grp: r.grp, mien: r.region || '',
+              psByMonth: new Map(), months: new Set() };
         m.set(mk, e);
       }
-      e.ps.add(r.ps);
+      e.months.add(r.mo);
+      let s = e.psByMonth.get(r.mo);
+      if (!s) { s = new Set(); e.psByMonth.set(r.mo, s); }
+      s.add(r.ps);
     });
     return m;
   }, [rows]);
 
-  // Tổ hợp (khách hàng × ngành hàng) ĐÃ có khai báo — bất kể khai báo cho PS nào.
-  const cfgPairs = useMemo(
-    () => new Set(diaBan.map(d => dbCustKey(d.custId, d.cust) + '||' + d.grp)),
-    [diaBan]
-  );
+  // Mọi bản khai báo của một tổ hợp (KHÔNG lọc theo tháng đang xem) — dùng để tính
+  // khoảng trống và để biết tổ hợp đã khai báo hay chưa.
+  const cfgByPair = useMemo(() => {
+    const m = new Map();
+    diaBan.forEach(d => {
+      const k = dbCustKey(d.custId, d.cust) + '||' + d.grp;
+      let a = m.get(k);
+      if (!a) { a = []; m.set(k, a); }
+      a.push(d);
+    });
+    return m;
+  }, [diaBan]);
 
-  // Có kế hoạch nhưng CHƯA khai báo địa bàn (vd sản phẩm được thêm sau lần seed).
-  // CHỈ tính tổ hợp chưa có khai báo nào: khai báo rồi mà PS khác kế hoạch là
-  // trường hợp "lệch" (xử lý bằng nút Áp dụng), thêm PS nữa vào đó chỉ làm tổ hợp
-  // thành nhiều PS → apply_dia_ban_to_plan sẽ bỏ qua vì không biết chọn PS nào.
+  // Có kế hoạch nhưng CHƯA khai báo địa bàn. Suy khai báo theo TỪNG KHOẢNG THÁNG
+  // LIÊN TIẾP của mỗi PS trong kế hoạch → khai báo lại đúng lịch sử, không tạo
+  // khoảng trống và không tạo chồng lấn vô cớ.
   const missing = useMemo(() => {
     const out = [];
-    planIdx.forEach(e => {
-      if (cfgPairs.has(dbCustKey(e.custId, e.cust) + '||' + e.grp)) return;
-      e.ps.forEach(ps => out.push({ custId: e.custId, cust: e.cust, grp: e.grp, ps, mien: e.mien }));
+    planIdx.forEach((e, pairKey) => {
+      if (cfgByPair.has(pairKey)) return;
+      const psMonths = new Map();
+      MONTHS.forEach(mo => {
+        const s = e.psByMonth.get(mo);
+        if (s) s.forEach(p => {
+          if (!psMonths.has(p)) psMonths.set(p, []);
+          psMonths.get(p).push(mo);
+        });
+      });
+      psMonths.forEach((mos, ps) => {
+        let start = null, prev = null;
+        const flush = () => {
+          if (start == null) return;
+          out.push({
+            custId: e.custId, cust: e.cust, grp: e.grp, ps, tuThang: start,
+            denThang: prev === MONTHS[MONTHS.length - 1] ? '' : prev // tới hết năm → để mở
+          });
+          start = null;
+        };
+        mos.forEach(mo => {
+          if (start == null || MONTHS.indexOf(mo) !== MONTHS.indexOf(prev) + 1) { flush(); start = mo; }
+          prev = mo;
+        });
+        flush();
+      });
     });
-    return out.sort((a, b) => (a.cust || '').localeCompare(b.cust || '') || a.grp.localeCompare(b.grp));
-  }, [planIdx, cfgPairs]);
+    return out.sort((a, b) => (a.cust || '').localeCompare(b.cust || '') ||
+                              a.grp.localeCompare(b.grp) || a.tuThang.localeCompare(b.tuThang));
+  }, [planIdx, cfgByPair]);
 
-  // Danh sách hiển thị: lọc theo bộ lọc chung + ô tìm kiếm riêng, kèm trạng thái
-  // đối chiếu kế hoạch. 'diff' = kế hoạch đang gắn PS khác → cần Áp dụng.
+  // Danh sách hiển thị: chỉ các bản hiệu lực trong tháng đang xem (hoặc tất cả),
+  // qua bộ lọc chung + ô tìm kiếm, kèm trạng thái đối chiếu kế hoạch TRONG KHOẢNG
+  // HIỆU LỰC của chính bản đó.
   const list = useMemo(() => {
     const q = deaccent(search.trim());
     const out = [];
     for (const d of diaBan) {
+      if (viewMo !== MO_ALL && !phuThang(d, viewMo)) continue;
       const ps = edits[d.id] || d.ps;
       // Miền luôn suy theo PS; giá trị lưu trong DB chỉ dùng khi PS đó chưa xác định
       // được miền (chưa có dòng kế hoạch, hoặc đang có mặt ở nhiều miền).
@@ -2821,11 +2897,26 @@ function DiaBanView({
       if (q && !(deaccent(d.cust).includes(q) || deaccent(d.custId).includes(q) ||
                  deaccent(ps).includes(q) || deaccent(d.grp).includes(q))) continue;
       const plan = planIdx.get(dbCustKey(d.custId, d.cust) + '||' + d.grp);
-      const status = !plan ? 'noplan' : plan.ps.has(ps) ? 'ok' : 'diff';
-      out.push({ ...d, ps, mien, status, planPs: plan ? Array.from(plan.ps) : [] });
+      let status = 'noplan', planPs = [];
+      if (plan) {
+        const inWindow = new Set();
+        MONTHS.forEach(mo => {
+          if (!phuThang(d, mo)) return;
+          const s = plan.psByMonth.get(mo);
+          if (s) s.forEach(p => inWindow.add(p));
+        });
+        if (inWindow.size === 0) status = 'noplan';
+        else if (inWindow.size === 1 && inWindow.has(ps)) status = 'ok';
+        else {
+          status = 'diff';
+          planPs = Array.from(inWindow).filter(p => p !== ps);
+          if (!planPs.length) planPs = Array.from(inWindow);
+        }
+      }
+      out.push({ ...d, ps, mien, status, planPs });
     }
     return out;
-  }, [diaBan, edits, mienByPs, planIdx, search, psFilter, regionFilter, groupFilter, custFilter]);
+  }, [diaBan, edits, mienByPs, planIdx, viewMo, search, psFilter, regionFilter, groupFilter, custFilter]);
 
   // Gom theo KHÁCH HÀNG: 1 KH thường có nhiều ngành hàng (và có thể khác PS mỗi
   // ngành) → xem theo nhóm dễ soát hơn bảng phẳng lặp tên KH ở mọi dòng.
@@ -2834,15 +2925,30 @@ function DiaBanView({
     for (const d of list) {
       const k = dbCustKey(d.custId, d.cust);
       let g = m.get(k);
-      if (!g) { g = { key: k, custId: d.custId, cust: d.cust, rows: [], diff: 0 }; m.set(k, g); }
+      if (!g) { g = { key: k, custId: d.custId, cust: d.cust, rows: [], diff: 0, gaps: [] }; m.set(k, g); }
       g.rows.push(d);
       if (d.status === 'diff') g.diff++;
     }
     const arr = Array.from(m.values());
-    arr.forEach(g => g.rows.sort((a, b) => a.grp.localeCompare(b.grp) || a.ps.localeCompare(b.ps)));
+    arr.forEach(g => {
+      g.rows.sort((a, b) => a.grp.localeCompare(b.grp) ||
+                            (a.tuThang || '').localeCompare(b.tuThang || '') ||
+                            a.ps.localeCompare(b.ps));
+      // Khoảng trống tính trên TOÀN BỘ bản khai báo của tổ hợp, không phụ thuộc
+      // tháng đang xem — cảnh báo phải hiện dù đang xem tháng khác.
+      const seen = new Set();
+      g.rows.forEach(d => {
+        if (seen.has(d.grp)) return;
+        seen.add(d.grp);
+        const pairKey = g.key + '||' + d.grp;
+        const plan = planIdx.get(pairKey);
+        const thieu = khoangTrong(plan && plan.months, cfgByPair.get(pairKey));
+        if (thieu.length) g.gaps.push({ grp: d.grp, thieu });
+      });
+    });
     arr.sort((a, b) => fmtCust(a.cust).localeCompare(fmtCust(b.cust)));
     return arr;
-  }, [list]);
+  }, [list, planIdx, cfgByPair]);
 
   // Trần hiển thị tính theo dòng nhưng CẮT Ở RANH GIỚI KHÁCH HÀNG (không hiện nửa KH).
   const shownGroups = useMemo(() => {
@@ -2858,6 +2964,21 @@ function DiaBanView({
   const shownRows = shownGroups.reduce((s, g) => s + g.rows.length, 0);
   const allClosed = closed.size >= shownGroups.length && shownGroups.length > 0;
 
+  // Khoảng trống trên TOÀN BỘ cấu hình — không phụ thuộc tháng đang xem hay bộ lọc.
+  // Đây là lỗi chặn lưu nên phải luôn thấy: tổ hợp có khoảng trống thường lại là tổ
+  // hợp mà bản khai báo KHÔNG hiệu lực trong tháng đang xem (nên không có dòng nào
+  // trên bảng để gắn badge).
+  const allGaps = useMemo(() => {
+    const out = [];
+    cfgByPair.forEach((vers, pairKey) => {
+      const plan = planIdx.get(pairKey);
+      const thieu = khoangTrong(plan && plan.months, vers);
+      if (!thieu.length) return;
+      out.push({ custId: vers[0].custId, cust: vers[0].cust, grp: vers[0].grp, thieu });
+    });
+    return out.sort((a, b) => fmtCust(a.cust || '').localeCompare(fmtCust(b.cust || '')));
+  }, [cfgByPair, planIdx]);
+
   // Dòng lệch ĐANG ÁP DỤNG ĐƯỢC: bỏ dòng còn sửa dở, vì "Áp dụng" ghi theo giá trị
   // ĐÃ LƯU trong dm_dia_ban — áp dụng dòng đang sửa sẽ đẩy xuống PS cũ, không phải
   // PS vừa chọn trên màn hình.
@@ -2868,7 +2989,8 @@ function DiaBanView({
   const editCount = Object.keys(edits).length;
   const custCount = groups.length;
 
-  // Chỉ PS là sửa được; Miền đi theo PS nên không có gì để sửa ở cột đó.
+  // Chỉ PS là sửa được tại chỗ (sửa sai cho CẢ khoảng hiệu lực của bản đó); đổi
+  // người phụ trách giữa năm phải dùng "Chuyển PS". Miền đi theo PS.
   const setEdit = (d, ps) => setEdits(prev => {
     if (ps === d.ps) { // về đúng giá trị gốc → bỏ khỏi danh sách chưa lưu
       const o = { ...prev };
@@ -2885,7 +3007,7 @@ function DiaBanView({
 
   const byId = useMemo(() => new Map(diaBan.map(d => [d.id, d])), [diaBan]);
   const saveEdits = async () => {
-    // KHÔNG gửi mien: backend tự suy theo PS.
+    // KHÔNG gửi mien (backend suy theo PS) và KHÔNG gửi khoảng hiệu lực (giữ nguyên).
     const payload = Object.entries(edits).map(([id, ps]) => {
       const base = byId.get(Number(id)) || {};
       return { id: Number(id), custId: base.custId, cust: base.cust, grp: base.grp, ps };
@@ -2899,31 +3021,66 @@ function DiaBanView({
     [customers, nRow.custKey]
   );
   const newMien = (nRow.ps && mienByPs.get(nRow.ps)) || '';
+  // Cảnh báo TRƯỚC khi lưu: thêm bản bắt đầu từ giữa năm cho tổ hợp đang có kế
+  // hoạch ở các tháng trước đó = khoảng trống → backend sẽ chặn.
+  const newGaps = useMemo(() => {
+    if (!newCust || !nRow.grp) return [];
+    const pairKey = dbCustKey(newCust.custId, newCust.cust) + '||' + nRow.grp;
+    const plan = planIdx.get(pairKey);
+    if (!plan) return [];
+    return khoangTrong(plan.months,
+      (cfgByPair.get(pairKey) || []).concat([{ tuThang: nRow.tuThang, denThang: '' }]));
+  }, [newCust, nRow.grp, nRow.tuThang, planIdx, cfgByPair]);
   const addRow = async () => {
-    if (!newCust || !nRow.grp || !nRow.ps) return;
+    if (!newCust || !nRow.grp || !nRow.ps || newGaps.length) return;
     const ok = await onSave([{
-      custId: newCust.custId || '', cust: newCust.cust, grp: nRow.grp, ps: nRow.ps
+      custId: newCust.custId || '', cust: newCust.cust, grp: nRow.grp, ps: nRow.ps,
+      tuThang: nRow.tuThang
     }]);
-    if (ok) setNRow({ custKey: '', grp: '', ps: '' });
+    if (ok) setNRow({ custKey: '', grp: '', ps: '', tuThang: MONTHS[0] });
   };
 
   const declareMissing = async () => {
-    // Khai báo đúng những gì kế hoạch đang có → không sinh thay đổi nào cho sale_target.
+    // Khai báo đúng những gì kế hoạch đang có (kể cả khoảng thời gian) → không sinh
+    // thay đổi nào cho sale_target và không sinh khoảng trống.
     const batch = missing.slice(0, MAX_DIA_BAN_ROWS).map(m => ({
-      custId: m.custId, cust: m.cust, grp: m.grp, ps: m.ps
+      custId: m.custId, cust: m.cust, grp: m.grp, ps: m.ps,
+      tuThang: m.tuThang, denThang: m.denThang
     }));
     if (!batch.length) return;
-    if (!confirm(`Khai báo ${batch.length} địa bàn theo đúng PS đang có trong kế hoạch?`)) return;
+    if (!confirm(`Khai báo ${batch.length} địa bàn theo đúng PS & khoảng thời gian đang có trong kế hoạch?`)) return;
     await onSave(batch);
   };
 
   const applyIds = async (ids) => {
     if (!ids.length) return;
-    const scope = applyPast ? 'TẤT CẢ 12 tháng (kể cả tháng đã qua)' : `từ tháng ${CURRENT_MONTH} trở đi`;
-    if (!confirm(`Ghi PS/Miền đã khai báo xuống ${ids.length} địa bàn, ${scope}?\n\n` +
-      (applyPast ? 'Cảnh báo: đổi PS của tháng đã qua sẽ làm số thực hiện đã import không còn khớp dòng kế hoạch.'
-                 : 'Các tháng đã qua giữ nguyên PS cũ để không mất khớp số thực hiện.'))) return;
-    await onApply(ids, applyPast ? null : CURRENT_MONTH);
+    const vers = ids.map(id => byId.get(id)).filter(Boolean);
+    const coQuaKhu = vers.some(v => (v.tuThang || MONTHS[0]) < CURRENT_MONTH);
+    const win = vers.length === 1 ? ` (${fmtHieuLuc(vers[0].tuThang, vers[0].denThang)})` : '';
+    if (!confirm(`Ghi PS/Miền đã khai báo xuống ${ids.length} địa bàn${win}, ` +
+      `theo đúng khoảng hiệu lực của từng bản?\n\n` +
+      `Các tháng ngoài khoảng hiệu lực không bị đụng tới.` +
+      (coQuaKhu ? `\n\nLưu ý: có bản phủ tháng đã qua — số thực hiện đã import của các tháng đó sẽ khớp lại theo PS của bản này.` : ''))) return;
+    await onApply(ids);
+  };
+
+  const doMove = async () => {
+    if (!move || !move.ps || !move.tuThang) return;
+    if (await onMove({ id: move.id, ps: move.ps, tuThang: move.tuThang })) setMove(null);
+  };
+  const doDelete = d => {
+    const pairKey = dbCustKey(d.custId, d.cust) + '||' + d.grp;
+    const plan = planIdx.get(pairKey);
+    const conLai = (cfgByPair.get(pairKey) || []).filter(v => v.id !== d.id);
+    const thieu = khoangTrong(plan && plan.months, conLai);
+    if (thieu.length) {
+      alert(`Không xóa được bản khai báo này: các tháng ${thieu.map(fmtMo).join(', ')} ` +
+        `của ${fmtCust(d.cust)} / ${d.grp} đang có kế hoạch nhưng sẽ không còn ai phụ trách.\n\n` +
+        `Hãy khai báo PS cho các tháng đó trước (hoặc xóa toàn bộ khai báo của tổ hợp này).`);
+      return;
+    }
+    if (confirm(`Xóa khai báo địa bàn "${d.grp}" của ${fmtCust(d.cust)} — PS ${d.ps}, ` +
+      `${fmtHieuLuc(d.tuThang, d.denThang)}?\n\nCác dòng kế hoạch đã có KHÔNG bị xóa.`)) onDelete([d.id]);
   };
 
   const lbl = "block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1";
@@ -2936,7 +3093,7 @@ function DiaBanView({
     diff: ['bg-amber-50 text-amber-700', 'Lệch kế hoạch'],
     noplan: ['bg-slate-100 text-slate-500', 'Chưa có kế hoạch']
   };
-  const COLS = canEdit ? 5 : 4; // Ngành hàng · Miền · PS · Đối chiếu (+ cột thao tác)
+  const COLS = canEdit ? 6 : 5; // Ngành hàng · Hiệu lực · Miền · PS · Đối chiếu (+ thao tác)
 
   return h("div", { className: "px-6 pb-8" },
     // ---- Thanh công cụ ----
@@ -2945,8 +3102,16 @@ function DiaBanView({
       h("span", { className: "text-[11px] text-slate-400" },
         fmtInt(list.length), " địa bàn · ", fmtInt(custCount), " khách hàng",
         diffIds.length > 0 && h("span", { className: "text-amber-600 font-medium" }, " · ", diffIds.length, " lệch kế hoạch"),
+        allGaps.length > 0 && h("span", { className: "text-red-600 font-medium" }, " · ", allGaps.length, " tổ hợp thiếu tháng"),
         missing.length > 0 && h("span", { className: "text-slate-500" }, " · ", missing.length, " chưa khai báo")),
       h("div", { className: "flex-1" }),
+      h("label", { className: "flex items-center gap-1.5 text-[12px] text-slate-600" }, "Xem theo tháng",
+        h("select", {
+          value: viewMo,
+          onChange: e => setViewMo(e.target.value),
+          className: "px-2 py-1 text-[12px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500"
+        }, MONTHS.map((mo, i) => h("option", { key: mo, value: mo }, MONTH_LABELS[i], mo === CURRENT_MONTH ? ' (hiện tại)' : '')),
+          h("option", { value: MO_ALL }, "Tất cả (cả lịch sử)"))),
       shownGroups.length > 0 && h("button", {
         onClick: () => setClosed(allClosed ? new Set() : new Set(shownGroups.map(g => g.key))),
         className: "px-2.5 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
@@ -2959,15 +3124,6 @@ function DiaBanView({
           placeholder: "Tìm KH, mã KH, PS, ngành hàng…",
           className: "pl-8 pr-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-64 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
         })),
-      canEdit && h("label", {
-        className: "flex items-center gap-1.5 text-[12px] text-slate-600 select-none cursor-pointer",
-        title: "Bỏ tick: chỉ ghi từ tháng hiện tại trở đi, các tháng đã qua giữ PS cũ để không mất khớp số thực hiện"
-      }, h("input", {
-        type: "checkbox",
-        checked: applyPast,
-        onChange: e => setApplyPast(e.target.checked),
-        className: "accent-amber-600"
-      }), "áp dụng cả tháng đã qua"),
       canEdit && diffIds.length > 0 && h("button", {
         onClick: () => applyIds(diffIds),
         disabled: busy,
@@ -2985,6 +3141,27 @@ function DiaBanView({
           className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
         }, busy ? h(Loader2, { size: 14, className: "animate-spin" }) : h(Check, { size: 14 }),
           " Lưu khai báo (", editCount, ")"))),
+
+    // ---- Cảnh báo khoảng trống: tháng có kế hoạch mà không ai phụ trách ----
+    // Mọi thay đổi khác trên tổ hợp này sẽ bị backend chặn cho tới khi vá xong.
+    allGaps.length > 0 && h("div", {
+      className: "bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-3 text-[12px] text-red-800"
+    }, h("div", { className: "flex items-center gap-2 flex-wrap" },
+      h(AlertCircle, { size: 14, className: "shrink-0" }),
+      h("span", { className: "font-semibold" }, allGaps.length, " tổ hợp có tháng không ai phụ trách"),
+      h("span", { className: "text-red-600" },
+        "— các tháng này đang có dòng kế hoạch; backend chặn mọi thay đổi khác của tổ hợp cho tới khi khai báo đủ."),
+      h("div", { className: "flex-1" }),
+      viewMo !== MO_ALL && h("button", {
+        onClick: () => setViewMo(MO_ALL),
+        className: "px-2 py-0.5 text-[11px] font-medium bg-red-100 hover:bg-red-200 rounded"
+      }, "Xem tất cả bản khai báo")),
+      h("div", { className: "mt-1.5 flex flex-col gap-0.5 max-h-32 overflow-auto scroll-shadow" },
+        allGaps.slice(0, 20).map((g, i) => h("div", { key: i },
+          h("span", { className: "font-mono text-red-500" }, g.custId || '—'), " ",
+          h("span", { className: "font-medium" }, fmtCust(g.cust)), " / ", g.grp,
+          ": thiếu ", h("span", { className: "font-semibold" }, g.thieu.map(fmtMo).join(', ')))),
+        allGaps.length > 20 && h("div", { className: "text-red-600" }, "… và ", allGaps.length - 20, " tổ hợp nữa"))),
 
     // ---- Chưa khai báo (có kế hoạch nhưng thiếu trong danh mục) ----
     missing.length > 0 && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3" },
@@ -3010,12 +3187,12 @@ function DiaBanView({
               h("td", { className: td + " font-mono text-slate-400 whitespace-nowrap" }, m.custId || '—'),
               h("td", { className: td + " text-slate-700" }, fmtCust(m.cust)),
               h("td", { className: td + " text-slate-600" }, m.grp),
-              h("td", { className: td + " text-slate-600" }, m.mien || '—'),
+              h("td", { className: td + " text-slate-500 whitespace-nowrap" }, fmtHieuLuc(m.tuThang, m.denThang)),
               h("td", { className: td + " font-medium text-slate-800" }, m.ps))))))),
 
     // ---- Thêm địa bàn ----
     canEdit && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3 px-3 py-3" },
-      h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5" },
+      h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5" },
         h("div", { className: "lg:col-span-2" },
           h("label", { className: lbl }, "Khách hàng"),
           h(CustomerPicker, {
@@ -3044,22 +3221,24 @@ function DiaBanView({
           }, h("option", { value: "" }, "— Chọn PS —"),
             psOptions.map(p => h("option", { key: p, value: p }, p)))),
         h("div", null,
-          h("label", { className: lbl }, "Miền", h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · theo PS")),
-          // Miền không nhập tay: hiện để đối chiếu, backend tự suy lại khi lưu.
-          h("input", {
-            value: nRow.ps ? (newMien || '(PS chưa xác định được miền)') : '',
-            readOnly: true,
-            disabled: true,
-            placeholder: "— chọn PS —",
+          h("label", { className: lbl }, "Hiệu lực từ tháng"),
+          h("select", {
+            value: nRow.tuThang,
+            onChange: e => setNRow(s => ({ ...s, tuThang: e.target.value })),
+            disabled: !newCust,
             className: sel
-          }))),
+          }, MONTHS.map((mo, i) => h("option", { key: mo, value: mo }, MONTH_LABELS[i], ' (', mo, ')'))))),
       h("div", { className: "flex items-center gap-3 mt-3 flex-wrap" },
-        h("span", { className: "text-[12px] text-slate-500" },
-          "Khai báo địa bàn KHÔNG tạo dòng kế hoạch — chỉ định trước ai phụ trách ngành hàng này của khách hàng."),
+        newGaps.length > 0
+          ? h("span", { className: "text-[12px] text-red-600" },
+              "Không lưu được: các tháng ", newGaps.map(fmtMo).join(', '),
+              " đang có kế hoạch nhưng sẽ không ai phụ trách. Khai báo từ tháng sớm hơn, hoặc khai báo PS cho các tháng đó trước.")
+          : h("span", { className: "text-[12px] text-slate-500" },
+              "Khai báo địa bàn KHÔNG tạo dòng kế hoạch — chỉ định trước ai phụ trách ngành hàng này của khách hàng, từ tháng nào."),
         h("div", { className: "flex-1" }),
         h("button", {
           onClick: addRow,
-          disabled: busy || !newCust || !nRow.grp || !nRow.ps,
+          disabled: busy || !newCust || !nRow.grp || !nRow.ps || newGaps.length > 0,
           className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
         }, h(Plus, { size: 14 }), " Thêm địa bàn"))),
 
@@ -3070,6 +3249,7 @@ function DiaBanView({
           h("thead", { className: "bg-slate-50 sticky top-0 z-10" },
             h("tr", null,
               h("th", { className: th }, "Khách hàng / Ngành hàng"),
+              h("th", { className: th }, "Hiệu lực"),
               h("th", { className: th }, "Miền"),
               h("th", { className: th }, "PS phụ trách"),
               h("th", { className: th }, "Đối chiếu kế hoạch"),
@@ -3078,7 +3258,8 @@ function DiaBanView({
             ? h("tr", null, h("td", {
                 colSpan: COLS,
                 className: "px-4 py-12 text-center text-slate-400 text-sm"
-              }, diaBan.length === 0 ? 'Chưa có địa bàn nào được khai báo' : 'Không có địa bàn nào khớp bộ lọc'))
+              }, diaBan.length === 0 ? 'Chưa có địa bàn nào được khai báo'
+                : 'Không có địa bàn nào hiệu lực trong tháng đang xem / khớp bộ lọc'))
             // Mỗi khách hàng = 1 dòng tiêu đề (gập/mở) + các dòng ngành hàng của KH đó.
             : shownGroups.map(g => {
               const open = !closed.has(g.key);
@@ -3095,46 +3276,92 @@ function DiaBanView({
                       h("span", { className: "text-[11px] text-slate-400 shrink-0" }, g.rows.length, " ngành hàng"),
                       g.diff > 0 && h("span", {
                         className: "text-[10.5px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium shrink-0"
-                      }, g.diff, " lệch")))),
+                      }, g.diff, " lệch"),
+                      g.gaps.map(gp => h("span", {
+                        key: gp.grp,
+                        title: "Tháng có kế hoạch nhưng không bản khai báo nào phủ — không lưu được thay đổi khác cho tổ hợp này",
+                        className: "text-[10.5px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 font-medium shrink-0"
+                      }, gp.grp, ": thiếu ", gp.thieu.map(fmtMo).join(', ')))))),
                 open && g.rows.map(d => {
                   const dirty = !!edits[d.id];
                   const [cls, text] = BADGE[d.status];
-                  return h("tr", {
-                    key: d.id,
-                    className: dirty ? "bg-amber-50/60" : "hover:bg-slate-50/60"
-                  },
-                    h("td", { className: td + " text-slate-700 pl-8" }, d.grp),
-                    h("td", {
-                      className: td + " text-slate-500",
-                      title: "Miền lấy theo PS phụ trách, không sửa trực tiếp"
-                    }, d.mien || '—'),
-                    h("td", { className: td, style: { minWidth: 150 } }, canEdit
-                      ? h("select", {
-                          value: d.ps,
-                          onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
-                          className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
-                        }, psOptions.map(p => h("option", { key: p, value: p }, p)),
-                          // PS của dòng có thể không nằm trong danh sách suy từ kế hoạch
-                          !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
-                      : d.ps),
-                    h("td", { className: td },
-                      h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
-                      d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
-                        "kế hoạch: ", d.planPs.join(', '))),
-                    canEdit && h("td", { className: td + " whitespace-nowrap text-right" },
-                      d.status === 'diff' && !dirty && h("button", {
-                        onClick: () => applyIds([d.id]),
-                        disabled: busy,
-                        title: "Ghi PS/Miền này xuống các dòng kế hoạch của (KH × ngành hàng)",
-                        className: "px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
-                      }, "Áp dụng"),
-                      h("button", {
-                        onClick: () => {
-                          if (confirm(`Xóa khai báo địa bàn "${d.grp}" của ${fmtCust(d.cust)} (PS ${d.ps})?\n\nCác dòng kế hoạch đã có KHÔNG bị xóa.`)) onDelete([d.id]);
-                        },
-                        disabled: busy,
-                        className: "p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                      }, h(Trash2, { size: 13 }))));
+                  const moving = move && move.id === d.id;
+                  // Chỉ chuyển được sang tháng SAU tháng bắt đầu và trong khoảng của bản.
+                  const moOpts = MONTHS.filter(mo => mo > (d.tuThang || MONTHS[0]) &&
+                                                     (!d.denThang || mo <= d.denThang));
+                  return h(React.Fragment, { key: d.id },
+                    h("tr", { className: dirty ? "bg-amber-50/60" : "hover:bg-slate-50/60" },
+                      h("td", { className: td + " text-slate-700 pl-8" }, d.grp),
+                      h("td", {
+                        className: td + " text-slate-500 whitespace-nowrap",
+                        title: d.denThang ? "Đã kết thúc — giữ nguyên PS cho các tháng này" : "Còn hiệu lực"
+                      }, fmtHieuLuc(d.tuThang, d.denThang)),
+                      h("td", {
+                        className: td + " text-slate-500",
+                        title: "Miền lấy theo PS phụ trách, không sửa trực tiếp"
+                      }, d.mien || '—'),
+                      h("td", { className: td, style: { minWidth: 150 } }, canEdit
+                        ? h("select", {
+                            value: d.ps,
+                            onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
+                            title: "Sửa PS của CẢ khoảng hiệu lực này (sửa sai). Đổi người phụ trách giữa năm: dùng Chuyển PS.",
+                            className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
+                          }, psOptions.map(p => h("option", { key: p, value: p }, p)),
+                            // PS của dòng có thể không nằm trong danh sách suy từ kế hoạch
+                            !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
+                        : d.ps),
+                      h("td", { className: td },
+                        h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
+                        d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
+                          "kế hoạch: ", d.planPs.join(', '))),
+                      canEdit && h("td", { className: td + " whitespace-nowrap text-right" },
+                        d.status === 'diff' && !dirty && h("button", {
+                          onClick: () => applyIds([d.id]),
+                          disabled: busy,
+                          title: "Ghi PS/Miền của bản này xuống các dòng kế hoạch trong đúng khoảng hiệu lực",
+                          className: "px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
+                        }, "Áp dụng"),
+                        moOpts.length > 0 && h("button", {
+                          onClick: () => setMove(moving ? null : { id: d.id, ps: '', tuThang: moOpts[0] }),
+                          disabled: busy,
+                          title: "Đổi người phụ trách từ một tháng: đóng bản này ở tháng liền trước, mở bản mới",
+                          className: "px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 rounded disabled:opacity-50"
+                        }, moving ? "Đóng" : "Chuyển PS"),
+                        h("button", {
+                          onClick: () => doDelete(d),
+                          disabled: busy,
+                          className: "p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                        }, h(Trash2, { size: 13 })))),
+                    // Form "Chuyển PS" mở ngay dưới bản đang chạy
+                    moving && h("tr", { className: "bg-slate-50" },
+                      h("td", { className: "px-2 py-2 pl-8", colSpan: COLS },
+                        h("div", { className: "flex items-center gap-2 flex-wrap" },
+                          h("span", { className: "text-[12px] text-slate-600" }, "Chuyển sang PS"),
+                          h("select", {
+                            value: move.ps,
+                            onChange: e => setMove(m => ({ ...m, ps: e.target.value })),
+                            className: "px-2 py-1 text-[12px] border border-slate-200 rounded bg-white outline-none focus:border-emerald-500"
+                          }, h("option", { value: "" }, "— Chọn PS —"),
+                            psOptions.filter(p => p !== d.ps).map(p => h("option", { key: p, value: p }, p))),
+                          h("span", { className: "text-[12px] text-slate-600" }, "từ tháng"),
+                          h("select", {
+                            value: move.tuThang,
+                            onChange: e => setMove(m => ({ ...m, tuThang: e.target.value })),
+                            className: "px-2 py-1 text-[12px] border border-slate-200 rounded bg-white outline-none focus:border-emerald-500"
+                          }, moOpts.map(mo => h("option", { key: mo, value: mo }, MONTH_LABELS[MONTHS.indexOf(mo)], ' (', mo, ')'))),
+                          h("span", { className: "text-[11px] text-slate-500" },
+                            "→ bản hiện tại kết thúc ", fmtMo(MONTHS[Math.max(0, MONTHS.indexOf(move.tuThang) - 1)]),
+                            ", các tháng đó giữ PS ", d.ps),
+                          h("div", { className: "flex-1" }),
+                          h("button", {
+                            onClick: doMove,
+                            disabled: busy || !move.ps,
+                            className: "px-3 py-1 text-[12px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50"
+                          }, "Xác nhận chuyển"),
+                          h("button", {
+                            onClick: () => setMove(null),
+                            className: "px-2 py-1 text-[12px] text-slate-500 hover:bg-slate-100 rounded"
+                          }, "Hủy")))));
                 }));
             })))),
       list.length > shownRows && h("div", {
@@ -3309,13 +3536,28 @@ function App() {
         `Kế hoạch chưa đổi — bấm "Áp dụng" ở dòng lệch để ghi xuống kế hoạch.`);
       return true;
     } catch (err) {
-      const m = err.message;
-      setError('Lưu cấu hình địa bàn thất bại: ' + (
-        m === 'dup_dia_ban' ? 'địa bàn này đã được khai báo cho PS đó.'
-          : m === 'forbidden' ? 'chỉ admin được sửa cấu hình địa bàn.'
-          : m === 'forbidden_rows' ? 'có dòng ngoài phạm vi quyền của bạn.'
-          : m === 'thieu_du_lieu' ? 'thiếu khách hàng / ngành hàng / PS.'
-          : m));
+      setError('Lưu cấu hình địa bàn thất bại: ' + diaBanErrMsg(err.message));
+      return false;
+    } finally {
+      setDiaBanBusy(false);
+    }
+  }, [loadDiaBan]);
+
+  // Chuyển địa bàn sang PS khác từ 1 tháng: đóng bản cũ + mở bản mới (backend làm
+  // trong 1 giao dịch). KHÔNG đụng dòng kế hoạch — bản mới sẽ hiện "lệch" để áp dụng.
+  const moveDiaBan = useCallback(async ({ id, ps, tuThang }) => {
+    setDiaBanBusy(true);
+    setError('');
+    try {
+      const r = await api('chuyenDiaBan', { id, ps, tuThang });
+      await loadDiaBan();
+      const s = r.stats || {};
+      setNotice(`Đã chuyển địa bàn sang PS ${ps} từ tháng ${tuThang}` +
+        (s.den_thang_cu ? ` (bản cũ kết thúc ${s.den_thang_cu})` : '') +
+        `. Bấm "Áp dụng" ở bản mới để ghi xuống kế hoạch từ tháng ${tuThang} trở đi.`);
+      return true;
+    } catch (err) {
+      setError('Chuyển địa bàn thất bại: ' + diaBanErrMsg(err.message));
       return false;
     } finally {
       setDiaBanBusy(false);
@@ -3331,27 +3573,27 @@ function App() {
       setNotice(`Đã xóa ${ids.length} khai báo địa bàn (dòng kế hoạch không bị ảnh hưởng).`);
       return true;
     } catch (err) {
-      setError('Xóa địa bàn thất bại: ' + err.message);
+      setError('Xóa địa bàn thất bại: ' + diaBanErrMsg(err.message));
       return false;
     } finally {
       setDiaBanBusy(false);
     }
   }, [loadDiaBan]);
 
-  // Ghi PS/Miền đã khai báo xuống dòng kế hoạch. fromMonth = null → cả năm.
-  const applyDiaBan = useCallback(async (ids, fromMonth) => {
+  // Ghi PS/Miền xuống kế hoạch theo ĐÚNG khoảng hiệu lực của từng bản khai báo.
+  const applyDiaBan = useCallback(async ids => {
     setDiaBanBusy(true);
     setError('');
     try {
-      const r = await api('applyDiaBan', { ids, fromMonth });
+      const r = await api('applyDiaBan', { ids });
       const s = r.stats || {};
       await loadData(); // ps/mien của dòng kế hoạch đã đổi
-      setNotice(`Đã áp dụng ${s.applied || 0} địa bàn xuống ${s.updated_rows || 0} dòng kế hoạch` +
-        (fromMonth ? ` (từ tháng ${fromMonth})` : ' (cả năm)') +
-        (s.ambiguous ? `. Bỏ qua ${s.ambiguous} địa bàn đang khai báo cho nhiều PS — không xác định được dòng nào của PS nào.` : '.'));
+      setNotice(`Đã áp dụng ${s.applied || 0} địa bàn xuống ${s.updated_rows || 0} dòng kế hoạch ` +
+        `(chỉ trong khoảng hiệu lực của từng bản)` +
+        (s.ambiguous ? `. Bỏ qua ${s.ambiguous} địa bàn có nhiều PS chồng lấn thời gian — không xác định được dòng nào của PS nào.` : '.'));
       return true;
     } catch (err) {
-      setError('Áp dụng địa bàn thất bại: ' + err.message);
+      setError('Áp dụng địa bàn thất bại: ' + diaBanErrMsg(err.message));
       return false;
     } finally {
       setDiaBanBusy(false);
@@ -4129,6 +4371,7 @@ function App() {
     onSave: saveDiaBan,
     onDelete: deleteDiaBan,
     onApply: applyDiaBan,
+    onMove: moveDiaBan,
     busy: diaBanBusy
   }) : tab === 'summary' ? /*#__PURE__*/React.createElement(SummaryView, {
     rows: summaryRows,

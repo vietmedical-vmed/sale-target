@@ -151,17 +151,41 @@ Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách**
   không tin `mien` do client gửi. Không suy được (PS chưa có dòng kế hoạch, hoặc đang
   ở nhiều miền) → giữ nguyên miền đang lưu; miền rỗng thì "Áp dụng" không sửa miền của
   dòng kế hoạch (`coalesce(c.mien, s.mien)`).
-- Mục **"Có kế hoạch nhưng chưa khai báo địa bàn"**: các tổ hợp (KH × ngành hàng)
-  đang có dòng kế hoạch mà chưa có khai báo nào → nút khai báo đúng theo PS hiện tại.
-- **Áp dụng xuống kế hoạch**: ghi PS/Miền đã khai báo vào các dòng `sale_target` khớp
-  (team, KH, ngành hàng). Mặc định **chỉ từ tháng hiện tại trở đi** — đổi PS của tháng
-  đã qua làm lệch khoá khớp actual (xem §8.2) khiến số thực hiện cũ rơi ra "ngoài kế
-  hoạch"; muốn sửa cả năm phải tự tick. Tổ hợp đang khai báo cho **nhiều PS** thì bị
-  bỏ qua (không đoán được dòng nào của PS nào) và được báo lại số lượng.
+- **Thời gian hiệu lực (version theo tháng)** — mỗi khai báo mang khoảng
+  `[tu_thang, den_thang]` dạng `'YYYY-MM'` (`den_thang` NULL = còn hiệu lực), so sánh
+  chuỗi = so sánh thời gian, khớp thẳng `thang_ke_hoach`:
+  - **Đổi người phụ trách giữa năm = "Chuyển PS"** (`chuyen_dia_ban`): đóng bản đang
+    chạy ở **tháng liền trước** + mở bản mới từ tháng được chọn, trong **1 giao dịch**.
+    Bản cũ và các tháng nó phủ **giữ nguyên vĩnh viễn** dù cấu hình sau đó đổi tiếp.
+  - Sửa PS **tại chỗ** = sửa sai cho *cả khoảng hiệu lực của bản đó*, không phải chuyển.
+  - Ô **"Xem theo tháng"** (mặc định tháng hiện tại) chọn xem trạng thái địa bàn tại
+    thời điểm nào; *Tất cả (cả lịch sử)* hiện mọi version.
+  - Khai báo **trước cho tương lai** được: nhập "từ T10 chuyển sang PS B" ngay hôm nay.
+  - `dia_ban_hieu_luc(p_thang)` trả trạng thái địa bàn của một tháng — pipeline import
+    dùng để suy PS đúng theo tháng của dòng actual.
+- **Không được có khoảng trống** (ràng buộc dữ liệu, không phải quy ước): tổ hợp
+  (KH × ngành hàng) **đã** khai báo thì mọi tháng đang có dòng kế hoạch phải được một
+  bản nào đó phủ. Mọi đường ghi (`upsert_dm_dia_ban`, `chuyen_dia_ban`,
+  `delete_dm_dia_ban`) kiểm tra qua `v_dia_ban_khoang_trong` **trong cùng giao dịch** và
+  **huỷ cả lô** nếu sinh khoảng trống. Giao diện cảnh báo trước ở 3 chỗ: dải đỏ tổng
+  (không phụ thuộc tháng đang xem), badge trên dòng tiêu đề KH, và ngay trong form thêm
+  (khoá nút "Thêm địa bàn"); xóa bản sẽ tạo khoảng trống thì bị chặn tại client kèm lý do.
+  Tổ hợp **chưa** khai báo gì không tính là khoảng trống — đó là mục "chưa khai báo".
+- Mục **"Có kế hoạch nhưng chưa khai báo địa bàn"**: các tổ hợp (KH × ngành hàng) đang
+  có dòng kế hoạch mà chưa có khai báo nào. Nút khai báo suy **từng khoảng tháng liên
+  tiếp** của mỗi PS trong kế hoạch → dựng lại đúng lịch sử, không sinh khoảng trống,
+  không sinh chồng lấn vô cớ.
+- **Áp dụng xuống kế hoạch**: ghi PS/Miền vào các dòng `sale_target` khớp (team, KH,
+  ngành hàng) **và nằm trong khoảng hiệu lực của chính bản đó** → bản mới không bao giờ
+  ghi đè tháng đã qua, nên không còn tham số "áp dụng từ tháng nào" (và không còn cái
+  tick "áp dụng cả tháng đã qua"). Bản có **nhiều PS chồng lấn thời gian** trong cùng tổ
+  hợp thì bị bỏ qua (không đoán được dòng nào của PS nào) và được báo lại số lượng.
 - Panel **"Thêm khách hàng"** ở màn Chi tiết dùng khai báo này để tự điền PS/Miền
   (PS theo địa bàn xếp lên đầu dropdown).
 - Một (KH × ngành hàng) **vẫn được phép** có nhiều PS: khoá của `dm_dia_ban` gồm cả
-  `ps`, đúng quy tắc §8.2 và đúng cách màn Chi tiết tách dòng theo (nhóm SP, PS).
+  `ps` và `tu_thang`, đúng quy tắc §8.2 và đúng cách màn Chi tiết tách dòng theo
+  (nhóm SP, PS). Hai PS **nối tiếp nhau theo thời gian** là chuyện bình thường; hai PS
+  **chồng lấn thời gian** là địa bàn chia đôi — hợp lệ nhưng "Áp dụng" sẽ bỏ qua.
 
 ### 6.5 Tính năng ngang (áp dụng nhiều màn)
 
@@ -213,10 +237,14 @@ Không bảng danh mục nào có `don_gia` — đơn giá chỉ tồn tại tr�
 
 **`dm_khach_hang`** — danh mục khách hàng đầy đủ: `customer_id`, `customer_name` (RLS chặn anon; không chứa PS/Miền).
 
-**`dm_dia_ban`** — cấu hình địa bàn: `bu`, `ma_khach_hang`, `khach_hang`, `nhom_san_pham`,
-`mien`, `ps`, `active`, `cust_key` (cột sinh tự động = mã KH, rỗng thì rơi về tên KH —
-dùng để đối chiếu với `sale_target`). Unique theo (`bu`, `cust_key`, `nhom_san_pham`, `ps`).
-Ghi qua RPC `upsert_dm_dia_ban`; đẩy xuống kế hoạch qua RPC `apply_dia_ban_to_plan`.
+**`dm_dia_ban`** — cấu hình địa bàn **có thời gian hiệu lực**: `bu`, `ma_khach_hang`,
+`khach_hang`, `nhom_san_pham`, `mien`, `ps`, `tu_thang`, `den_thang` (NULL = còn hiệu lực),
+`active`, `cust_key` (cột sinh tự động = mã KH, rỗng thì rơi về tên KH — dùng để đối chiếu
+với `sale_target`). Unique theo (`bu`, `cust_key`, `nhom_san_pham`, `ps`, `tu_thang`).
+RPC: `upsert_dm_dia_ban` (ghi lô), `chuyen_dia_ban` (đóng bản cũ + mở bản mới),
+`delete_dm_dia_ban` (xóa có kiểm khoảng trống), `apply_dia_ban_to_plan` (đẩy xuống kế
+hoạch theo đúng khoảng hiệu lực), `dia_ban_hieu_luc(thang)` (trạng thái tại 1 tháng).
+View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào phủ (dùng để chặn ghi).
 
 **`users`** — tài khoản: `username`, `password_hash` (SHA-256), `role`, `scope`, `bu`.
 
@@ -238,7 +266,9 @@ Ghi qua RPC `upsert_dm_dia_ban`; đẩy xuống kế hoạch qua RPC `apply_dia_
 4. **Chỉ các cột `EDITABLE`** được sửa qua `updateCells`; mọi cột khác bị bỏ qua ở server (kể cả nếu client gửi lên).
 5. **Sản phẩm mới** luôn gắn `bu` của người tạo (kể cả admin), khởi tạo `sl_ke_hoach_dau_nam = 0`, `sl_thuc_hien = 0`.
 6. **Phạm vi quyền khoá phía server**: role không phải admin/manager không thể mở rộng phạm vi bằng payload.
-7. **Cấu hình địa bàn chỉ `admin` ghi**; khai báo địa bàn **không tự đổi** dữ liệu kế hoạch — phải chủ động "Áp dụng", và mặc định chỉ áp dụng từ tháng hiện tại trở đi để không mất khớp actual của các tháng đã qua (§8.2).
+7. **Cấu hình địa bàn chỉ `admin` ghi**; khai báo địa bàn **không tự đổi** dữ liệu kế hoạch — phải chủ động "Áp dụng", và mỗi bản chỉ ghi vào **các tháng nằm trong khoảng hiệu lực của nó** nên tháng đã qua không bị bản mới ghi đè (giữ khớp actual — §8.2).
+8. **Đổi người phụ trách giữa năm = đóng bản cũ + mở bản mới** (không sửa bản cũ): quá khứ giữ nguyên PS của nó, vĩnh viễn.
+9. **Không có khoảng trống**: tổ hợp (KH × ngành hàng) đã khai báo thì mọi tháng đang có dòng kế hoạch phải có người phụ trách — mọi đường ghi bị chặn nếu vi phạm.
 
 ---
 
@@ -280,7 +310,7 @@ Ghi qua RPC `upsert_dm_dia_ban`; đẩy xuống kế hoạch qua RPC `apply_dia_
 ### 10.1 Điểm triển khai quan trọng
 - **Frontend**: `index.html` deploy tự động qua **GitHub Pages** (GitHub Actions).
 - **Edge Functions**: **phải deploy tay riêng** (`supabase functions deploy ... --no-verify-jwt`); **không** đi theo pipeline Pages. Cần secret `SESSION_SECRET` giống nhau cho cả login & api.
-- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `updateCells`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `deleteDiaBan`, `applyDiaBan`.
+- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `updateCells`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `chuyenDiaBan`, `deleteDiaBan`, `applyDiaBan`.
 - **Migration mới phải `supabase db push`** (hoặc dán vào SQL Editor) — bảng/RPC mới không tự lộ qua Data API (`auto_expose_new_tables` tắt) nên migration tự `GRANT` cho `service_role`.
 
 ---
@@ -334,6 +364,6 @@ Xem bảng đầy đủ ở §7.1. Thứ tự field khi trả `getData`:
 
 ### 13.3 Danh sách action API
 `ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `updateCells` · `addProduct` ·
-`deleteProduct` · `deleteCustomer` · `getDiaBan` · `saveDiaBan` · `deleteDiaBan` · `applyDiaBan`
+`deleteProduct` · `deleteCustomer` · `getDiaBan` · `saveDiaBan` · `chuyenDiaBan` · `deleteDiaBan` · `applyDiaBan`
 
 ---
