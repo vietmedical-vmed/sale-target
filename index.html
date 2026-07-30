@@ -2487,9 +2487,17 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
   const [grp, setGrp] = useState('');
   const [mset, setMset] = useState('');
   const [prod, setProd] = useState('');
+  // Đơn giá nhập tay: danh mục (dm_bo_vat_tu) KHÔNG có cột don_gia, giá chỉ tồn tại
+  // trên từng dòng sale_target. Nhập theo tr.VND cho khớp mọi chỗ hiển thị, ghi DB
+  // theo VND (×1e6). Nhận cả dấu phẩy thập phân kiểu vi-VN ("1,5").
+  const [priceTr, setPriceTr] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const priceVnd = useMemo(() => {
+    const n = parseFloat(String(priceTr).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 1e6) : null;
+  }, [priceTr]);
   // Nhóm SP được phép chọn = nhóm PS đó ĐANG phụ trách (lấy từ dữ liệu kế hoạch, vốn
   // đã lọc theo team đang xem) ∩ danh mục. Không cho PS thêm sang nhóm không phải của mình.
   const groups = useMemo(() => {
@@ -2500,7 +2508,7 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
   }, [catIdx, groupsByPs, ps]);
   // Đổi PS thì nhóm/bộ vật tư/sản phẩm đã chọn có thể không còn hợp lệ → xoá chọn.
   useEffect(() => {
-    setGrp(''); setMset(''); setProd(''); setMsg('');
+    setGrp(''); setMset(''); setProd(''); setPriceTr(''); setMsg('');
   }, [ps]);
   const msets = useMemo(() => grp ? catIdx.msetsOf(grp) : [], [catIdx, grp]);
   const prods = useMemo(() => grp ? catIdx.prodsOf(grp, mset) : [], [catIdx, grp, mset]);
@@ -2510,17 +2518,19 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
   const lbl = "block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1";
   const sel = "w-full px-2.5 py-2 text-[13px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50";
   const confirm = async () => {
-    if (!ps || !selected || isDup || busy) return;
+    if (!ps || !selected || isDup || priceVnd == null || busy) return;
     setBusy(true); setMsg(''); setErr('');
     const ok = await onSubmit({
       ps,
       grp: selected.grp,
       mset: selected.mset,
       prod: selected.prod,
-      price: selected.price
+      price: priceVnd
     });
     setBusy(false);
-    if (ok) { setMsg(`Đã thêm "${selected.prod}"`); setProd(''); }
+    // Xoá luôn đơn giá cùng với sản phẩm: giữ lại dễ vô tình gán giá của SP trước
+    // cho SP tiếp theo.
+    if (ok) { setMsg(`Đã thêm "${selected.prod}"`); setProd(''); setPriceTr(''); }
     else setErr('Thêm thất bại — xem thông báo lỗi phía trên.');
   };
   return h("div", { className: "bg-slate-50/70 border-t border-slate-100 px-3 py-3" },
@@ -2558,18 +2568,32 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
           disabled: !grp,
           className: sel
         }, h("option", { value: "" }, "— Chọn sản phẩm —"),
-          prods.map((c, i) => h("option", { key: c.prod + i, value: c.prod }, c.prod))))),
+          prods.map((c, i) => h("option", { key: c.prod + i, value: c.prod }, c.prod)))),
+      h("div", null,
+        h("label", { className: lbl }, "Đơn giá (tr.VND)"),
+        h("input", {
+          value: priceTr,
+          onChange: e => { setPriceTr(e.target.value); setMsg(''); },
+          inputMode: "decimal",
+          placeholder: "vd 1,5",
+          disabled: !prod,
+          className: sel
+        }))),
     h("div", { className: "flex items-center gap-3 mt-3 flex-wrap" },
       selected && h("div", { className: "text-[12px] text-slate-600" },
-        "Đơn giá: ", h("span", { className: "font-semibold text-slate-800" }, moneyPrice(selected.price), " tr.VND"),
-        " · tạo 12 dòng (T4→T3), SL = 0"),
+        priceVnd == null
+          ? h("span", { className: "text-amber-600" }, "Nhập đơn giá để thêm sản phẩm")
+          : h(React.Fragment, null,
+              "Ghi ", h("span", { className: "font-semibold text-slate-800" },
+                priceVnd.toLocaleString('vi-VN'), " đ"),
+              " · 12 dòng (T4→T3), SL = 0")),
       h("div", { className: "flex-1" }),
       isDup && h("span", { className: "text-[12px] text-amber-600" }, "Sản phẩm này đã có trong kế hoạch của PS ", ps),
       err && h("span", { className: "text-[12px] text-red-600" }, err),
       msg && h("span", { className: "text-[12px] text-emerald-600" }, msg),
       h("button", {
         onClick: confirm,
-        disabled: busy || !ps || !selected || isDup,
+        disabled: busy || !ps || !selected || isDup || priceVnd == null,
         className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
       }, busy
         ? h(React.Fragment, null, h(Loader2, { size: 14, className: "animate-spin" }), " Đang thêm…")

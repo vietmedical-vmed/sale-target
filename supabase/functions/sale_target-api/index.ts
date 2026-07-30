@@ -260,15 +260,18 @@ Deno.serve(async (req) => {
       // form thêm SP mà không có lỗi nào. order theo id cho phân trang ổn định.
       const catalog = [];
       for (let from = 0; ; from += PAGE) {
+        // KHÔNG select don_gia: bảng dm_bo_vat_tu trên DB thật không có cột này
+        // (chỉ sale_target mới có) → select nó là lỗi 42703, cả action chết và app
+        // nuốt lỗi im lặng. Đơn giá do người dùng nhập tay ở form thêm SP.
         const { data, error } = await db.from("dm_bo_vat_tu")
-          .select("nhom_san_pham, bo_vat_tu, san_pham, don_gia")
+          .select("nhom_san_pham, bo_vat_tu, san_pham")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
         if (!data || data.length === 0) break;
         for (const c of data) {
           catalog.push({
-            grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham, price: c.don_gia,
+            grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham,
           });
         }
         if (data.length < PAGE) break;
@@ -367,10 +370,14 @@ Deno.serve(async (req) => {
       // PS chỉ được thêm sản phẩm cho CHÍNH MÌNH: không tin payload.ps (client
       // có thể gửi tên PS khác). Admin thì giữ nguyên PS đã chọn trên giao diện.
       const psName = sess.r === "admin" ? s.ps : sess.s;
+      // Đơn giá do client nhập tay (danh mục không còn giữ giá) → chặn NaN/chuỗi rác
+      // lọt vào cột numeric; không nhập gì thì để NULL, KHÔNG phải 0.
+      const priceNum = Number(s.price);
+      const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien: s.region, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
-        san_pham: s.prod, bo_vat_tu: s.mset, don_gia: s.price,
+        san_pham: s.prod, bo_vat_tu: s.mset, don_gia: price,
         bu: sess.b, // sản phẩm mới thêm luôn gắn theo bu của người tạo (kể cả admin/manager)
         sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
       }));

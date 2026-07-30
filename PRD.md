@@ -140,7 +140,7 @@ Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể
 |---|---|
 | **Bộ lọc** | Lọc theo Ngành hàng, Miền, Khách hàng (hiển thị theo quyền — ví dụ PS không có bộ lọc miền/KH riêng). |
 | **Chuyển team (TeamSwitcher)** | Chỉ admin/manager: chọn 1 team hoặc "Tất cả". |
-| **Thêm sản phẩm** | Chọn Khách hàng (từ `dm_khach_hang`, có ô tìm kiếm gần đúng), Miền, PS, Nhóm SP, Sản phẩm, Bộ vật tư, đơn giá → sinh **12 dòng** (một dòng/tháng, 04/2026 → 03/2027), gắn `bu` của người tạo. |
+| **Thêm sản phẩm** | Chọn Khách hàng (từ `dm_khach_hang`, có ô tìm kiếm gần đúng), Miền, PS, Nhóm SP, Bộ vật tư, Sản phẩm + **nhập đơn giá tay** (đơn vị tr.VND, ghi DB theo VND) → sinh **12 dòng** (một dòng/tháng, 04/2026 → 03/2027), gắn `bu` của người tạo. Danh mục không giữ giá nên đơn giá phải nhập. |
 | **Xuất Excel** | Xuất giữ nguyên cấu trúc phân cấp (gập/mở), header gộp (merge), dùng thư viện SheetJS (xlsx). |
 | **Đồng bộ (rev)** | Phát hiện thay đổi dữ liệu qua `rev`/`getRev`. |
 | **Đổi mật khẩu** | Ngay tại màn đăng nhập. |
@@ -176,7 +176,7 @@ Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể
 | `bu` | — | Team (business unit) |
 | `updated_at` | — | Mốc cập nhật (nguồn của `rev`) |
 
-**`dm_bo_vat_tu`** — danh mục bộ vật tư / sản phẩm chuẩn: `nhom_san_pham`, `bo_vat_tu`, `san_pham`, `don_gia` (unique theo `bo_vat_tu` + `san_pham`). *(Tên cũ: `catalog`, đổi 30/07/2026 — action API vẫn là `getCatalog`.)*
+**`dm_bo_vat_tu`** — danh mục bộ vật tư / sản phẩm chuẩn: `nhom_san_pham`, `bo_vat_tu`, `san_pham` (unique theo `bo_vat_tu` + `san_pham`). **Không có `don_gia`** — đơn giá chỉ tồn tại trên từng dòng `sale_target`, người dùng nhập tay khi thêm sản phẩm. *(Tên cũ: `catalog`, đổi 30/07/2026 — action API vẫn là `getCatalog`.)*
 
 **`dm_khach_hang`** — danh mục khách hàng đầy đủ: `customer_id`, `customer_name` (RLS chặn anon; không chứa PS/Miền).
 

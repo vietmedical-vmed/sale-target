@@ -99,7 +99,6 @@ CREATE TABLE IF NOT EXISTS "public"."dm_bo_vat_tu" (
     "nhom_san_pham" "text",
     "bo_vat_tu" "text",
     "san_pham" "text",
-    "don_gia" numeric,
     "updated_at" timestamp with time zone DEFAULT "now"()
 );
 
