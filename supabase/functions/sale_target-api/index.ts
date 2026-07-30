@@ -132,6 +132,26 @@ async function getRev(db) {
   return 0;
 }
 
+// Suy team (bu) của một PS từ chính dữ liệu kế hoạch của họ.
+// Dùng khi admin/manager tạo dữ liệu HỘ một PS (thêm SP, khai báo địa bàn): gắn bu
+// của người tạo là gán sai team, dòng đó sẽ lọt vào báo cáo của team khác.
+// 1 tên PS có dữ liệu ở nhiều team → KHÔNG đoán, ném lỗi để người dùng biết.
+// Trả về `fallback` khi PS chưa có dòng kế hoạch nào.
+async function buForPs(db, psName, fallback) {
+  const { data, error } = await db.from("sale_target")
+    .select("bu").eq("ps", psName).not("bu", "is", null).limit(1000);
+  if (error) throw new Error(error.message);
+  const list = [...new Set((data || []).map((r) => r.bu).filter(Boolean))];
+  if (list.length === 1) return list[0];
+  if (list.length > 1) {
+    throw new Error(
+      `PS "${psName}" đang có dữ liệu ở ${list.length} team (${list.join(", ")}) ` +
+      `— không xác định được team để gắn cho dòng mới`,
+    );
+  }
+  return fallback;
+}
+
 // Đọc TẤT CẢ dòng (PostgREST giới hạn 1000/lần → phân trang).
 // Tối ưu: đếm tổng số dòng trước, rồi TẢI CÁC TRANG SONG SONG (thay vì tuần tự)
 // để giảm mạnh thời gian chờ khi dữ liệu lớn (vd ~20k dòng = 21 trang).
@@ -384,24 +404,14 @@ Deno.serve(async (req) => {
       const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
       // bu gắn theo PS ĐƯỢC CHỌN, không theo account tạo: admin/manager thêm hộ PS
       // của team khác thì gắn bu người tạo là gán sai team, dòng đó sẽ lọt vào báo
-      // cáo của team sai. Suy bu từ chính dữ liệu kế hoạch của PS đó.
-      let bu = sess.b;
-      const { data: buRows, error: buErr } = await db.from("sale_target")
-        .select("bu").eq("ps", psName).not("bu", "is", null).limit(1000);
-      if (buErr) throw new Error(buErr.message);
-      const buList = [...new Set((buRows || []).map((r) => r.bu).filter(Boolean))];
-      if (buList.length === 1) {
-        bu = buList[0];
-      } else if (buList.length > 1) {
-        // 1 tên PS có dữ liệu ở nhiều team → KHÔNG đoán. Thà chặn và báo rõ còn hơn
-        // gắn sai team rồi rất khó phát hiện về sau.
-        return json({
-          ok: false,
-          error: `PS "${psName}" đang có dữ liệu ở ${buList.length} team ` +
-            `(${buList.join(", ")}) — không xác định được team để gắn cho dòng mới`,
-        }, 409);
+      // cáo của team sai. Suy bu từ chính dữ liệu kế hoạch của PS đó (PS chưa có
+      // dòng nào → giữ bu của người tạo). PS ở nhiều team → chặn, không đoán.
+      let bu;
+      try {
+        bu = await buForPs(db, psName, sess.b);
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 409);
       }
-      // buList rỗng = PS chưa có dòng nào trong kế hoạch → giữ bu của người tạo.
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien: s.region, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
@@ -426,6 +436,105 @@ Deno.serve(async (req) => {
         rowNums: inserted.map((r) => r.id),
         rev: await getRev(db),
       });
+    }
+
+    // ---- CẤU HÌNH ĐỊA BÀN (dm_dia_ban) ----
+    // (team, khách hàng, nhóm sản phẩm) -> PS phụ trách. Đọc: mọi role, theo đúng
+    // phạm vi quyền như sale_target (dm_dia_ban dùng CÙNG tên cột bu/mien/ps/
+    // nhom_san_pham nên applyScope() áp được nguyên xi).
+    // Ghi: CHỈ admin — để PS tự gán địa bàn cho mình là tự mở rộng phạm vi quyền.
+    if (action === "getDiaBan") {
+      const out = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = db.from("dm_dia_ban")
+          .select("id, bu, ma_khach_hang, khach_hang, nhom_san_pham, mien, ps, active")
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        q = applyScope(q, sess, payload);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        if (!data || data.length === 0) break;
+        for (const d of data) {
+          out.push({
+            id: d.id, bu: d.bu ?? "", custId: d.ma_khach_hang ?? "",
+            cust: d.khach_hang ?? "", grp: d.nhom_san_pham ?? "",
+            mien: d.mien ?? "", ps: d.ps ?? "", active: d.active !== false,
+          });
+        }
+        if (data.length < PAGE) break;
+      }
+      return json({ ok: true, diaBan: out });
+    }
+
+    if (action === "saveDiaBan") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const rows = payload.rows || [];
+      if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
+      // bu chỉ cần cho dòng THÊM MỚI (dòng sửa giữ nguyên bu trong DB). Suy theo PS
+      // được chọn, cache theo tên PS để không hỏi lại DB cho từng dòng cùng PS.
+      const buCache = new Map();
+      const p_rows = [];
+      for (const r of rows) {
+        const ps = String(r.ps || "").trim();
+        const id = Number(r.id);
+        let bu = "";
+        if (!Number.isFinite(id)) {
+          if (!buCache.has(ps)) {
+            try {
+              buCache.set(ps, await buForPs(db, ps, sess.b));
+            } catch (e) {
+              return json({ ok: false, error: String(e && e.message || e) }, 409);
+            }
+          }
+          bu = buCache.get(ps) || "";
+        }
+        p_rows.push({
+          id: Number.isFinite(id) ? id : null,
+          bu,
+          ma_khach_hang: r.custId ?? "",
+          khach_hang: r.cust ?? "",
+          nhom_san_pham: r.grp ?? "",
+          mien: r.mien ?? "",
+          ps,
+          active: r.active !== false,
+        });
+      }
+      const { data, error } = await db.rpc("upsert_dm_dia_ban", {
+        p_rows, ...scopeParams(sess),
+      });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
+        if (msg.includes("dup_dia_ban")) return json({ ok: false, error: "dup_dia_ban" }, 409);
+        if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+        throw new Error(msg);
+      }
+      return json({ ok: true, stats: data });
+    }
+
+    if (action === "deleteDiaBan") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
+      if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
+      const { error } = await db.from("dm_dia_ban").delete().in("id", ids);
+      if (error) throw new Error(error.message);
+      // Xoá khai báo KHÔNG đụng tới dòng kế hoạch đã có (dữ liệu kế hoạch vẫn
+      // thuộc PS cũ) → không cần trả rev.
+      return json({ ok: true, deleted: ids.length });
+    }
+
+    if (action === "applyDiaBan") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
+      if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
+      // fromMonth rỗng/không gửi = áp dụng CẢ NĂM (kể cả tháng đã qua) — app phải
+      // gửi tháng hiện tại nếu muốn giữ nguyên lịch sử khớp actual.
+      const fromMonth = payload.fromMonth ? String(payload.fromMonth) : null;
+      const { data, error } = await db.rpc("apply_dia_ban_to_plan", {
+        p_ids: ids, p_from_month: fromMonth,
+      });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, stats: data, rev: await getRev(db) });
     }
 
     return json({ ok: false, error: "unknown_action" }, 400);

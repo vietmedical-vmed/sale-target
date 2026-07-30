@@ -48,7 +48,7 @@ Lựa chọn **Supabase** (Postgres + Edge Functions) làm backend, frontend tĩ
 |---|---|---|
 | G1 | Cho phép PS/Admin sửa kế hoạch & thực hiện theo tháng ngay trên bảng | Sản phẩm |
 | G2 | Phân quyền dữ liệu theo 5 vai trò × phạm vi (team/miền/PS/ngành hàng) | Sản phẩm |
-| G3 | Cung cấp 3 màn hình: Chi tiết + 2 màn tổng hợp | Sản phẩm |
+| G3 | Cung cấp 4 màn hình: Chi tiết + 2 màn tổng hợp + Cấu hình địa bàn | Sản phẩm |
 | G4 | Xuất Excel giữ cấu trúc phân cấp (gộp/mở, header gộp) | Sản phẩm |
 | G5 | Tải & thao tác mượt ở quy mô ~20k dòng | Kỹ thuật |
 | G6 | Giúp quản lý bám sát quota khả dụng còn lại và chênh lệch kế hoạch | Kinh doanh |
@@ -81,6 +81,7 @@ Mỗi bản ghi kế hoạch gắn với một **Team** (`bu`). Các team hiện
 - Chỉ **admin** và **ps** có quyền chỉnh sửa (`canEdit`); các vai trò còn lại chỉ xem.
 - Với các vai trò không phải admin/manager, phạm vi **luôn bị khoá theo token phía server** — client không thể ghi đè bằng payload (chống giả mạo).
 - `product_manager` có thể phụ trách **nhiều ngành hàng**, ngăn cách bằng dấu phẩy trong `scope`; chưa gán ngành hàng → không thấy dữ liệu.
+- **Cấu hình địa bàn** (§6.4): mọi vai trò xem được trong phạm vi của mình, nhưng **chỉ `admin` sửa/xóa/áp dụng** — kể cả `ps` (tự gán địa bàn cho mình là tự mở rộng phạm vi quyền).
 
 ### 4.3 Persona tóm tắt
 - **Admin (điều phối kế hoạch):** thiết lập & sửa dữ liệu cho toàn bộ team, thêm sản phẩm.
@@ -115,7 +116,7 @@ Mỗi bản ghi kế hoạch gắn với một **Team** (`bu`). Các team hiện
 
 ## 6. Yêu cầu chức năng (Functional Requirements)
 
-Ứng dụng có **3 màn hình chính** (tab):
+Ứng dụng có **4 màn hình chính** (tab):
 
 ### 6.1 Màn "Chi tiết kế hoạch"
 Bảng dạng bảng tính, mỗi dòng = một (Khách hàng × Sản phẩm × đơn giá) với 12 cột tháng.
@@ -134,7 +135,28 @@ Cấu trúc phân cấp: **Miền → PS → Khách hàng**, có thể gập/m�
 Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể gập/mở.
 - Cột: SL KH update theo 12 tháng, Tổng Quota, Thực hiện YTD, KH còn lại YTD, Quota khả dụng còn lại.
 
-### 6.4 Tính năng ngang (áp dụng nhiều màn)
+### 6.4 Màn "Cấu hình địa bàn"
+Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách** trong bảng
+`dm_dia_ban` — độ mịn dừng ở ngành hàng, không xuống `bo_vat_tu`.
+
+- **Chỉ `admin` sửa**; các vai trò khác chỉ xem trong phạm vi quyền của mình
+  (gán địa bàn là quyết định quản lý; để `ps` tự gán là tự mở rộng phạm vi quyền).
+- Bảng phẳng: Mã KH · Khách hàng · Ngành hàng · Miền · PS · **Đối chiếu kế hoạch**.
+  Trạng thái đối chiếu tính ở client từ dữ liệu kế hoạch đang tải:
+  *Khớp kế hoạch* / *Lệch kế hoạch* (kèm PS mà kế hoạch đang gắn) / *Chưa có kế hoạch*.
+- Mục **"Có kế hoạch nhưng chưa khai báo địa bàn"**: các tổ hợp (KH × ngành hàng)
+  đang có dòng kế hoạch mà chưa có khai báo nào → nút khai báo đúng theo PS hiện tại.
+- **Áp dụng xuống kế hoạch**: ghi PS/Miền đã khai báo vào các dòng `sale_target` khớp
+  (team, KH, ngành hàng). Mặc định **chỉ từ tháng hiện tại trở đi** — đổi PS của tháng
+  đã qua làm lệch khoá khớp actual (xem §8.2) khiến số thực hiện cũ rơi ra "ngoài kế
+  hoạch"; muốn sửa cả năm phải tự tick. Tổ hợp đang khai báo cho **nhiều PS** thì bị
+  bỏ qua (không đoán được dòng nào của PS nào) và được báo lại số lượng.
+- Panel **"Thêm khách hàng"** ở màn Chi tiết dùng khai báo này để tự điền PS/Miền
+  (PS theo địa bàn xếp lên đầu dropdown).
+- Một (KH × ngành hàng) **vẫn được phép** có nhiều PS: khoá của `dm_dia_ban` gồm cả
+  `ps`, đúng quy tắc §8.2 và đúng cách màn Chi tiết tách dòng theo (nhóm SP, PS).
+
+### 6.5 Tính năng ngang (áp dụng nhiều màn)
 
 | Tính năng | Mô tả |
 |---|---|
@@ -184,6 +206,11 @@ Không bảng danh mục nào có `don_gia` — đơn giá chỉ tồn tại tr�
 
 **`dm_khach_hang`** — danh mục khách hàng đầy đủ: `customer_id`, `customer_name` (RLS chặn anon; không chứa PS/Miền).
 
+**`dm_dia_ban`** — cấu hình địa bàn: `bu`, `ma_khach_hang`, `khach_hang`, `nhom_san_pham`,
+`mien`, `ps`, `active`, `cust_key` (cột sinh tự động = mã KH, rỗng thì rơi về tên KH —
+dùng để đối chiếu với `sale_target`). Unique theo (`bu`, `cust_key`, `nhom_san_pham`, `ps`).
+Ghi qua RPC `upsert_dm_dia_ban`; đẩy xuống kế hoạch qua RPC `apply_dia_ban_to_plan`.
+
 **`users`** — tài khoản: `username`, `password_hash` (SHA-256), `role`, `scope`, `bu`.
 
 ### 7.2 Chỉ số & công thức
@@ -204,6 +231,7 @@ Không bảng danh mục nào có `don_gia` — đơn giá chỉ tồn tại tr�
 4. **Chỉ các cột `EDITABLE`** được sửa qua `updateCells`; mọi cột khác bị bỏ qua ở server (kể cả nếu client gửi lên).
 5. **Sản phẩm mới** luôn gắn `bu` của người tạo (kể cả admin), khởi tạo `sl_ke_hoach_dau_nam = 0`, `sl_thuc_hien = 0`.
 6. **Phạm vi quyền khoá phía server**: role không phải admin/manager không thể mở rộng phạm vi bằng payload.
+7. **Cấu hình địa bàn chỉ `admin` ghi**; khai báo địa bàn **không tự đổi** dữ liệu kế hoạch — phải chủ động "Áp dụng", và mặc định chỉ áp dụng từ tháng hiện tại trở đi để không mất khớp actual của các tháng đã qua (§8.2).
 
 ---
 
@@ -239,13 +267,14 @@ Không bảng danh mục nào có `don_gia` — đơn giá chỉ tồn tại tr�
 [Supabase Edge Function: sale_target-login] ← xác thực mật khẩu, phát token
         │  service role
         ▼
-[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, users]  (RLS bật)
+[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, dm_dia_ban, users]  (RLS bật)
 ```
 
 ### 10.1 Điểm triển khai quan trọng
 - **Frontend**: `index.html` deploy tự động qua **GitHub Pages** (GitHub Actions).
 - **Edge Functions**: **phải deploy tay riêng** (`supabase functions deploy ... --no-verify-jwt`); **không** đi theo pipeline Pages. Cần secret `SESSION_SECRET` giống nhau cho cả login & api.
-- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `updateCells`, `addProduct`.
+- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `updateCells`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `deleteDiaBan`, `applyDiaBan`.
+- **Migration mới phải `supabase db push`** (hoặc dán vào SQL Editor) — bảng/RPC mới không tự lộ qua Data API (`auto_expose_new_tables` tắt) nên migration tự `GRANT` cho `service_role`.
 
 ---
 
@@ -297,6 +326,7 @@ Xem bảng đầy đủ ở §7.1. Thứ tự field khi trả `getData`:
 `fy, mo, region, ps, cust, custId, grp, prod, mset, qOld, mMain, dMain, qMain, mAdd, qAdd, rev, revUpd, price, note, act, dt`
 
 ### 13.3 Danh sách action API
-`ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `updateCells` · `addProduct`
+`ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `updateCells` · `addProduct` ·
+`deleteProduct` · `deleteCustomer` · `getDiaBan` · `saveDiaBan` · `deleteDiaBan` · `applyDiaBan`
 
 ---

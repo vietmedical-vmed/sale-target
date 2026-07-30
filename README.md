@@ -12,12 +12,13 @@ frontend host trên **GitHub Pages**.
 
 ## Tính năng chính
 
-- **3 màn hình:**
+- **4 màn hình:**
   - *Chi tiết kế hoạch* — bảng dạng bảng tính, sửa trực tiếp từng ô theo 12 tháng.
   - *Tổng hợp theo PS / Khách hàng* — phân cấp Miền → PS → Khách hàng.
   - *Tổng hợp theo Sản phẩm* — phân cấp Sản phẩm → Miền → Khách hàng.
+  - *Cấu hình địa bàn* — khai báo (Khách hàng × Ngành hàng) → PS phụ trách; chỉ `admin` sửa.
 - **Phân quyền theo 5 vai trò:** `admin`, `manager`, `product_manager`, `area_manager`, `ps`
-  (chỉ `admin` và `ps` được sửa).
+  (chỉ `admin` và `ps` được sửa kế hoạch; cấu hình địa bàn chỉ `admin`).
 - **Thêm sản phẩm** (sinh 12 dòng/tháng cho năm tài chính).
 - **Xuất Excel** giữ nguyên cấu trúc phân cấp (gộp/mở, header gộp).
 - **Đồng bộ dữ liệu** qua cơ chế `rev` (phát hiện thay đổi).
@@ -34,7 +35,7 @@ frontend host trên **GitHub Pages**.
 [Edge Function: sale_target-login]  ← xác thực mật khẩu (SHA-256), phát token
         │  service role
         ▼
-[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, users]  (RLS bật)
+[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, dm_dia_ban, users]  (RLS bật)
 ```
 
 ---
