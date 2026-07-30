@@ -176,7 +176,11 @@ Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể
 | `bu` | — | Team (business unit) |
 | `updated_at` | — | Mốc cập nhật (nguồn của `rev`) |
 
-**`dm_bo_vat_tu`** — danh mục bộ vật tư / sản phẩm chuẩn: `nhom_san_pham`, `bo_vat_tu`, `san_pham` (unique theo `bo_vat_tu` + `san_pham`). **Không có `don_gia`** — đơn giá chỉ tồn tại trên từng dòng `sale_target`, người dùng nhập tay khi thêm sản phẩm. *(Tên cũ: `catalog`, đổi 30/07/2026 — action API vẫn là `getCatalog`.)*
+**`dm_bo_vat_tu_mapping`** — nguồn danh mục cho form thêm SP (`getCatalog`): `bu`, `nhom_san_pham`, `bo_vat_tu`, `san_pham`, `san_pham_thay_the`, `so_luong_dinh_muc`. Dropdown chỉ dùng 3 trường `nhom_san_pham`/`bo_vat_tu`/`san_pham` và **gom trùng** (1 sản phẩm có nhiều dòng mapping khác nhau ở `bu`/`san_pham_thay_the`/`so_luong_dinh_muc`).
+
+**`dm_bo_vat_tu`** (tên cũ `catalog`, đổi 30/07/2026) — `nhom_san_pham`, `bo_vat_tu`, `updated_at`. **Không dùng cho form thêm SP**: bảng này không có cột `san_pham`.
+
+Không bảng danh mục nào có `don_gia` — đơn giá chỉ tồn tại trên từng dòng `sale_target`, người dùng nhập tay khi thêm sản phẩm.
 
 **`dm_khach_hang`** — danh mục khách hàng đầy đủ: `customer_id`, `customer_name` (RLS chặn anon; không chứa PS/Miền).
 

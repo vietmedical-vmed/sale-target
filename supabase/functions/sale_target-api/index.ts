@@ -252,24 +252,32 @@ Deno.serve(async (req) => {
       return json({ ok: true, rev: await getRev(db) });
     }
 
-    // Danh mục bộ vật tư / sản phẩm. Bảng dm_bo_vat_tu (tên cũ: catalog) — tên
-    // action giữ nguyên "getCatalog" để không phải đổi frontend.
+    // Danh mục cho form thêm SP: đọc từ dm_bo_vat_tu_mapping.
+    // dm_bo_vat_tu KHÔNG dùng được — bảng đó không có cột san_pham.
+    // KHÔNG select don_gia: không bảng danh mục nào có cột này (chỉ sale_target
+    // mới có) → đơn giá do người dùng nhập tay ở form thêm SP.
+    // Tên action giữ nguyên "getCatalog" để không phải đổi frontend.
     if (action === "getCatalog") {
       // Phân trang: PostgREST chặn ở max_rows (1000). Trước đây .range(0,4999) nên
       // danh mục > 1000 dòng đã bị cắt âm thầm → thiếu bộ vật tư / sản phẩm trong
       // form thêm SP mà không có lỗi nào. order theo id cho phân trang ổn định.
       const catalog = [];
+      // Bảng mapping có nhiều dòng cho cùng 1 (nhóm, bộ vật tư, sản phẩm) — khác nhau
+      // ở bu / san_pham_thay_the / so_luong_dinh_muc. Dropdown chỉ cần 3 trường đầu
+      // nên gom trùng ngay tại đây, tránh 1 sản phẩm hiện nhiều lần và tránh gửi
+      // payload thừa.
+      const seen = new Set();
       for (let from = 0; ; from += PAGE) {
-        // KHÔNG select don_gia: bảng dm_bo_vat_tu trên DB thật không có cột này
-        // (chỉ sale_target mới có) → select nó là lỗi 42703, cả action chết và app
-        // nuốt lỗi im lặng. Đơn giá do người dùng nhập tay ở form thêm SP.
-        const { data, error } = await db.from("dm_bo_vat_tu")
+        const { data, error } = await db.from("dm_bo_vat_tu_mapping")
           .select("nhom_san_pham, bo_vat_tu, san_pham")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
         if (!data || data.length === 0) break;
         for (const c of data) {
+          const key = `${c.nhom_san_pham || ""}||${c.bo_vat_tu || ""}||${c.san_pham || ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
           catalog.push({
             grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham,
           });
