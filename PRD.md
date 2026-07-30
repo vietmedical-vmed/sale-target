@@ -141,9 +141,16 @@ Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách**
 
 - **Chỉ `admin` sửa**; các vai trò khác chỉ xem trong phạm vi quyền của mình
   (gán địa bàn là quyết định quản lý; để `ps` tự gán là tự mở rộng phạm vi quyền).
-- Bảng phẳng: Mã KH · Khách hàng · Ngành hàng · Miền · PS · **Đối chiếu kế hoạch**.
-  Trạng thái đối chiếu tính ở client từ dữ liệu kế hoạch đang tải:
-  *Khớp kế hoạch* / *Lệch kế hoạch* (kèm PS mà kế hoạch đang gắn) / *Chưa có kế hoạch*.
+- **Gom nhóm theo khách hàng**: mỗi KH là một dòng tiêu đề gập/mở (mã KH · tên KH ·
+  số ngành hàng · số dòng lệch), bên dưới là các ngành hàng của KH đó với cột
+  Miền · PS · **Đối chiếu kế hoạch**. Trạng thái đối chiếu tính ở client từ dữ liệu
+  kế hoạch đang tải: *Khớp kế hoạch* / *Lệch kế hoạch* (kèm PS mà kế hoạch đang gắn) /
+  *Chưa có kế hoạch*.
+- **Miền không nhập tay** — là thuộc tính của PS: UI hiển thị miền suy từ PS (chỉ khi
+  PS đó thuộc đúng 1 miền trong kế hoạch), và server tự suy lại khi lưu (`mienForPs`),
+  không tin `mien` do client gửi. Không suy được (PS chưa có dòng kế hoạch, hoặc đang
+  ở nhiều miền) → giữ nguyên miền đang lưu; miền rỗng thì "Áp dụng" không sửa miền của
+  dòng kế hoạch (`coalesce(c.mien, s.mien)`).
 - Mục **"Có kế hoạch nhưng chưa khai báo địa bàn"**: các tổ hợp (KH × ngành hàng)
   đang có dòng kế hoạch mà chưa có khai báo nào → nút khai báo đúng theo PS hiện tại.
 - **Áp dụng xuống kế hoạch**: ghi PS/Miền đã khai báo vào các dòng `sale_target` khớp

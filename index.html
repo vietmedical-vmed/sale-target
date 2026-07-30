@@ -2752,16 +2752,20 @@ const MAX_DIA_BAN_ROWS = 500; // bảng phẳng (không gập nhóm như màn ch
 // Phải khớp đúng cột sinh cust_key của dm_dia_ban.
 const dbCustKey = (custId, cust) => String(custId || '').trim() || String(cust || '').trim();
 
+// mienByPs: PS -> Miền (suy từ dữ liệu kế hoạch, chỉ khi PS đó thuộc đúng 1 miền).
+// Miền KHÔNG phải trường nhập tay: nó là thuộc tính của PS, chọn tay chỉ tạo cơ hội
+// gán lệch miền cho cùng một PS. Backend cũng tự suy lại khi lưu, không tin client.
 function DiaBanView({
-  rows, diaBan, customers, psOptions, regionOptions, groupOptions, canEdit,
+  rows, diaBan, customers, psOptions, mienByPs, groupOptions, canEdit,
   psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, busy
 }) {
   const h = React.createElement;
-  const [edits, setEdits] = useState({}); // { id: { ps, mien } } — chưa lưu
+  const [edits, setEdits] = useState({}); // { id: ps } — PS đã đổi, chưa lưu
   const [search, setSearch] = useState('');
   const [applyPast, setApplyPast] = useState(false);
   const [showMissing, setShowMissing] = useState(false);
-  const [nRow, setNRow] = useState({ custKey: '', grp: '', ps: '', mien: '' });
+  const [closed, setClosed] = useState(() => new Set()); // KH đang gập
+  const [nRow, setNRow] = useState({ custKey: '', grp: '', ps: '' });
 
   // (Khách hàng × ngành hàng) -> các PS đang THẬT SỰ có dòng kế hoạch.
   const planIdx = useMemo(() => {
@@ -2806,8 +2810,10 @@ function DiaBanView({
     const q = deaccent(search.trim());
     const out = [];
     for (const d of diaBan) {
-      const ps = edits[d.id] ? edits[d.id].ps : d.ps;
-      const mien = edits[d.id] ? edits[d.id].mien : d.mien;
+      const ps = edits[d.id] || d.ps;
+      // Miền luôn suy theo PS; giá trị lưu trong DB chỉ dùng khi PS đó chưa xác định
+      // được miền (chưa có dòng kế hoạch, hoặc đang có mặt ở nhiều miền).
+      const mien = mienByPs.get(ps) || d.mien || '';
       if (!inSel(regionFilter, mien)) continue;
       if (!inSel(psFilter, ps)) continue;
       if (!inSel(groupFilter, d.grp)) continue;
@@ -2818,10 +2824,39 @@ function DiaBanView({
       const status = !plan ? 'noplan' : plan.ps.has(ps) ? 'ok' : 'diff';
       out.push({ ...d, ps, mien, status, planPs: plan ? Array.from(plan.ps) : [] });
     }
-    out.sort((a, b) => fmtCust(a.cust).localeCompare(fmtCust(b.cust)) ||
-                       a.grp.localeCompare(b.grp) || a.ps.localeCompare(b.ps));
     return out;
-  }, [diaBan, edits, planIdx, search, psFilter, regionFilter, groupFilter, custFilter]);
+  }, [diaBan, edits, mienByPs, planIdx, search, psFilter, regionFilter, groupFilter, custFilter]);
+
+  // Gom theo KHÁCH HÀNG: 1 KH thường có nhiều ngành hàng (và có thể khác PS mỗi
+  // ngành) → xem theo nhóm dễ soát hơn bảng phẳng lặp tên KH ở mọi dòng.
+  const groups = useMemo(() => {
+    const m = new Map();
+    for (const d of list) {
+      const k = dbCustKey(d.custId, d.cust);
+      let g = m.get(k);
+      if (!g) { g = { key: k, custId: d.custId, cust: d.cust, rows: [], diff: 0 }; m.set(k, g); }
+      g.rows.push(d);
+      if (d.status === 'diff') g.diff++;
+    }
+    const arr = Array.from(m.values());
+    arr.forEach(g => g.rows.sort((a, b) => a.grp.localeCompare(b.grp) || a.ps.localeCompare(b.ps)));
+    arr.sort((a, b) => fmtCust(a.cust).localeCompare(fmtCust(b.cust)));
+    return arr;
+  }, [list]);
+
+  // Trần hiển thị tính theo dòng nhưng CẮT Ở RANH GIỚI KHÁCH HÀNG (không hiện nửa KH).
+  const shownGroups = useMemo(() => {
+    const out = [];
+    let n = 0;
+    for (const g of groups) {
+      if (n >= MAX_DIA_BAN_ROWS) break;
+      out.push(g);
+      n += g.rows.length;
+    }
+    return out;
+  }, [groups]);
+  const shownRows = shownGroups.reduce((s, g) => s + g.rows.length, 0);
+  const allClosed = closed.size >= shownGroups.length && shownGroups.length > 0;
 
   // Dòng lệch ĐANG ÁP DỤNG ĐƯỢC: bỏ dòng còn sửa dở, vì "Áp dụng" ghi theo giá trị
   // ĐÃ LƯU trong dm_dia_ban — áp dụng dòng đang sửa sẽ đẩy xuống PS cũ, không phải
@@ -2831,26 +2866,29 @@ function DiaBanView({
     [list, edits]
   );
   const editCount = Object.keys(edits).length;
-  const custCount = useMemo(() => new Set(list.map(r => dbCustKey(r.custId, r.cust))).size, [list]);
-  const shown = list.slice(0, MAX_DIA_BAN_ROWS);
+  const custCount = groups.length;
 
-  const setEdit = (d, patch) => setEdits(prev => {
-    const cur = prev[d.id] || { ps: d.ps, mien: d.mien };
-    const next = { ...cur, ...patch };
-    // Về đúng giá trị gốc → bỏ khỏi danh sách chưa lưu.
-    if (next.ps === d.ps && next.mien === d.mien) {
+  // Chỉ PS là sửa được; Miền đi theo PS nên không có gì để sửa ở cột đó.
+  const setEdit = (d, ps) => setEdits(prev => {
+    if (ps === d.ps) { // về đúng giá trị gốc → bỏ khỏi danh sách chưa lưu
       const o = { ...prev };
       delete o[d.id];
       return o;
     }
-    return { ...prev, [d.id]: next };
+    return { ...prev, [d.id]: ps };
+  });
+  const toggleGroup = key => setClosed(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
   });
 
   const byId = useMemo(() => new Map(diaBan.map(d => [d.id, d])), [diaBan]);
   const saveEdits = async () => {
-    const payload = Object.entries(edits).map(([id, e]) => {
+    // KHÔNG gửi mien: backend tự suy theo PS.
+    const payload = Object.entries(edits).map(([id, ps]) => {
       const base = byId.get(Number(id)) || {};
-      return { id: Number(id), custId: base.custId, cust: base.cust, grp: base.grp, ps: e.ps, mien: e.mien };
+      return { id: Number(id), custId: base.custId, cust: base.cust, grp: base.grp, ps };
     }).filter(r => r.ps && r.grp);
     if (!payload.length) return;
     if (await onSave(payload)) setEdits({});
@@ -2860,19 +2898,19 @@ function DiaBanView({
     () => customers.find(c => (c.custId || c.cust) === nRow.custKey),
     [customers, nRow.custKey]
   );
+  const newMien = (nRow.ps && mienByPs.get(nRow.ps)) || '';
   const addRow = async () => {
     if (!newCust || !nRow.grp || !nRow.ps) return;
     const ok = await onSave([{
-      custId: newCust.custId || '', cust: newCust.cust,
-      grp: nRow.grp, ps: nRow.ps, mien: nRow.mien
+      custId: newCust.custId || '', cust: newCust.cust, grp: nRow.grp, ps: nRow.ps
     }]);
-    if (ok) setNRow({ custKey: '', grp: '', ps: '', mien: '' });
+    if (ok) setNRow({ custKey: '', grp: '', ps: '' });
   };
 
   const declareMissing = async () => {
     // Khai báo đúng những gì kế hoạch đang có → không sinh thay đổi nào cho sale_target.
     const batch = missing.slice(0, MAX_DIA_BAN_ROWS).map(m => ({
-      custId: m.custId, cust: m.cust, grp: m.grp, ps: m.ps, mien: m.mien
+      custId: m.custId, cust: m.cust, grp: m.grp, ps: m.ps
     }));
     if (!batch.length) return;
     if (!confirm(`Khai báo ${batch.length} địa bàn theo đúng PS đang có trong kế hoạch?`)) return;
@@ -2898,6 +2936,7 @@ function DiaBanView({
     diff: ['bg-amber-50 text-amber-700', 'Lệch kế hoạch'],
     noplan: ['bg-slate-100 text-slate-500', 'Chưa có kế hoạch']
   };
+  const COLS = canEdit ? 5 : 4; // Ngành hàng · Miền · PS · Đối chiếu (+ cột thao tác)
 
   return h("div", { className: "px-6 pb-8" },
     // ---- Thanh công cụ ----
@@ -2908,6 +2947,10 @@ function DiaBanView({
         diffIds.length > 0 && h("span", { className: "text-amber-600 font-medium" }, " · ", diffIds.length, " lệch kế hoạch"),
         missing.length > 0 && h("span", { className: "text-slate-500" }, " · ", missing.length, " chưa khai báo")),
       h("div", { className: "flex-1" }),
+      shownGroups.length > 0 && h("button", {
+        onClick: () => setClosed(allClosed ? new Set() : new Set(shownGroups.map(g => g.key))),
+        className: "px-2.5 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
+      }, allClosed ? 'Mở tất cả' : 'Gập tất cả'),
       h("div", { className: "relative" },
         h(Search, { size: 14, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" }),
         h("input", {
@@ -2972,7 +3015,7 @@ function DiaBanView({
 
     // ---- Thêm địa bàn ----
     canEdit && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3 px-3 py-3" },
-      h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5" },
+      h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5" },
         h("div", { className: "lg:col-span-2" },
           h("label", { className: lbl }, "Khách hàng"),
           h(CustomerPicker, {
@@ -2991,7 +3034,8 @@ function DiaBanView({
           }, h("option", { value: "" }, "— Chọn ngành hàng —"),
             groupOptions.map(g => h("option", { key: g, value: g }, g)))),
         h("div", null,
-          h("label", { className: lbl }, "PS phụ trách"),
+          h("label", { className: lbl }, "PS phụ trách",
+            newMien && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · miền ", newMien)),
           h("select", {
             value: nRow.ps,
             onChange: e => setNRow(s => ({ ...s, ps: e.target.value })),
@@ -3000,14 +3044,15 @@ function DiaBanView({
           }, h("option", { value: "" }, "— Chọn PS —"),
             psOptions.map(p => h("option", { key: p, value: p }, p)))),
         h("div", null,
-          h("label", { className: lbl }, "Miền"),
-          h("select", {
-            value: nRow.mien,
-            onChange: e => setNRow(s => ({ ...s, mien: e.target.value })),
-            disabled: !newCust,
+          h("label", { className: lbl }, "Miền", h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · theo PS")),
+          // Miền không nhập tay: hiện để đối chiếu, backend tự suy lại khi lưu.
+          h("input", {
+            value: nRow.ps ? (newMien || '(PS chưa xác định được miền)') : '',
+            readOnly: true,
+            disabled: true,
+            placeholder: "— chọn PS —",
             className: sel
-          }, h("option", { value: "" }, "— Chọn miền —"),
-            regionOptions.map(r => h("option", { key: r, value: r }, r))))),
+          }))),
       h("div", { className: "flex items-center gap-3 mt-3 flex-wrap" },
         h("span", { className: "text-[12px] text-slate-500" },
           "Khai báo địa bàn KHÔNG tạo dòng kế hoạch — chỉ định trước ai phụ trách ngành hàng này của khách hàng."),
@@ -3024,69 +3069,78 @@ function DiaBanView({
         h("table", { className: "w-full" },
           h("thead", { className: "bg-slate-50 sticky top-0 z-10" },
             h("tr", null,
-              h("th", { className: th }, "Mã KH"),
-              h("th", { className: th }, "Khách hàng"),
-              h("th", { className: th }, "Ngành hàng"),
+              h("th", { className: th }, "Khách hàng / Ngành hàng"),
               h("th", { className: th }, "Miền"),
               h("th", { className: th }, "PS phụ trách"),
               h("th", { className: th }, "Đối chiếu kế hoạch"),
               canEdit && h("th", { className: th }))),
-          h("tbody", null, shown.length === 0
+          h("tbody", null, shownGroups.length === 0
             ? h("tr", null, h("td", {
-                colSpan: canEdit ? 7 : 6,
+                colSpan: COLS,
                 className: "px-4 py-12 text-center text-slate-400 text-sm"
               }, diaBan.length === 0 ? 'Chưa có địa bàn nào được khai báo' : 'Không có địa bàn nào khớp bộ lọc'))
-            : shown.map(d => {
-              const dirty = !!edits[d.id];
-              const [cls, text] = BADGE[d.status];
-              return h("tr", {
-                key: d.id,
-                className: dirty ? "bg-amber-50/60" : "hover:bg-slate-50/60"
-              },
-                h("td", { className: td + " font-mono text-slate-400 whitespace-nowrap" }, d.custId || '—'),
-                h("td", { className: td + " text-slate-800 font-medium" }, fmtCust(d.cust)),
-                h("td", { className: td + " text-slate-600" }, d.grp),
-                h("td", { className: td, style: { minWidth: 120 } }, canEdit
-                  ? h("select", {
-                      value: d.mien || '',
-                      onChange: e => setEdit(byId.get(d.id) || d, { mien: e.target.value }),
-                      className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
-                    }, h("option", { value: "" }, "—"),
-                      regionOptions.map(r => h("option", { key: r, value: r }, r)),
-                      // Miền của dòng có thể không nằm trong danh sách suy từ kế hoạch
-                      d.mien && !regionOptions.includes(d.mien) && h("option", { value: d.mien }, d.mien))
-                  : (d.mien || '—')),
-                h("td", { className: td, style: { minWidth: 150 } }, canEdit
-                  ? h("select", {
-                      value: d.ps,
-                      onChange: e => setEdit(byId.get(d.id) || d, { ps: e.target.value }),
-                      className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
-                    }, psOptions.map(p => h("option", { key: p, value: p }, p)),
-                      // PS của dòng có thể không nằm trong danh sách suy từ kế hoạch
-                      !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
-                  : d.ps),
-                h("td", { className: td },
-                  h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
-                  d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
-                    "kế hoạch: ", d.planPs.join(', '))),
-                canEdit && h("td", { className: td + " whitespace-nowrap text-right" },
-                  d.status === 'diff' && !dirty && h("button", {
-                    onClick: () => applyIds([d.id]),
-                    disabled: busy,
-                    title: "Ghi PS/Miền này xuống các dòng kế hoạch của (KH × ngành hàng)",
-                    className: "px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
-                  }, "Áp dụng"),
-                  h("button", {
-                    onClick: () => {
-                      if (confirm(`Xóa khai báo địa bàn "${d.grp}" của ${fmtCust(d.cust)} (PS ${d.ps})?\n\nCác dòng kế hoạch đã có KHÔNG bị xóa.`)) onDelete([d.id]);
-                    },
-                    disabled: busy,
-                    className: "p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                  }, h(Trash2, { size: 13 }))));
+            // Mỗi khách hàng = 1 dòng tiêu đề (gập/mở) + các dòng ngành hàng của KH đó.
+            : shownGroups.map(g => {
+              const open = !closed.has(g.key);
+              return h(React.Fragment, { key: 'g:' + g.key },
+                h("tr", { className: "bg-slate-50/80 border-t border-slate-200" },
+                  h("td", { className: "px-2 py-1.5", colSpan: COLS },
+                    h("button", {
+                      onClick: () => toggleGroup(g.key),
+                      className: "flex items-center gap-2 text-left w-full"
+                    }, open ? h(ChevronDown, { size: 14, className: "text-emerald-600 shrink-0" })
+                      : h(ChevronRight, { size: 14, className: "text-emerald-600 shrink-0" }),
+                      h("span", { className: "font-mono text-[11px] text-slate-400 shrink-0" }, g.custId || '—'),
+                      h("span", { className: "text-[13px] font-semibold text-slate-800 truncate" }, fmtCust(g.cust)),
+                      h("span", { className: "text-[11px] text-slate-400 shrink-0" }, g.rows.length, " ngành hàng"),
+                      g.diff > 0 && h("span", {
+                        className: "text-[10.5px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium shrink-0"
+                      }, g.diff, " lệch")))),
+                open && g.rows.map(d => {
+                  const dirty = !!edits[d.id];
+                  const [cls, text] = BADGE[d.status];
+                  return h("tr", {
+                    key: d.id,
+                    className: dirty ? "bg-amber-50/60" : "hover:bg-slate-50/60"
+                  },
+                    h("td", { className: td + " text-slate-700 pl-8" }, d.grp),
+                    h("td", {
+                      className: td + " text-slate-500",
+                      title: "Miền lấy theo PS phụ trách, không sửa trực tiếp"
+                    }, d.mien || '—'),
+                    h("td", { className: td, style: { minWidth: 150 } }, canEdit
+                      ? h("select", {
+                          value: d.ps,
+                          onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
+                          className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
+                        }, psOptions.map(p => h("option", { key: p, value: p }, p)),
+                          // PS của dòng có thể không nằm trong danh sách suy từ kế hoạch
+                          !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
+                      : d.ps),
+                    h("td", { className: td },
+                      h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
+                      d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
+                        "kế hoạch: ", d.planPs.join(', '))),
+                    canEdit && h("td", { className: td + " whitespace-nowrap text-right" },
+                      d.status === 'diff' && !dirty && h("button", {
+                        onClick: () => applyIds([d.id]),
+                        disabled: busy,
+                        title: "Ghi PS/Miền này xuống các dòng kế hoạch của (KH × ngành hàng)",
+                        className: "px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
+                      }, "Áp dụng"),
+                      h("button", {
+                        onClick: () => {
+                          if (confirm(`Xóa khai báo địa bàn "${d.grp}" của ${fmtCust(d.cust)} (PS ${d.ps})?\n\nCác dòng kế hoạch đã có KHÔNG bị xóa.`)) onDelete([d.id]);
+                        },
+                        disabled: busy,
+                        className: "p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                      }, h(Trash2, { size: 13 }))));
+                }));
             })))),
-      list.length > shown.length && h("div", {
+      list.length > shownRows && h("div", {
         className: "px-3 py-2 text-[12px] text-slate-500 bg-slate-50 border-t border-slate-100"
-      }, "Đang hiện ", shown.length, "/", fmtInt(list.length), " dòng — dùng bộ lọc hoặc ô tìm kiếm để thu hẹp.")));
+      }, "Đang hiện ", fmtInt(shownRows), "/", fmtInt(list.length), " dòng (", shownGroups.length, "/",
+        fmtInt(groups.length), " khách hàng) — dùng bộ lọc hoặc ô tìm kiếm để thu hẹp.")));
 }
 
 // ============ MAIN APP ============
@@ -3610,6 +3664,16 @@ function App() {
     diaBan.forEach(d => { if (d.grp) s.add(d.grp); });
     return Array.from(s).sort();
   }, [catalog, rows, diaBan]);
+  // PS → Miền, chỉ khi PS đó thuộc đúng 1 miền trong dữ liệu kế hoạch. Màn cấu hình
+  // địa bàn dùng map này để HIỂN THỊ miền (miền là thuộc tính của PS, không nhập tay);
+  // backend suy lại y hệt khi lưu nên client không quyết được miền.
+  const mienByPs = useMemo(() => {
+    const m = new Map();
+    regionsByPs.forEach((regs, ps) => {
+      if (regs.length === 1) m.set(ps, regs[0]);
+    });
+    return m;
+  }, [regionsByPs]);
   // Địa bàn theo khách hàng → panel "Thêm khách hàng" tự điền PS/Miền đã khai báo.
   const diaBanByCust = useMemo(() => {
     const m = new Map();
@@ -4055,7 +4119,7 @@ function App() {
     diaBan: diaBan,
     customers: custSource,
     psOptions: allPsList,
-    regionOptions: regionList,
+    mienByPs: mienByPs,
     groupOptions: allGroupNames,
     canEdit: isAdmin, // gán địa bàn là quyết định quản lý -> chỉ admin, PS chỉ xem
     psFilter: psFilter,

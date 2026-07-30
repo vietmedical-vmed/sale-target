@@ -152,6 +152,18 @@ async function buForPs(db, psName, fallback) {
   return fallback;
 }
 
+// Suy MIỀN của một PS từ dữ liệu kế hoạch. Miền là thuộc tính của PS, không phải
+// trường nhập tay ở màn cấu hình địa bàn → server tự quyết, không tin client.
+// Trả null khi không xác định được (PS chưa có dòng kế hoạch, hoặc đang có mặt ở
+// nhiều miền) — caller hiểu là "giữ nguyên miền đang lưu".
+async function mienForPs(db, psName) {
+  const { data, error } = await db.from("sale_target")
+    .select("mien").eq("ps", psName).not("mien", "is", null).limit(1000);
+  if (error) throw new Error(error.message);
+  const list = [...new Set((data || []).map((r) => r.mien).filter(Boolean))];
+  return list.length === 1 ? list[0] : null;
+}
+
 // Đọc TẤT CẢ dòng (PostgREST giới hạn 1000/lần → phân trang).
 // Tối ưu: đếm tổng số dòng trước, rồi TẢI CÁC TRANG SONG SONG (thay vì tuần tự)
 // để giảm mạnh thời gian chờ khi dữ liệu lớn (vd ~20k dòng = 21 trang).
@@ -470,9 +482,19 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const rows = payload.rows || [];
       if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
-      // bu chỉ cần cho dòng THÊM MỚI (dòng sửa giữ nguyên bu trong DB). Suy theo PS
-      // được chọn, cache theo tên PS để không hỏi lại DB cho từng dòng cùng PS.
+      // Miền của dòng sửa: nếu không suy được theo PS thì giữ nguyên giá trị đang lưu
+      // (RPC ghi thẳng cột mien) → đọc trước 1 lượt cho các id được sửa.
+      const ids = rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n));
+      const oldMien = new Map();
+      if (ids.length) {
+        const { data, error } = await db.from("dm_dia_ban").select("id, mien").in("id", ids);
+        if (error) throw new Error(error.message);
+        for (const d of data || []) oldMien.set(d.id, d.mien ?? "");
+      }
+      // bu chỉ cần cho dòng THÊM MỚI (dòng sửa giữ nguyên bu trong DB). bu/miền đều
+      // suy theo PS được chọn, cache theo tên PS để không hỏi lại DB cho từng dòng.
       const buCache = new Map();
+      const mienCache = new Map();
       const p_rows = [];
       for (const r of rows) {
         const ps = String(r.ps || "").trim();
@@ -488,13 +510,15 @@ Deno.serve(async (req) => {
           }
           bu = buCache.get(ps) || "";
         }
+        if (!mienCache.has(ps)) mienCache.set(ps, await mienForPs(db, ps));
         p_rows.push({
           id: Number.isFinite(id) ? id : null,
           bu,
           ma_khach_hang: r.custId ?? "",
           khach_hang: r.cust ?? "",
           nhom_san_pham: r.grp ?? "",
-          mien: r.mien ?? "",
+          // KHÔNG dùng r.mien: miền do server suy theo PS.
+          mien: mienCache.get(ps) || oldMien.get(id) || "",
           ps,
           active: r.active !== false,
         });
