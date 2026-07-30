@@ -382,11 +382,31 @@ Deno.serve(async (req) => {
       // lọt vào cột numeric; không nhập gì thì để NULL, KHÔNG phải 0.
       const priceNum = Number(s.price);
       const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
+      // bu gắn theo PS ĐƯỢC CHỌN, không theo account tạo: admin/manager thêm hộ PS
+      // của team khác thì gắn bu người tạo là gán sai team, dòng đó sẽ lọt vào báo
+      // cáo của team sai. Suy bu từ chính dữ liệu kế hoạch của PS đó.
+      let bu = sess.b;
+      const { data: buRows, error: buErr } = await db.from("sale_target")
+        .select("bu").eq("ps", psName).not("bu", "is", null).limit(1000);
+      if (buErr) throw new Error(buErr.message);
+      const buList = [...new Set((buRows || []).map((r) => r.bu).filter(Boolean))];
+      if (buList.length === 1) {
+        bu = buList[0];
+      } else if (buList.length > 1) {
+        // 1 tên PS có dữ liệu ở nhiều team → KHÔNG đoán. Thà chặn và báo rõ còn hơn
+        // gắn sai team rồi rất khó phát hiện về sau.
+        return json({
+          ok: false,
+          error: `PS "${psName}" đang có dữ liệu ở ${buList.length} team ` +
+            `(${buList.join(", ")}) — không xác định được team để gắn cho dòng mới`,
+        }, 409);
+      }
+      // buList rỗng = PS chưa có dòng nào trong kế hoạch → giữ bu của người tạo.
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien: s.region, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
         san_pham: s.prod, bo_vat_tu: s.mset, don_gia: price,
-        bu: sess.b, // sản phẩm mới thêm luôn gắn theo bu của người tạo (kể cả admin/manager)
+        bu,
         sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
       }));
       // Trả luôn 12 dòng vừa tạo (đúng thứ tự FIELDS) để app chèn thẳng vào state,
