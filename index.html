@@ -105,6 +105,8 @@ const MONTH_LABELS = ['T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', '
 const CURRENT_MONTH = '2026-07'; // ← đổi mỗi tháng để khoá các tháng trước
 const CURRENT_MONTH_IDX = MONTHS.indexOf(CURRENT_MONTH);
 const NOTE_MONTH = MONTHS[Math.max(0, CURRENT_MONTH_IDX - 1)]; // giải trình lưu vào tháng hiện tại − 1
+// Nhãn hiển thị cho sản phẩm không có bộ vật tư (bo_vat_tu rỗng trong DB).
+const NO_MSET = '(Không phân loại)';
 const TOK_KEY = 'sp_tok';
 const ROLE_LABELS = {
   admin: 'Quản trị',
@@ -1401,7 +1403,7 @@ function CustomerCard({
     if (!adding) return null;
     const s = new Set();
     groups.forEach(g => g.products.forEach(p => {
-      s.add(`${g.ps || ''}||${g.name}||${p.mset === '(Không phân loại)' ? '' : p.mset}||${p.product}`);
+      s.add(`${g.ps || ''}||${g.name}||${p.mset === NO_MSET ? '' : p.mset}||${p.product}`);
     }));
     return s;
   }, [adding, groups]);
@@ -2434,7 +2436,7 @@ function CustomerPicker({ customers, value, onChange, className }) {
 }
 
 // Chỉ số danh mục sản phẩm — dựng MỘT LẦN ở App rồi truyền xuống mọi thẻ KH.
-// Nếu để từng thẻ tự filter catalog (~5k dòng) thì mở 100 KH = hàng trăm nghìn
+// Nếu để từng thẻ tự filter cả danh mục thì mở 100 KH = hàng trăm nghìn
 // phép lọc mỗi lần render. Ở đây chỉ còn tra Map.
 function buildCatalogIndex(catalog) {
   const byGrp = new Map();
@@ -2452,9 +2454,16 @@ function buildCatalogIndex(catalog) {
   const sorted = new Map(); // cache danh sách bộ vật tư đã sort theo nhóm
   return {
     groups: Array.from(byGrp.keys()).sort(),
+    // Nhóm "lai" (vừa có dòng có bộ vật tư, vừa có dòng bo_vat_tu rỗng) được thêm
+    // một mục NO_MSET ở cuối — nếu không thì các SP rỗng bộ vật tư không cách nào chọn.
     msetsOf(g) {
-      if (!byGrp.has(g)) return [];
-      if (!sorted.has(g)) sorted.set(g, Array.from(byGrp.get(g).msets.keys()).sort());
+      const n = byGrp.get(g);
+      if (!n) return [];
+      if (!sorted.has(g)) {
+        const list = Array.from(n.msets.keys()).sort();
+        if (list.length && n.noMset.length) list.push(NO_MSET);
+        sorted.set(g, list);
+      }
       return sorted.get(g);
     },
     // Nhóm không có bộ vật tư → trả thẳng sản phẩm của nhóm; ngược lại phải chọn bộ vật tư.
@@ -2462,6 +2471,7 @@ function buildCatalogIndex(catalog) {
       const n = byGrp.get(g);
       if (!n) return [];
       if (n.msets.size === 0) return n.noMset;
+      if (m === NO_MSET) return n.noMset;
       return m ? (n.msets.get(m) || []) : [];
     }
   };
@@ -3133,7 +3143,7 @@ function App() {
         if (r.note) g.note = r.note;
       } // giải trình theo nhóm SP
       // key product by (mset, prod) so same product name under different bộ vật tư stays separate
-      const msKey = r.mset || '(Không phân loại)';
+      const msKey = r.mset || NO_MSET;
       const pKey = msKey + '||' + (r.prod || '—');
       if (!g.pMap.has(pKey)) g.pMap.set(pKey, {
         mset: msKey,

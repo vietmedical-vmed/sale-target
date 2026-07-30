@@ -176,7 +176,7 @@ Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể
 | `bu` | — | Team (business unit) |
 | `updated_at` | — | Mốc cập nhật (nguồn của `rev`) |
 
-**`catalog`** — danh mục sản phẩm chuẩn: `nhom_san_pham`, `bo_vat_tu`, `san_pham`, `don_gia` (unique theo `bo_vat_tu` + `san_pham`).
+**`dm_bo_vat_tu`** — danh mục bộ vật tư / sản phẩm chuẩn: `nhom_san_pham`, `bo_vat_tu`, `san_pham`, `don_gia` (unique theo `bo_vat_tu` + `san_pham`). *(Tên cũ: `catalog`, đổi 30/07/2026 — action API vẫn là `getCatalog`.)*
 
 **`dm_khach_hang`** — danh mục khách hàng đầy đủ: `customer_id`, `customer_name` (RLS chặn anon; không chứa PS/Miền).
 
@@ -235,7 +235,7 @@ Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể
 [Supabase Edge Function: sale_target-login] ← xác thực mật khẩu, phát token
         │  service role
         ▼
-[Postgres: sale_target, catalog, dm_khach_hang, users]  (RLS bật)
+[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, users]  (RLS bật)
 ```
 
 ### 10.1 Điểm triển khai quan trọng
@@ -265,7 +265,6 @@ Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể
 - **Mật khẩu SHA-256 không salt** → yếu trước tấn công dò bảng băm. Cân nhắc chuyển bcrypt/argon2.
 - **Không có khoá lạc quan (optimistic lock)** ở cấp ô: hai người sửa cùng dòng có thể ghi đè; hiện chỉ giảm nhẹ bằng `rev`.
 - **CORS `*`** + API `--no-verify-jwt`: an toàn dựa hoàn toàn vào token HMAC; cần bảo vệ `SESSION_SECRET`.
-- **`getCatalog` giới hạn 5000 dòng**; danh mục lớn hơn sẽ bị cắt.
 
 ### 12.2 Giả định
 - `sl_thuc_hien` được đẩy đúng, đúng PS, bởi pipeline ngoài.

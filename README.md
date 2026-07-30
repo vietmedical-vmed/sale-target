@@ -34,7 +34,7 @@ frontend host trên **GitHub Pages**.
 [Edge Function: sale_target-login]  ← xác thực mật khẩu (SHA-256), phát token
         │  service role
         ▼
-[Postgres: sale_target, catalog, dm_khach_hang, users]  (RLS bật)
+[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, users]  (RLS bật)
 ```
 
 ---

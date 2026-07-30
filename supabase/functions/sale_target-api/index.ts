@@ -252,13 +252,27 @@ Deno.serve(async (req) => {
       return json({ ok: true, rev: await getRev(db) });
     }
 
+    // Danh mục bộ vật tư / sản phẩm. Bảng dm_bo_vat_tu (tên cũ: catalog) — tên
+    // action giữ nguyên "getCatalog" để không phải đổi frontend.
     if (action === "getCatalog") {
-      const { data, error } = await db.from("catalog")
-        .select("nhom_san_pham, bo_vat_tu, san_pham, don_gia").range(0, 4999);
-      if (error) throw new Error(error.message);
-      const catalog = (data || []).map((c) => ({
-        grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham, price: c.don_gia,
-      }));
+      // Phân trang: PostgREST chặn ở max_rows (1000). Trước đây .range(0,4999) nên
+      // danh mục > 1000 dòng đã bị cắt âm thầm → thiếu bộ vật tư / sản phẩm trong
+      // form thêm SP mà không có lỗi nào. order theo id cho phân trang ổn định.
+      const catalog = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db.from("dm_bo_vat_tu")
+          .select("nhom_san_pham, bo_vat_tu, san_pham, don_gia")
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        if (!data || data.length === 0) break;
+        for (const c of data) {
+          catalog.push({
+            grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham, price: c.don_gia,
+          });
+        }
+        if (data.length < PAGE) break;
+      }
       return json({ ok: true, catalog });
     }
 

@@ -94,7 +94,7 @@ SET default_tablespace = '';
 SET default_table_access_method = "heap";
 
 
-CREATE TABLE IF NOT EXISTS "public"."catalog" (
+CREATE TABLE IF NOT EXISTS "public"."dm_bo_vat_tu" (
     "id" bigint NOT NULL,
     "nhom_san_pham" "text",
     "bo_vat_tu" "text",
@@ -104,11 +104,11 @@ CREATE TABLE IF NOT EXISTS "public"."catalog" (
 );
 
 
-ALTER TABLE "public"."catalog" OWNER TO "postgres";
+ALTER TABLE "public"."dm_bo_vat_tu" OWNER TO "postgres";
 
 
-ALTER TABLE "public"."catalog" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME "public"."catalog_id_seq"
+ALTER TABLE "public"."dm_bo_vat_tu" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME "public"."dm_bo_vat_tu_id_seq"
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -173,13 +173,13 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
 ALTER TABLE "public"."users" OWNER TO "postgres";
 
 
-ALTER TABLE ONLY "public"."catalog"
-    ADD CONSTRAINT "catalog_bo_vat_tu_san_pham_key" UNIQUE ("bo_vat_tu", "san_pham");
+ALTER TABLE ONLY "public"."dm_bo_vat_tu"
+    ADD CONSTRAINT "dm_bo_vat_tu_bo_vat_tu_san_pham_key" UNIQUE ("bo_vat_tu", "san_pham");
 
 
 
-ALTER TABLE ONLY "public"."catalog"
-    ADD CONSTRAINT "catalog_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."dm_bo_vat_tu"
+    ADD CONSTRAINT "dm_bo_vat_tu_pkey" PRIMARY KEY ("id");
 
 
 
@@ -193,7 +193,7 @@ ALTER TABLE ONLY "public"."users"
 
 
 
-ALTER TABLE "public"."catalog" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."dm_bo_vat_tu" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."sale_target" ENABLE ROW LEVEL SECURITY;
@@ -388,15 +388,15 @@ GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."catalog" TO "anon";
-GRANT ALL ON TABLE "public"."catalog" TO "authenticated";
-GRANT ALL ON TABLE "public"."catalog" TO "service_role";
+GRANT ALL ON TABLE "public"."dm_bo_vat_tu" TO "anon";
+GRANT ALL ON TABLE "public"."dm_bo_vat_tu" TO "authenticated";
+GRANT ALL ON TABLE "public"."dm_bo_vat_tu" TO "service_role";
 
 
 
-GRANT ALL ON SEQUENCE "public"."catalog_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."catalog_id_seq" TO "authenticated";
-GRANT ALL ON SEQUENCE "public"."catalog_id_seq" TO "service_role";
+GRANT ALL ON SEQUENCE "public"."dm_bo_vat_tu_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."dm_bo_vat_tu_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."dm_bo_vat_tu_id_seq" TO "service_role";
 
 
 
