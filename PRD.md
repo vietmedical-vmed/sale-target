@@ -75,13 +75,16 @@ cộng chung với team thật.
 | Vai trò | Phạm vi dữ liệu | Quyền sửa | Chuyển team |
 |---|---|---|---|
 | **admin** | Tất cả team | ✅ Sửa & thêm SP | ✅ |
-| **manager** | Tất cả team (hoặc chọn 1 team) | ❌ Chỉ xem | ✅ |
+| **manager** | Tất cả team (hoặc chọn 1 team) | ✅ Sửa & thêm SP (mọi team) | ✅ |
 | **product_manager** | Theo **ngành hàng** (`nhom_san_pham`), xuyên suốt mọi team | ❌ Chỉ xem | — (không khoá theo team) |
-| **area_manager** | Theo **Miền** (`mien`) trong team của mình | ❌ Chỉ xem | ❌ |
+| **area_manager** | Theo **Miền** (`mien`) trong team của mình | ✅ Sửa & thêm SP (trong miền của mình) | ❌ |
 | **ps** | Theo **PS** (chính mình) trong team của mình | ✅ Sửa & thêm SP | ❌ |
 
 **Quy tắc quan trọng:**
-- Chỉ **admin** và **ps** có quyền chỉnh sửa (`canEdit`); các vai trò còn lại chỉ xem.
+- **Sửa số liệu** (`canEdit`: sửa ô + thêm sản phẩm): **admin, manager, area_manager, ps**. Chỉ `product_manager` là thuần xem — họ theo dõi ngành hàng xuyên team chứ không sở hữu số của PS nào.
+- **Phạm vi ghi** bám đúng phạm vi xem của từng role (`scopeParams()` phải khớp `applyScope()`): manager ghi được mọi team, area_manager chỉ trong `bu` + Miền của mình, ps chỉ dòng của chính mình. RPC `update_sale_target_cells` chốt lại ở DB, không tin client.
+- **Xoá dòng** (sản phẩm/khách hàng) và **mọi thao tác ghi ở Cấu hình địa bàn** vẫn **chỉ `admin`** — không đi theo `canEdit`.
+- **Thêm sản phẩm**: `ps` luôn bị ép về chính mình; admin/manager/area_manager chọn PS trên giao diện (scope của họ không phải tên PS). Server kiểm lại: area_manager chỉ thêm được cho PS thuộc đúng team + miền của mình, và miền của dòng mới lấy theo miền của area_manager chứ không theo client gửi lên.
 - Với các vai trò không phải admin/manager, phạm vi **luôn bị khoá theo token phía server** — client không thể ghi đè bằng payload (chống giả mạo).
 - `product_manager` có thể phụ trách **nhiều ngành hàng**, ngăn cách bằng dấu phẩy trong `scope`; chưa gán ngành hàng → không thấy dữ liệu.
 - **Cấu hình địa bàn** (§6.4): mọi vai trò xem được trong phạm vi của mình, nhưng **chỉ `admin` sửa/xóa/áp dụng** — kể cả `ps` (tự gán địa bàn cho mình là tự mở rộng phạm vi quyền).

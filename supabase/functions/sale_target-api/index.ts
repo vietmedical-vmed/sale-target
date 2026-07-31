@@ -283,7 +283,13 @@ Deno.serve(async (req) => {
   sess.r = String(sess.r || "").toLowerCase(); // chuẩn hoá role: "ADMIN" → "admin", "PS" → "ps"...
 
   const db = admin();
-  const canEdit = sess.r === "admin" || sess.r === "ps"; // PM KHÔNG nằm trong đây → chỉ xem
+  // Ai được SỬA số liệu (updateCells / addProduct). PHẠM VI ghi của từng role do
+  // scopeParams() quyết định, không phải cờ này: manager mọi team, area_manager
+  // trong bu + miền của mình, ps trong PS của mình.
+  // product_manager KHÔNG có trong danh sách: họ theo dõi ngành hàng xuyên team,
+  // không sở hữu số của PS nào nên chỉ xem.
+  // Xoá dòng và cấu hình địa bàn vẫn CHỈ admin (gác riêng ở từng action).
+  const canEdit = ["admin", "ps", "manager", "area_manager"].includes(sess.r);
 
   try {
     if (action === "ping") {
@@ -437,8 +443,11 @@ Deno.serve(async (req) => {
       const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
       // PS chỉ được thêm sản phẩm cho CHÍNH MÌNH: không tin payload.ps (client
-      // có thể gửi tên PS khác). Admin thì giữ nguyên PS đã chọn trên giao diện.
-      const psName = sess.r === "admin" ? s.ps : sess.s;
+      // có thể gửi tên PS khác). Các role còn lại lấy PS đã chọn trên giao diện —
+      // scope của admin/manager/area_manager không phải tên PS nên không thay thế
+      // được (lấy sess.s sẽ ghi ps = "Quản lý" / "Miền Bắc" vào dữ liệu).
+      const psName = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
+      if (!psName) return json({ ok: false, error: "Chưa chọn PS phụ trách" }, 400);
       // Đơn giá do client nhập tay (danh mục không còn giữ giá) → chặn NaN/chuỗi rác
       // lọt vào cột numeric; không nhập gì thì để NULL, KHÔNG phải 0.
       const priceNum = Number(s.price);
@@ -453,8 +462,23 @@ Deno.serve(async (req) => {
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 409);
       }
+      // area_manager chỉ thêm được cho PS trong ĐÚNG team + miền của mình —
+      // không tin danh sách PS phía client. PS chưa có dòng nào (miền suy ra null)
+      // thì cho qua, dòng mới sẽ nằm trong miền của chính area_manager.
+      if (sess.r === "area_manager") {
+        const psMien = await mienForPs(db, psName);
+        if (bu !== sess.b || (psMien && psMien !== sess.s)) {
+          return json({
+            ok: false,
+            error: `PS "${psName}" không thuộc phạm vi của bạn (${sess.b} / ${sess.s})`,
+          }, 403);
+        }
+      }
       const rowsIns = MONTHS.map((mo) => ({
-        nam_tai_chinh: fy, thang_ke_hoach: mo, mien: s.region, ps: psName,
+        // miền của area_manager do server quyết, không lấy theo client gửi lên:
+        // gửi miền khác là dòng mới rơi ra ngoài tầm nhìn của chính họ.
+        nam_tai_chinh: fy, thang_ke_hoach: mo,
+        mien: sess.r === "area_manager" ? sess.s : s.region, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
         san_pham: s.prod, bo_vat_tu: s.mset, don_gia: price,
         bu,

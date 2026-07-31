@@ -3538,7 +3538,9 @@ function App() {
   const [exportFn, setExportFn] = useState(null);
   const setExporter = useCallback(fn => setExportFn(() => fn), []);
   MASK_MONEY = maskMoney;
-  const canEdit = auth.role === 'admin' || auth.role === 'ps';
+  // Sửa số liệu: admin, ps, manager, area_manager (server chốt lại phạm vi ghi của
+  // từng role). Xoá dòng / cấu hình địa bàn vẫn chỉ admin -> dùng isAdmin.
+  const canEdit = ['admin', 'ps', 'manager', 'area_manager'].includes(auth.role);
   const isAdmin = auth.role === 'admin';
   useEffect(() => {
     // Bypass đăng nhập khi vào từ portal: nếu có token dùng chung (vmed_token) mà tab
