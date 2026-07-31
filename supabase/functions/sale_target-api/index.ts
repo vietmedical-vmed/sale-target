@@ -474,11 +474,13 @@ Deno.serve(async (req) => {
           }, 403);
         }
       }
+      // Miền của area_manager do server quyết, không lấy theo client gửi lên: gửi
+      // miền khác là dòng mới rơi ra ngoài tầm nhìn của chính họ.
+      // Popup "Thêm khách hàng" không còn ô Miền → client có thể gửi rỗng, suy từ PS.
+      let mien = sess.r === "area_manager" ? sess.s : String(s.region || "").trim();
+      if (!mien) mien = await mienForPs(db, psName);
       const rowsIns = MONTHS.map((mo) => ({
-        // miền của area_manager do server quyết, không lấy theo client gửi lên:
-        // gửi miền khác là dòng mới rơi ra ngoài tầm nhìn của chính họ.
-        nam_tai_chinh: fy, thang_ke_hoach: mo,
-        mien: sess.r === "area_manager" ? sess.s : s.region, ps: psName,
+        nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
         san_pham: s.prod, bo_vat_tu: s.mset, don_gia: price,
         bu,
