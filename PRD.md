@@ -65,7 +65,10 @@ Lựa chọn **Supabase** (Postgres + Edge Functions) làm backend, frontend tĩ
 ## 4. Đối tượng người dùng & Phân quyền (Personas & Roles)
 
 ### 4.1 Khái niệm Team (bu / business unit)
-Mỗi bản ghi kế hoạch gắn với một **Team** (`bu`). Các team hiện có: **CHCS, CTTM, THNK** (và TEST cho kiểm thử).
+Mỗi bản ghi kế hoạch gắn với một **Team** (`bu`). Các team hiện có: **CHCS, CTTM, THNK** (và TEST cho kiểm thử/training).
+
+**Team TEST tách biệt hoàn toàn về số liệu** (§8.10): dữ liệu demo không bao giờ được
+cộng chung với team thật.
 
 ### 4.2 Năm vai trò & phạm vi
 
@@ -296,6 +299,7 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 7. **Cấu hình địa bàn chỉ `admin` ghi**; khai báo địa bàn **không tự đổi** dữ liệu kế hoạch — phải chủ động "Áp dụng", và mỗi bản chỉ ghi vào **các tháng nằm trong khoảng hiệu lực của nó** nên tháng đã qua không bị bản mới ghi đè (giữ khớp actual — §8.2).
 8. **Đổi người phụ trách giữa năm = đóng bản cũ + mở bản mới** (không sửa bản cũ): quá khứ giữ nguyên PS của nó, vĩnh viễn.
 9. **Không có khoảng trống**: tổ hợp (KH × ngành hàng) đã khai báo thì mọi tháng đang có dòng kế hoạch phải có người phụ trách — mọi đường ghi bị chặn nếu vi phạm.
+10. **Team TEST (`bu = 'test'`) là dữ liệu demo/training, tách biệt về hiển thị**: chỉ hiện khi nhìn đúng team đó — admin/manager chọn TEST trên TeamSwitcher, hoặc user có `bu = 'test'` trong token. Mọi truy vấn "xem nhiều team" đều loại nó ra (`excludeDemo()` trong `applyScope`), gồm cả "Tất cả team" của admin/manager và phạm vi xuyên team của `product_manager`. Lọc bằng `or(bu.is.null,bu.neq.test)` chứ không dùng `neq` trần, vì `neq` loại luôn dòng `bu` null (null <> 'test' ra null).
 
 ---
 

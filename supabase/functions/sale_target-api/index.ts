@@ -83,8 +83,17 @@ const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd",
 // Các cột nhận diện (bộ vật tư / sản phẩm) — CHỈ admin được sửa qua updateCells.
 const ADMIN_EDITABLE = new Set(["mset","prod"]);
 
+// Team dữ liệu DEMO/TRAINING — số của nó không phải số kinh doanh thật nên KHÔNG
+// bao giờ được cộng chung với các team khác. Chỉ hiện khi nhìn đúng team đó:
+// admin/manager chọn TEST trên TeamSwitcher, hoặc user có bu = TEST trong token.
+const DEMO_BU = "test";
+// Loại dòng demo ra khỏi truy vấn "xem nhiều team".
+// Giữ lại dòng bu rỗng: bu null nghĩa là chưa gắn team, không phải dữ liệu demo
+// (dùng .neq trần thì Postgres loại luôn cả null vì null <> 'test' ra null).
+const excludeDemo = (q) => q.or(`bu.is.null,bu.neq.${DEMO_BU}`);
+
 // Lọc dữ liệu theo quyền của user.
-// - admin/manager: xem tất cả team (bu); nếu client gửi payload.bu cụ thể → lọc theo team đó.
+// - admin/manager: xem tất cả team (bu) TRỪ team demo; gửi payload.bu cụ thể → lọc theo team đó.
 // - Các role khác: LUÔN khoá theo bu trong token (không được ghi đè bằng payload).
 // - Sau đó lọc tiếp theo phạm vi hẹp hơn: area_manager theo Miền, ps theo PS.
 function applyScope(query, sess, payload = {}) {
@@ -94,11 +103,12 @@ function applyScope(query, sess, payload = {}) {
   // --- Khoá theo team (bu) ---
   if (role === "admin" || role === "manager") {
     if (payload && payload.bu) q = q.eq("bu", payload.bu); // admin/manager chọn xem 1 team cụ thể
-    // không chọn gì → xem tất cả team
+    else q = excludeDemo(q); // "Tất cả team" = mọi team THẬT, không gộp dữ liệu demo
   } else if (role === "product_manager") {
     // PM quản theo NGÀNH HÀNG, xuyên suốt các team → KHÔNG khoá theo bu.
     // (Muốn giới hạn PM trong 1 team thì bỏ comment dòng dưới.)
     // q = q.eq("bu", sess.b);
+    q = excludeDemo(q); // nhưng vẫn không lấy dữ liệu demo (PM không có TeamSwitcher để tách ra)
   } else {
     q = q.eq("bu", sess.b); // các role còn lại luôn khoá theo bu của chính họ (không tin payload)
   }
