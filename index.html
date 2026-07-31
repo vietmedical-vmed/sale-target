@@ -1404,6 +1404,7 @@ function CustomerCard({
   onToggleBasePlan,
   catIdx,
   groupsByPs,
+  priceOf,
   onAddProduct,
   onDeleteCustomer
 }) {
@@ -1512,12 +1513,9 @@ function CustomerCard({
   (canEdit && catIdx || isAdmin) && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 pr-3 pl-1"
   }, canEdit && catIdx && /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setAdding(v => !v);
-      setOpen(true);
-    },
+    onClick: () => setAdding(true),
     title: "Thêm sản phẩm cho khách hàng này",
-    className: `flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-semibold rounded-md border whitespace-nowrap ${adding ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`
+    className: "flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-semibold rounded-md border whitespace-nowrap border-emerald-200 text-emerald-700 hover:bg-emerald-50"
   }, /*#__PURE__*/React.createElement(Plus, {
     size: 14
   }), "Thêm SP"),
@@ -1528,18 +1526,25 @@ function CustomerCard({
     className: "p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200"
   }, /*#__PURE__*/React.createElement(Trash2, {
     size: 15
-  })))), open && /*#__PURE__*/React.createElement("div", null, adding && canEdit && catIdx && /*#__PURE__*/React.createElement(ProductPickerForm, {
+  })))), canEdit && catIdx && /*#__PURE__*/React.createElement(Modal, {
+    open: adding,
+    onClose: () => setAdding(false),
+    title: `Thêm sản phẩm · ${customer}`,
+    icon: /*#__PURE__*/React.createElement(Plus, { size: 16, className: "text-emerald-600" }),
+    width: 720
+  }, /*#__PURE__*/React.createElement(ProductPickerForm, {
     catIdx: catIdx,
     groupsByPs: groupsByPs,
     psOptions: psList,
     existing: existingKeys,
+    priceOf: priceOf,
     onSubmit: s => onAddProduct({
       ...s,
       custId: custId,
       cust: customer,
       region: region
     })
-  }), groups.map(g => /*#__PURE__*/React.createElement(ProductGroupSection, {
+  })), open && /*#__PURE__*/React.createElement("div", null, groups.map(g => /*#__PURE__*/React.createElement(ProductGroupSection, {
     key: g.name + '||' + (g.ps || ''),
     groupName: g.name,
     ps: g.ps,
@@ -2606,7 +2611,36 @@ function buildCatalogIndex(catalog) {
 // Form chọn sản phẩm (nhóm SP → bộ vật tư → sản phẩm) — dùng chung cho thẻ KH đã có
 // và thẻ KH vừa thêm. KH / miền đã biết sẵn nên không hỏi lại.
 // existing = Set('ps||grp||mset||prod') để chặn thêm trùng sản phẩm cho cùng 1 PS.
-function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }) {
+// Popup dùng chung (thêm khách hàng / thêm sản phẩm). Đóng bằng X, Esc, bấm nền.
+function Modal({ open, onClose, title, icon, width = 560, children, footer }) {
+  const h = React.createElement;
+  useEffect(() => {
+    if (!open) return;
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return h("div", {
+    onClick: onClose,
+    className: "fixed inset-0 z-50 bg-slate-900/40 flex items-start justify-center p-4 pt-20 overflow-y-auto"
+  }, h("div", {
+    onClick: e => e.stopPropagation(),
+    style: { width, maxWidth: '100%' },
+    className: "bg-white rounded-lg shadow-xl border border-slate-200"
+  },
+    h("div", { className: "flex items-center gap-2 px-4 py-3 border-b border-slate-100" },
+      icon, h("span", { className: "text-[14px] font-semibold text-slate-800" }, title),
+      h("div", { className: "flex-1" }),
+      h("button", {
+        onClick: onClose, title: "Đóng",
+        className: "p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+      }, h(XIcon, { size: 16 }))),
+    children,
+    footer));
+}
+
+function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, onSubmit }) {
   const h = React.createElement;
   const opts = psOptions && psOptions.length ? psOptions : [];
   const [ps, setPs] = useState(opts.length === 1 ? opts[0] : '');
@@ -2617,10 +2651,12 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
   //   - cả bộ    → san_pham ghi vào DB = đúng tên bộ vật tư, không phải chọn gì thêm.
   //   - riêng lẻ → chọn 1 sản phẩm thuộc bộ đó trong danh mục.
   const [wholeSet, setWholeSet] = useState(false);
-  // Đơn giá nhập tay: không bảng danh mục nào có cột don_gia, giá chỉ tồn tại trên
-  // từng dòng sale_target. Nhập theo tr.VND cho khớp mọi chỗ hiển thị, ghi DB
-  // theo VND (×1e6). Nhận cả dấu phẩy thập phân kiểu vi-VN ("1,5").
+  // Đơn giá theo tr.VND cho khớp mọi chỗ hiển thị, ghi DB theo VND (×1e6).
+  // Nhận cả dấu phẩy thập phân kiểu vi-VN ("1,5").
+  // Mặc định lấy đơn giá đang dùng cho đúng (nhóm|bộ vật tư|sản phẩm) đó trong kế
+  // hoạch — danh mục không có cột đơn giá. Chưa có ở đâu thì để trống, nhập tay.
   const [priceTr, setPriceTr] = useState('');
+  const [priceAuto, setPriceAuto] = useState(false); // giá đang là giá gợi ý, chưa sửa tay
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -2638,7 +2674,7 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
   }, [catIdx, groupsByPs, ps]);
   // Đổi PS thì nhóm/bộ vật tư/sản phẩm đã chọn có thể không còn hợp lệ → xoá chọn.
   useEffect(() => {
-    setGrp(''); setMset(''); setProd(''); setWholeSet(false); setPriceTr(''); setMsg('');
+    setGrp(''); setMset(''); setProd(''); setWholeSet(false); setPriceTr(''); setPriceAuto(false); setMsg('');
   }, [ps]);
   const msets = useMemo(() => grp ? catIdx.msetsOf(grp) : [], [catIdx, grp]);
   const prods = useMemo(() => grp ? catIdx.prodsOf(grp, mset) : [], [catIdx, grp, mset]);
@@ -2649,6 +2685,22 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
   useEffect(() => { if (!canWholeSet) setWholeSet(false); }, [canWholeSet]);
   // Tên sản phẩm ghi vào DB: cả bộ → chính tên bộ vật tư; riêng lẻ → SP đã chọn.
   const prodName = wholeSet ? msetVal : prod;
+  // Chọn xong sản phẩm → điền sẵn đơn giá đang dùng cho vật tư đó. Chỉ ghi đè khi ô
+  // đang trống hoặc đang giữ giá gợi ý trước đó, không đụng vào giá người dùng tự gõ.
+  const suggested = useMemo(
+    () => (priceOf && grp && prodName ? priceOf(grp, msetVal, prodName) : null),
+    [priceOf, grp, msetVal, prodName]
+  );
+  useEffect(() => {
+    if (!priceAuto && priceTr) return; // đang là giá gõ tay → giữ nguyên
+    if (suggested) {
+      setPriceTr(String(suggested / 1e6).replace('.', ','));
+      setPriceAuto(true);
+    } else if (priceAuto) {
+      setPriceTr('');
+      setPriceAuto(false);
+    }
+  }, [suggested]);
   const dupKey = grp && prodName ? `${ps}||${grp}||${msetVal}||${prodName}` : '';
   const isDup = !!(dupKey && existing && existing.has(dupKey));
   const ready = !!(ps && grp && prodName && priceVnd != null && !isDup);
@@ -2661,7 +2713,7 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
     setBusy(false);
     // Xoá luôn đơn giá cùng với sản phẩm: giữ lại dễ vô tình gán giá của SP trước
     // cho SP tiếp theo. Giữ nguyên tick "cả bộ" để thêm liên tiếp nhiều bộ.
-    if (ok) { setMsg(`Đã thêm "${prodName}"`); setProd(''); setPriceTr(''); }
+    if (ok) { setMsg(`Đã thêm "${prodName}"`); setProd(''); setPriceTr(''); setPriceAuto(false); }
     else setErr('Thêm thất bại — xem thông báo lỗi phía trên.');
   };
   return h("div", { className: "bg-slate-50/70 border-t border-slate-100 px-3 py-3" },
@@ -2723,12 +2775,15 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
         h("label", { className: lbl }, "Đơn giá (tr.VND)"),
         h("input", {
           value: priceTr,
-          onChange: e => { setPriceTr(e.target.value); setMsg(''); },
+          onChange: e => { setPriceTr(e.target.value); setPriceAuto(false); setMsg(''); },
           inputMode: "decimal",
-          placeholder: "vd 1,5",
+          placeholder: prodName && !suggested ? "chưa có giá — nhập tay" : "vd 1,5",
           disabled: !prodName,
-          className: sel
-        }))),
+          className: sel + (priceAuto ? " bg-emerald-50/60" : "")
+        }),
+        prodName && h("p", { className: "text-[11px] mt-1 " + (suggested ? "text-slate-400" : "text-amber-600") },
+          suggested ? (priceAuto ? "Giá đang dùng cho vật tư này — sửa được" : "Đang dùng giá bạn nhập")
+                    : "Vật tư này chưa có đơn giá trong kế hoạch"))),
     h("div", { className: "flex items-center gap-3 mt-3 flex-wrap" },
       prodName && h("div", { className: "text-[12px] text-slate-600" },
         priceVnd == null
@@ -2761,23 +2816,21 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, onSubmit }
 // KHÔNG có ô Miền: miền là thuộc tính của PS, suy từ PS đã chọn (PS nào có nhiều
 // miền thì rơi về miền đã khai báo trong địa bàn); client không suy được thì để
 // trống, server tự điền bằng mienForPs().
-function AddCustomerModal({ open, onClose, customers, psOptions, regionsByPs, diaBanByCust, existingCustKeys, onAdd }) {
+function AddCustomerModal({ open, onClose, customers, psOptions, regionsByPs, diaBanByCust, existingCustKeys, catIdx, groupsByPs, priceOf, onAdd, onAddProduct }) {
   const h = React.createElement;
   const [custKey, setCustKey] = useState('');
   const [ps, setPs] = useState(psOptions && psOptions.length === 1 ? psOptions[0] : '');
+  const [step, setStep] = useState(1);   // 1 = chọn KH/PS, 2 = thêm sản phẩm đầu tiên
+  const [added, setAdded] = useState(0); // số SP đã thêm trong lần mở này
   // Mỗi lần mở lại là một lần thêm mới → xoá lựa chọn cũ
   useEffect(() => {
     if (open) {
       setCustKey('');
       setPs(psOptions && psOptions.length === 1 ? psOptions[0] : '');
+      setStep(1);
+      setAdded(0);
     }
   }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = e => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
   const cust = useMemo(() => customers.find(c => (c.custId || c.cust) === custKey), [customers, custKey]);
   // Địa bàn đã khai báo cho KH này (dm_dia_ban) — nguồn chuẩn cho PS/Miền.
   const terr = useMemo(
@@ -2795,64 +2848,86 @@ function AddCustomerModal({ open, onClose, customers, psOptions, regionsByPs, di
   const lbl = "block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1";
   const sel = "w-full px-2.5 py-2 text-[13px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50";
   const ready = !!cust && !!ps && !already;
-  const confirm = () => {
+  // Bỏ qua bước sản phẩm → chỉ tạo thẻ KH tạm ở client (chưa ghi DB)
+  const chiThemKH = () => {
     if (!ready) return;
     onAdd({ custId: cust.custId || '', cust: cust.cust, ps, region });
     onClose();
   };
-  if (!open) return null;
-  return h("div", {
-    onClick: onClose,
-    className: "fixed inset-0 z-50 bg-slate-900/40 flex items-start justify-center p-4 pt-24"
-  }, h("div", {
-    onClick: e => e.stopPropagation(),
-    className: "bg-white rounded-lg shadow-xl border border-slate-200 w-[520px] max-w-full"
+  const themSanPham = async (sp) => {
+    const ok = await onAddProduct({ ...sp, custId: cust.custId || '', cust: cust.cust, region });
+    if (ok) setAdded(n => n + 1);
+    return ok;
+  };
+  const coDanhMuc = !!(catIdx && groupsByPs);
+  return h(Modal, {
+    open, onClose,
+    title: step === 1 ? "Thêm khách hàng" : `Sản phẩm đầu tiên · ${cust ? fmtCust(cust.cust) : ''}`,
+    icon: h(UserPlus, { size: 16, className: "text-emerald-600" }),
+    width: step === 1 ? 520 : 760,
+    footer: step === 1
+      ? h("div", { className: "flex items-center gap-2 px-4 py-3 border-t border-slate-100" },
+          h("div", { className: "flex-1" }),
+          h("button", {
+            onClick: onClose,
+            className: "px-3 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
+          }, "Hủy"),
+          // Vẫn giữ đường cũ: tạo thẻ KH rồi thêm sản phẩm sau, cho ai chưa chọn được SP ngay
+          coDanhMuc && h("button", {
+            onClick: chiThemKH,
+            disabled: !ready,
+            className: "px-3 py-1.5 text-[13px] text-slate-600 border border-slate-200 rounded-md hover:bg-slate-100 disabled:opacity-50"
+          }, "Chỉ thêm KH"),
+          h("button", {
+            onClick: () => (coDanhMuc ? setStep(2) : chiThemKH()),
+            disabled: !ready,
+            className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
+          }, coDanhMuc ? "Xác nhận & thêm SP" : h(React.Fragment, null, h(Plus, { size: 14 }), "Xác nhận")))
+      : h("div", { className: "flex items-center gap-2 px-4 py-3 border-t border-slate-100" },
+          added > 0
+            ? h("span", { className: "text-[12px] text-emerald-600" }, "Đã thêm ", added, " sản phẩm — khách hàng đã vào kế hoạch")
+            : h("span", { className: "text-[12px] text-slate-400" }, "Chưa thêm sản phẩm nào thì khách hàng chưa vào kế hoạch"),
+          h("div", { className: "flex-1" }),
+          h("button", {
+            onClick: () => setStep(1),
+            className: "px-3 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
+          }, "Quay lại"),
+          h("button", {
+            onClick: () => { if (added === 0) chiThemKH(); else onClose(); },
+            className: "px-4 py-1.5 text-[13px] font-semibold text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-50"
+          }, added > 0 ? "Xong" : "Bỏ qua, thêm SP sau"))
   },
-    h("div", { className: "flex items-center gap-2 px-4 py-3 border-b border-slate-100" },
-      h(UserPlus, { size: 16, className: "text-emerald-600" }),
-      h("span", { className: "text-[14px] font-semibold text-slate-800" }, "Thêm khách hàng"),
-      h("div", { className: "flex-1" }),
-      h("button", {
-        onClick: onClose, title: "Đóng",
-        className: "p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
-      }, h(XIcon, { size: 16 }))),
-    h("div", { className: "px-4 py-3 space-y-3" },
-      h("div", null, h("label", { className: lbl }, "Khách hàng"),
-        h(CustomerPicker, { customers, value: custKey, onChange: setCustKey, className: sel })),
-      h("div", null,
-        h("label", { className: lbl }, "PS phụ trách",
-          terr && terr.ps.length === 1 && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · theo địa bàn")),
-        h("select", { value: ps, onChange: e => setPs(e.target.value), disabled: !cust, className: sel },
-          h("option", { value: "" }, "— Chọn PS —"),
-          // PS đã khai báo địa bàn cho KH này lên đầu; vẫn cho chọn PS khác vì
-          // địa bàn có thể chưa khai báo kịp (màn "Cấu hình địa bàn" để bù).
-          terr && terr.ps.length > 0 && h("optgroup", { label: "Theo địa bàn đã khai báo" },
-            terr.ps.map(p => h("option", { key: 'd:' + p, value: p }, p))),
-          h("optgroup", { label: "Tất cả PS" },
-            (psOptions || []).map(p => h("option", { key: p, value: p }, p)))),
-        ps && h("p", { className: "text-[11px] text-slate-400 mt-1" },
-          region ? `Miền: ${region} (theo PS)` : 'Miền suy theo PS khi lưu')),
-      already && h("p", { className: "text-[12px] text-amber-600" },
-        "Khách hàng này đã có trong kế hoạch — dùng nút “Thêm SP” ở thẻ của họ."),
-      h("p", { className: "text-[11px] text-slate-400" },
-        "Xác nhận xong, thêm sản phẩm đầu tiên ngay tại thẻ KH thì kế hoạch mới được lưu.")),
-    h("div", { className: "flex items-center gap-2 px-4 py-3 border-t border-slate-100" },
-      h("div", { className: "flex-1" }),
-      h("button", {
-        onClick: onClose,
-        className: "px-3 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
-      }, "Hủy"),
-      h("button", {
-        onClick: confirm,
-        disabled: !ready,
-        className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
-      }, h(Plus, { size: 14 }), "Xác nhận"))));
+    step === 1
+      ? h("div", { className: "px-4 py-3 space-y-3" },
+          h("div", null, h("label", { className: lbl }, "Khách hàng"),
+            h(CustomerPicker, { customers, value: custKey, onChange: setCustKey, className: sel })),
+          h("div", null,
+            h("label", { className: lbl }, "PS phụ trách",
+              terr && terr.ps.length === 1 && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · theo địa bàn")),
+            h("select", { value: ps, onChange: e => setPs(e.target.value), disabled: !cust, className: sel },
+              h("option", { value: "" }, "— Chọn PS —"),
+              // PS đã khai báo địa bàn cho KH này lên đầu; vẫn cho chọn PS khác vì
+              // địa bàn có thể chưa khai báo kịp (màn "Cấu hình địa bàn" để bù).
+              terr && terr.ps.length > 0 && h("optgroup", { label: "Theo địa bàn đã khai báo" },
+                terr.ps.map(p => h("option", { key: 'd:' + p, value: p }, p))),
+              h("optgroup", { label: "Tất cả PS" },
+                (psOptions || []).map(p => h("option", { key: p, value: p }, p)))),
+            ps && h("p", { className: "text-[11px] text-slate-400 mt-1" },
+              region ? `Miền: ${region} (theo PS)` : 'Miền suy theo PS khi lưu')),
+          already && h("p", { className: "text-[12px] text-amber-600" },
+            "Khách hàng này đã có trong kế hoạch — dùng nút “Thêm SP” ở thẻ của họ."))
+      // Bước 2 dùng lại đúng form thêm SP của thẻ KH: thêm được liên tiếp nhiều SP,
+      // mỗi lần bấm "Thêm sản phẩm" là ghi thật xuống DB.
+      : h(ProductPickerForm, {
+          catIdx, groupsByPs, psOptions: [ps], existing: null, priceOf,
+          onSubmit: themSanPham
+        }));
 }
 
 // Thẻ KH vừa thêm nhưng CHƯA có sản phẩm nào → chưa có dòng nào trong DB.
 // Chỉ tồn tại ở client cho tới khi thêm sản phẩm đầu tiên (lúc đó KH xuất hiện
 // trong danh sách thật và thẻ tạm này tự biến mất).
-function NewCustomerCard({ cust, catIdx, groupsByPs, onAddProduct, onDismiss }) {
+function NewCustomerCard({ cust, catIdx, groupsByPs, priceOf, onAddProduct, onDismiss }) {
   const h = React.createElement;
   return h("div", { className: "bg-white rounded-lg border-2 border-dashed border-emerald-300 mb-3 overflow-hidden" },
     h("div", { className: "flex items-stretch" },
@@ -2874,6 +2949,7 @@ function NewCustomerCard({ cust, catIdx, groupsByPs, onAddProduct, onDismiss }) 
       groupsByPs,
       psOptions: [cust.ps],
       existing: null,
+      priceOf,
       onSubmit: s => onAddProduct({ ...s, custId: cust.custId, cust: cust.cust, region: cust.region })
     }));
 }
@@ -4049,6 +4125,27 @@ function App() {
   }, []);
   // Danh sách PS đầy đủ (không lọc) cho panel "Thêm sản phẩm" — vì dm_khach_hang không có PS.
   const allPsList = useMemo(() => Array.from(new Set(rows.map(r => r.ps).filter(Boolean))).sort(), [rows]);
+  // Đơn giá gợi ý khi thêm sản phẩm. Danh mục (dm_bo_vat_tu / _mapping) KHÔNG có
+  // cột đơn giá — giá chỉ nằm trên từng dòng sale_target, nên lấy theo giá đang
+  // dùng nhiều nhất cho đúng (nhóm | bộ vật tư | sản phẩm) đó.
+  const priceOf = useMemo(() => {
+    const cnt = new Map(); // key -> Map(giá -> số dòng)
+    for (const r of rows) {
+      const p = Number(r.price) || 0;
+      if (!p || !r.prod) continue;
+      const k = `${r.grp || ''}||${r.mset || ''}||${r.prod}`;
+      let m = cnt.get(k);
+      if (!m) { m = new Map(); cnt.set(k, m); }
+      m.set(p, (m.get(p) || 0) + 1);
+    }
+    const best = new Map();
+    cnt.forEach((m, k) => {
+      let top = null, n = -1;
+      m.forEach((c, p) => { if (c > n) { n = c; top = p; } });
+      best.set(k, top);
+    });
+    return (grp, mset, prod) => best.get(`${grp || ''}||${mset || ''}||${prod}`) || null;
+  }, [rows]);
   // Ngành hàng để khai báo địa bàn: gộp danh mục SP + kế hoạch + khai báo đã có,
   // vì có thể phải gán một ngành hàng chưa từng xuất hiện trong kế hoạch.
   const allGroupNames = useMemo(() => {
@@ -4520,7 +4617,11 @@ function App() {
     regionsByPs: regionsByPs,
     diaBanByCust: diaBanByCust,
     existingCustKeys: custIndex.has,
-    onAdd: addCustomer
+    catIdx: catalog.length > 0 ? catIdx : null,
+    groupsByPs: groupsByPs,
+    priceOf: priceOf,
+    onAdd: addCustomer,
+    onAddProduct: addProduct
   }), tab === 'diaban' ? /*#__PURE__*/React.createElement(DiaBanView, {
     rows: effectiveRows,
     diaBan: diaBan,
@@ -4561,6 +4662,7 @@ function App() {
     cust: c,
     catIdx: catIdx,
     groupsByPs: groupsByPs,
+    priceOf: priceOf,
     onAddProduct: addProduct,
     onDismiss: () => setNewCusts(prev => prev.filter(x => (x.custId || x.cust) !== (c.custId || c.cust)))
   })), tree.length === 0 ? pendingCusts.length === 0 && /*#__PURE__*/React.createElement("div", {
@@ -4578,6 +4680,7 @@ function App() {
     onToggleBasePlan: () => setShowBasePlan(v => !v),
     catIdx: catalog.length > 0 ? catIdx : null,
     groupsByPs: groupsByPs,
+    priceOf: priceOf,
     onAddProduct: addProduct,
     onDeleteCustomer: deleteCustomer
   })))));
