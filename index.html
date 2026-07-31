@@ -104,6 +104,13 @@ const MONTHS = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'
 const MONTH_LABELS = ['T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T1', 'T2', 'T3'];
 const CURRENT_MONTH = '2026-07'; // ← đổi mỗi tháng để khoá các tháng trước
 const CURRENT_MONTH_IDX = MONTHS.indexOf(CURRENT_MONTH);
+// Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại (gồm cả tháng hiện tại) — dùng chung cho
+// màn chi tiết và 2 màn tổng hợp để 3 màn không lệch nhau.
+// Hệ quả: "KH còn lại YTD" là kế hoạch TỪ THÁNG SAU trở đi (tháng hiện tại đã tính
+// theo số thực hiện, không đếm hai lần).
+// Lưu ý: tháng hiện tại vẫn SỬA được và số update của nó vẫn vào DThu update —
+// chỉ phần luỹ kế/quota khả dụng là lấy theo thực hiện.
+const isYtdMonth = mo => (mo || '') <= CURRENT_MONTH;
 const NOTE_MONTH = MONTHS[Math.max(0, CURRENT_MONTH_IDX - 1)]; // giải trình lưu vào tháng hiện tại − 1
 // Nhãn hiển thị cho sản phẩm không có bộ vật tư (bo_vat_tu rỗng trong DB).
 const NO_MSET = '(Không phân loại)';
@@ -839,15 +846,15 @@ function ProductRow({
       if (!price && r.price) price = Number(r.price) || 0; // hiển thị đơn giá đại diện
     });
     let revBase = 0,
-      slUpd = 0,   // tổng SL update = thực hiện YTD (quá khứ) + SL KH update các tháng còn lại
-      ytd = 0,
+      khLeft = 0,  // KH còn lại YTD = SL KH update các tháng SAU tháng hiện tại
+      ytd = 0,     // Thực hiện YTD = SL thực hiện đến hết tháng hiện tại
       dtBase = 0,
       dtUpd = 0;
     monthly.forEach((c, i) => {
       revBase += c.rev;
-      const past = MONTHS[i] < CURRENT_MONTH;
-      slUpd += past ? c.act : c.hasUpd ? c.revUpd : c.rev;
-      if (past) ytd += c.act; // Thực hiện YTD = tổng SL thực hiện các tháng đã qua
+      const past = MONTHS[i] < CURRENT_MONTH; // tháng đã đóng → DThu update lấy theo thực hiện
+      if (isYtdMonth(MONTHS[i])) ytd += c.act;
+      else khLeft += c.hasUpd ? c.revUpd : c.rev;
       // doanh thu tính theo ĐƠN GIÁ TỪNG DÒNG
       c.rows.forEach(r => {
         const pr = Number(r.price) || 0;
@@ -862,11 +869,11 @@ function ProductRow({
       qMain,
       qAdd,
       ytd,
-      slUpd,
+      khLeft,
       price,
       totalQuota,
-      // Quota khả dụng còn lại = tổng quota − tổng SL update (thực hiện YTD + KH update các tháng còn lại)
-      quotaAvailable: totalQuota - slUpd,
+      // Quota khả dụng còn lại = tổng quota − (thực hiện YTD + KH còn lại YTD)
+      quotaAvailable: totalQuota - (ytd + khLeft),
       dtBase,
       dtUpd,
       chenh: dtUpd - dtBase
@@ -1559,8 +1566,8 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
     );
     // moKh[]  = SL KH update từng tháng (kế hoạch đã update, mọi tháng)
     // moAct[] = SL thực hiện từng tháng (chỉ có số ở tháng đã qua / tháng hiện tại)
-    // thYtd = tổng thực hiện luỹ kế (các tháng đã qua)
-    // khYtd = tổng KH update THÔ luỹ kế (các tháng đã qua) → dùng để tính % TH YTD
+    // thYtd = tổng thực hiện luỹ kế (đến hết tháng hiện tại)
+    // khYtd = tổng KH update THÔ luỹ kế (đến hết tháng hiện tại) → dùng để tính % TH YTD
     const blank = () => ({ moKh: MONTHS.map(() => 0), moAct: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
     const prodMap = new Map();
     for (const r of filtered) {
@@ -1572,7 +1579,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
       const rKey = r.region || '(Không rõ miền)';
       if (!p.regMap.has(rKey)) p.regMap.set(rKey, { region: rKey, custMap: new Map(), ...blank() });
       const cell = p.regMap.get(rKey);
-      const isPast = (r.mo || '') < CURRENT_MONTH;
+      const isPast = isYtdMonth(r.mo); // luỹ kế YTD gồm cả tháng hiện tại
       const act = Number(r.act) || 0;
       const planUpd = (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null)
         ? (Number(r.revUpd) || 0) : (Number(r.rev) || 0);
@@ -1623,9 +1630,10 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
 
   const toggle = (k) => setOpen(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
-  // KH còn lại YTD = tổng SL KH update từ THÁNG HIỆN TẠI đến cuối năm (gồm cả tháng hiện tại)
+  // KH còn lại YTD = tổng SL KH update từ THÁNG SAU tháng hiện tại đến cuối năm
+  // (tháng hiện tại đã nằm trong luỹ kế YTD theo số thực hiện → không đếm hai lần)
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
-  const sumFromNow = (mo) => mo.reduce((s, v, i) => (i >= curIdx ? s + v : s), 0);
+  const sumFromNow = (mo) => mo.reduce((s, v, i) => (i > curIdx ? s + v : s), 0);
   // Tháng đã qua + tháng hiện tại mới có thực hiện → hiện đủ 3 cột con; tháng tương lai chỉ 1 cột KH update
   const hasAct = (i) => i <= curIdx;
   const N_COLS = 1 + MONTHS.reduce((s, _, i) => s + (hasAct(i) ? 3 : 1), 0) + 3 + 3;
@@ -1675,7 +1683,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
     return out;
   };
 
-  // Luỹ kế YTD (các tháng đã hoàn thành, không tính tháng hiện tại)
+  // Luỹ kế YTD (đến hết tháng hiện tại)
   const ytdCells = (node, extra) => [
     h('td', { key: 'yk', className: `px-3 py-1.5 text-right text-[12px] tabular-nums bg-amber-50/40 ${extra || ''}` }, fmtInt(node.khYtd)),
     h('td', { key: 'ya', className: `px-3 py-1.5 text-right text-[12px] tabular-nums text-orange-700 bg-amber-50/40 ${extra || ''}` }, fmtInt(node.thYtd)),
@@ -1828,7 +1836,7 @@ function exportSummaryPS(data) {
       '   '.repeat(level) + label,
       Number.isFinite(d.custCount) ? d.custCount : '',
       Number.isFinite(d.prodCount) ? d.prodCount : '',
-      Math.round(d.quotaFY || 0), Math.round(d.ytd || 0), Math.round((d.slUpd || 0) - (d.ytd || 0)), d.quotaAvail == null ? '-' : Math.round(d.quotaAvail),
+      Math.round(d.quotaFY || 0), Math.round(d.ytd || 0), Math.round(d.khLeft || 0), d.quotaAvail == null ? '-' : Math.round(d.quotaAvail),
       tr(dt), tr(dtYtd), tr(dtUpd), tr(ch),
       dt ? ch / dt : '', dtUpd ? dtYtd / dtUpd : '', note || ''
     ]);
@@ -1876,7 +1884,7 @@ function exportProductSummary(data) {
   const XLSX = window.XLSX;
   if (!XLSX) { alert('Chưa tải được thư viện Excel, vui lòng tải lại trang rồi thử lại.'); return; }
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
-  const conLai = mo => mo.reduce((s, v, i) => (i >= curIdx ? s + v : s), 0);
+  const conLai = mo => mo.reduce((s, v, i) => (i > curIdx ? s + v : s), 0); // KH từ tháng SAU
   const hasAct = i => i <= curIdx;
   // Header 2 tầng: tháng đã qua/hiện tại gộp 3 cột con (KH update / Thực hiện / % TH), tháng tương lai 1 cột
   const H1 = ['Sản phẩm / Miền / KH'], H2 = [''];
@@ -1993,7 +2001,7 @@ function SummaryView({
         dtUpd: 0,
         quotaFY: 0,
         ytd: 0,
-        slUpd: 0,
+        khLeft: 0,
         prods: new Set(),
         subMap: new Map(),  // chỉ nhóm "Ngoài kế hoạch" dùng: KH thật → { grpMap }
         grpMap: new Map()   // Nhóm SP → { prodMap: Sản phẩm }
@@ -2002,7 +2010,8 @@ function SummaryView({
       const c = ps.custMap.get(cKey);
       if (r.mo === NOTE_MONTH && r.note) c.note = r.note;
       const price = Number(r.price) || 0; // đơn giá TỪNG DÒNG
-      const isPast = (r.mo || '') < CURRENT_MONTH;
+      const isPast = (r.mo || '') < CURRENT_MONTH; // tháng đã đóng → DThu update lấy theo thực hiện
+      const inYtd = isYtdMonth(r.mo);              // luỹ kế YTD gồm cả tháng hiện tại
       const actQty = Number(r.act) || 0;
       const updQty = isPast ? actQty : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
       // Delta của DÒNG này — dùng chung cho cả 3 cấp: KH → Nhóm SP → Sản phẩm
@@ -2010,14 +2019,15 @@ function SummaryView({
       const dDt = dSl * price;
       const dDtUpd = updQty * price;
       const dQuota = (Number(r.qOld) || 0) + (Number(r.qMain) || 0) + (Number(r.qAdd) || 0);
-      const dYtd = isPast ? actQty : 0;
-      const dDtYtd = isPast ? actQty * price : 0;
+      const dYtd = inYtd ? actQty : 0;
+      const dDtYtd = inYtd ? actQty * price : 0;
+      const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const bump = o => {
         o.dt += dDt;
         o.dtUpd += dDtUpd;
         o.quotaFY += dQuota;
         o.ytd += dYtd;
-        o.slUpd += updQty; // tổng SL update = thực hiện YTD (quá khứ) + KH update các tháng còn lại
+        o.khLeft += dKhLeft;
         o.dtYtd += dDtYtd;
       };
       const prodKey = `${r.grp}||${r.mset}||${r.prod}`;
@@ -2036,7 +2046,7 @@ function SummaryView({
       const gKey = r.grp || '(Không rõ nhóm)';
       if (!host.grpMap.has(gKey)) host.grpMap.set(gKey, {
         grp: gKey,
-        dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0,
+        dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, khLeft: 0,
         prodMap: new Map()
       });
       const gNode = host.grpMap.get(gKey);
@@ -2046,7 +2056,7 @@ function SummaryView({
       if (!gNode.prodMap.has(pKey)) gNode.prodMap.set(pKey, {
         prod: r.prod || '—',
         mset: r.mset || '',
-        dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0
+        dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, khLeft: 0
       });
       bump(gNode.prodMap.get(pKey));
     }
@@ -2056,7 +2066,7 @@ function SummaryView({
       dtUpd: 0,
       quotaFY: 0,
       ytd: 0,
-      slUpd: 0,
+      khLeft: 0,
       prodCount: 0,
       custCount: 0
     });
@@ -2066,7 +2076,7 @@ function SummaryView({
       a.dtUpd += c.dtUpd;
       a.quotaFY += c.quotaFY;
       a.ytd += c.ytd;
-      a.slUpd += c.slUpd;
+      a.khLeft += c.khLeft;
       a.prodCount += c.prodCount;
       return a;
     };
@@ -2075,7 +2085,7 @@ function SummaryView({
         // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
         const buildCust = (c) => {
           // KH ngoài kế hoạch: quotaAvail = null → hiển thị "—" (không tính, không để âm)
-          const avail = (o) => c.oop ? null : o.quotaFY - o.slUpd;
+          const avail = (o) => c.oop ? null : o.quotaFY - (o.ytd + o.khLeft);
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
           const grps = Array.from(c.grpMap.values()).map(gp => {
             const prods = Array.from(gp.prodMap.values()).map(pp => ({
@@ -2109,7 +2119,7 @@ function SummaryView({
           ps: ps.ps,
           custs,
           ...tot,
-          quotaAvail: tot.quotaFY - tot.slUpd
+          quotaAvail: tot.quotaFY - (tot.ytd + tot.khLeft)
         };
       });
       psList.sort((a, b) => b.dt - a.dt);
@@ -2122,7 +2132,7 @@ function SummaryView({
         region: reg.region,
         psList,
         ...tot,
-        quotaAvail: tot.quotaFY - tot.slUpd
+        quotaAvail: tot.quotaFY - (tot.ytd + tot.khLeft)
       };
     });
     regions.sort((a, b) => b.dt - a.dt);
@@ -2131,7 +2141,7 @@ function SummaryView({
       a.custCount += rg.custCount;
       return a;
     }, fold());
-    grand.quotaAvail = grand.quotaFY - grand.slUpd;
+    grand.quotaAvail = grand.quotaFY - (grand.ytd + grand.khLeft);
     return {
       regions,
       grand
@@ -2213,7 +2223,7 @@ function SummaryView({
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
   }, fmtInt(g.ytd)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200"
-  }, fmtInt(g.slUpd - g.ytd)), /*#__PURE__*/React.createElement("td", {
+  }, fmtInt(g.khLeft)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
   }, fmtInt(g.quotaAvail)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
@@ -2231,7 +2241,7 @@ function SummaryView({
     className: "px-4 py-2.5"
   })))))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-2"
-  }, "Doanh thu = SL × đơn giá (theo từng dòng); ≥1 tỷ hiện theo tỷ (3 số lẻ), nhỏ hơn hiện theo triệu. Thực hiện YTD = tổng SL thực hiện các tháng đã qua. KH còn lại YTD = tổng SL KH update từ tháng hiện tại đến hết năm. Khả dụng còn lại = Tổng Quota − (Thực hiện YTD + KH còn lại YTD). Chênh lệch = DThu update − DThu đầu năm. % Chênh lệch = Chênh lệch / DThu KH đầu năm. % Thực hiện YTD = DThu thực hiện YTD / DThu KH update."));
+  }, "Doanh thu = SL × đơn giá (theo từng dòng); ≥1 tỷ hiện theo tỷ (3 số lẻ), nhỏ hơn hiện theo triệu. Thực hiện YTD = tổng SL thực hiện luỹ kế ĐẾN HẾT tháng hiện tại. KH còn lại YTD = tổng SL KH update từ tháng SAU tháng hiện tại đến hết năm. Khả dụng còn lại = Tổng Quota − (Thực hiện YTD + KH còn lại YTD). Chênh lệch = DThu update − DThu đầu năm. % Chênh lệch = Chênh lệch / DThu KH đầu năm. % Thực hiện YTD = DThu thực hiện YTD / DThu KH update."));
 }
 const chCls = v => v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
 // % Thực hiện YTD = DThu thực hiện YTD / DThu KH update cả năm
@@ -2241,8 +2251,7 @@ function StatCells({
   size
 }) {
   const ch = d.dtUpd - d.dt;
-  // KH còn lại YTD = tổng SL KH update từ tháng hiện tại đến cuối năm = tổng SL update − thực hiện YTD
-  const khLeft = (d.slUpd || 0) - (d.ytd || 0);
+  const khLeft = d.khLeft || 0; // KH update các tháng SAU tháng hiện tại
   const p = size === 'sm' ? 'py-1.5 text-[12px]' : 'py-2 text-[13px]';
   const num = size === 'sm' ? 'text-slate-600' : 'text-slate-700';
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", {

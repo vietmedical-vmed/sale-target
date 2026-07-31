@@ -264,8 +264,15 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 **`users`** — tài khoản: `username`, `password_hash` (SHA-256), `role`, `scope`, `bu`.
 
 ### 7.2 Chỉ số & công thức
-- **Thực hiện YTD** = tổng `sl_thuc_hien` các tháng đã qua.
-- **KH còn lại YTD** = tổng SL kế hoạch update từ tháng hiện tại trở đi (`sumFromNow`).
+- **Thực hiện YTD** = tổng `sl_thuc_hien` luỹ kế **đến hết tháng hiện tại** (mốc dùng
+  chung: `isYtdMonth(mo)` = `mo <= CURRENT_MONTH`, áp dụng cho cả màn chi tiết và 2 màn
+  tổng hợp). Trước đây chỉ tính các tháng đã đóng, nên phát sinh của chính tháng hiện tại
+  — nhất là phần **ngoài kế hoạch** vốn không có số kế hoạch nào khác — không hiện ở đâu.
+- **KH còn lại YTD** = tổng SL kế hoạch update **từ tháng SAU tháng hiện tại** trở đi
+  (`sumFromNow`); tháng hiện tại đã tính theo thực hiện nên không đếm hai lần.
+- Mốc này **khác** mốc "tháng đã đóng" (`mo < CURRENT_MONTH`) — mốc đó vẫn quyết định
+  tháng nào bị khoá sửa và tháng nào lấy thực hiện làm số chốt cho **DThu update**.
+  Tháng hiện tại vẫn sửa được `revUpd` và số đó vẫn vào DThu update / % Chênh lệch.
 - **Tổng Quota** = quota thầu cũ còn lại + quota thầu chính + quota bổ sung (theo cấp tổng hợp).
 - **Quota khả dụng còn lại** = Tổng Quota − (Thực hiện YTD + KH còn lại YTD).
 - **Doanh thu** = SL × đơn giá (đầu năm vs update) → **chênh lệch doanh thu** (tô xanh nếu dương, đỏ nếu âm).
