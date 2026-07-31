@@ -200,7 +200,8 @@ Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách**
 | **Chuyển team (TeamSwitcher)** | Chỉ admin/manager: chọn 1 team hoặc "Tất cả". |
 | **Thêm sản phẩm** | Chọn Khách hàng (từ `dm_khach_hang`, có ô tìm kiếm gần đúng), Miền, PS, Nhóm SP, Bộ vật tư, Sản phẩm + **nhập đơn giá tay** (đơn vị tr.VND, ghi DB theo VND) → sinh **12 dòng** (một dòng/tháng, 04/2026 → 03/2027), gắn `bu` của người tạo. Danh mục không giữ giá nên đơn giá phải nhập. |
 | **Ô tìm kiếm** | Tìm gần đúng theo tên KH / mã KH / sản phẩm / bộ vật tư. Dùng ở màn chi tiết **và 2 màn tổng hợp** (dùng chung 1 ô, giữ nguyên chữ khi chuyển tab). |
-| **Header dính** | 2 màn tổng hợp: khung bảng cao vừa hết màn hình (`useFitHeight`) nên chỉ bảng cuộn dọc, `<thead>` `position: sticky` đứng yên khi cuộn. Không đo được chiều cao màn hình (nhúng/snapshot) hoặc màn thấp < 400px → bỏ giới hạn chiều cao, bảng hiển thị như cũ. |
+| **Header dính** | 2 màn tổng hợp: khung bảng cao gần trọn màn hình (`useFitHeight` = `vh − chiều cao thanh tiêu đề dính − 32`) nên chỉ bảng cuộn dọc, `<thead>` `position: sticky` đứng yên khi cuộn. Là `max-height` nên ở layer mặc định bảng ngắn vẫn hiện đủ, không sinh thanh cuộn; bảng dài hơn khung thì kéo trang xuống **một lần** lúc mở màn cho khung nằm ngay dưới thanh tiêu đề. Không đo được chiều cao màn hình (nhúng/snapshot) hoặc màn thấp < 400px → bỏ giới hạn chiều cao, bảng hiển thị như cũ. |
+| **Xuất Excel (nút)** | Nút nằm trên **thanh bộ lọc**, không nằm trong vùng bảng. Màn tổng hợp đang mở đăng ký hàm xuất qua prop `onExport`; đổi tab thì nút tự đổi theo, sang màn chi tiết/địa bàn thì nút ẩn. |
 | **Xuất Excel** | Xuất giữ nguyên cấu trúc phân cấp (gập/mở), header gộp (merge), dùng thư viện SheetJS (xlsx). |
 | **Đồng bộ (rev)** | Phát hiện thay đổi dữ liệu qua `rev`/`getRev`. |
 | **Đổi mật khẩu** | Ngay tại màn đăng nhập. |

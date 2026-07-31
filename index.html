@@ -1556,21 +1556,32 @@ function CustomerCard({
   }))));
 }
 
-// Khung bảng cao vừa hết màn hình → chỉ có bảng cuộn dọc, nhờ đó header dính
-// (.sticky-head) luôn nằm trong tầm nhìn. Đo theo vị trí so với ĐẦU TRANG (không
-// phụ thuộc đang cuộn tới đâu) nên không có vòng lặp co/giãn khi cuộn.
+// Khung bảng cao gần trọn màn hình → chỉ có bảng cuộn dọc, nhờ đó header dính
+// (.sticky-head) luôn nằm trong tầm nhìn.
+// Chiều cao KHÔNG trừ phần thẻ số + bộ lọc phía trên (thanh tiêu đề mới là thứ dính
+// lại), nếu trừ thì khung chỉ còn ~340px — lùn. Đổi lại, khi bảng dài hơn khung thì
+// kéo trang xuống 1 lần cho khung nằm ngay dưới thanh tiêu đề, chiếm trọn màn hình.
+// Là max-height nên bảng ngắn (layer mặc định) vẫn hiện đủ, không sinh thanh cuộn.
 function useFitHeight() {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    let firstFit = true;
     const fit = () => {
       const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-      const docTop = el.getBoundingClientRect().top + window.scrollY;
-      const h = vh - docTop - 16;
+      const bar = document.querySelector('header.sticky')?.offsetHeight || 0;
+      const h = vh - bar - 32; // chừa lề dưới
       // Không đo được chiều cao (nhúng/snapshot) hoặc màn quá thấp → để bảng cao tự
       // nhiên như cũ, thà mất header dính còn hơn ép bảng lùn tịt.
-      el.style.maxHeight = (vh < 400 || h < 320) ? '' : h + 'px';
+      if (vh < 400 || h < 320) { el.style.maxHeight = ''; return; }
+      el.style.maxHeight = h + 'px';
+      if (firstFit && el.scrollHeight > el.clientHeight + 4) {
+        const docTop = el.getBoundingClientRect().top + window.scrollY;
+        // chỉ kéo xuống, không bao giờ giật ngược lên chỗ người dùng đang xem
+        if (window.scrollY < docTop - bar) window.scrollTo(0, docTop - bar);
+      }
+      firstFit = false;
     };
     fit();
     window.addEventListener('resize', fit);
@@ -1585,7 +1596,7 @@ const matchSearch = (r, q) => !q || (r.cust || '').toLowerCase().includes(q) ||
   (r.mset || '').toLowerCase().includes(q);
 
 // ============ TỔNG HỢP THEO SẢN PHẨM (layer Sản phẩm / Miền) ============
-function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFilter, search }) {
+function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFilter, search, onExport }) {
   const h = React.createElement;
   const [open, setOpen] = useState(() => new Set());
   const boxRef = useFitHeight();
@@ -1740,8 +1751,13 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
   // Cột nhãn dính trái khi cuộn ngang — nền phải đục, không dùng màu trong suốt
   const stickyLabel = (bg) => `sticky left-0 z-10 border-r border-slate-200 ${bg}`;
 
+  // Nút xuất Excel nằm trên thanh bộ lọc (do App vẽ) → đăng ký hàm xuất lên đó
+  useEffect(() => {
+    onExport(() => exportProductSummary(data));
+    return () => onExport(null);
+  }, [data, onExport]);
+
   return h('div', { className: 'px-6 pb-8' },
-    h(ExcelBtn, { onClick: () => exportProductSummary(data) }),
     h('div', { className: 'bg-white rounded-lg border border-slate-200 overflow-hidden' },
       h('div', { ref: boxRef, className: 'overflow-auto scroll-shadow' },
         h('table', { className: 'w-full border-collapse sticky-head' },
@@ -1989,15 +2005,6 @@ function exportProductSummary(data) {
   XLSX.writeFile(wb, `TongHop_theo_SP_${_today()}.xlsx`);
 }
 
-function ExcelBtn({ onClick }) {
-  return /*#__PURE__*/React.createElement("div", {
-    className: "flex justify-end mb-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: onClick,
-    className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 shadow-sm"
-  }, /*#__PURE__*/React.createElement(Download, { size: 14 }), "Xuất Excel (giữ cấu trúc)"));
-}
-
 // ============ SUMMARY (Tổng hợp theo Miền / PS / Khách hàng) ============
 function SummaryView({
   rows,
@@ -2005,7 +2012,8 @@ function SummaryView({
   regionFilter,
   custFilter,
   groupFilter,
-  search
+  search,
+  onExport
 }) {
   const boxRef = useFitHeight();
   const data = useMemo(() => {
@@ -2187,11 +2195,14 @@ function SummaryView({
   }, [rows, psFilter, regionFilter, custFilter, groupFilter, search]);
   const g = data.grand;
   const chG = g.dtUpd - g.dt;
+  // Nút xuất Excel nằm trên thanh bộ lọc (do App vẽ) → đăng ký hàm xuất lên đó
+  useEffect(() => {
+    onExport(() => exportSummaryPS(data));
+    return () => onExport(null);
+  }, [data, onExport]);
   return /*#__PURE__*/React.createElement("div", {
     className: "px-6 pb-8"
-  }, /*#__PURE__*/React.createElement(ExcelBtn, {
-    onClick: () => exportSummaryPS(data)
-  }), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg border border-slate-200 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     ref: boxRef,
@@ -3522,6 +3533,10 @@ function App() {
   const [stale, setStale] = useState(false);
   const [maskMoney, setMaskMoney] = useState(true);
   const [showBasePlan, setShowBasePlan] = useState(true);
+  // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
+  // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
+  const [exportFn, setExportFn] = useState(null);
+  const setExporter = useCallback(fn => setExportFn(() => fn), []);
   MASK_MONEY = maskMoney;
   const canEdit = auth.role === 'admin' || auth.role === 'ps';
   const isAdmin = auth.role === 'admin';
@@ -4456,7 +4471,11 @@ function App() {
     onClick: () => setShowBasePlan(v => !v),
     title: showBasePlan ? 'Ẩn cột SL kế hoạch đầu năm để thu gọn bảng' : 'Hiện lại cột SL kế hoạch đầu năm',
     className: `flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] rounded-md border ${showBasePlan ? 'border-slate-200 text-slate-700 hover:bg-slate-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`
-  }, showBasePlan ? /*#__PURE__*/React.createElement(EyeOff, { size: 14 }) : /*#__PURE__*/React.createElement(Eye, { size: 14 }), showBasePlan ? 'Ẩn SL đầu năm' : 'Hiện SL đầu năm'), tab !== 'diaban' && /*#__PURE__*/React.createElement("div", {
+  }, showBasePlan ? /*#__PURE__*/React.createElement(EyeOff, { size: 14 }) : /*#__PURE__*/React.createElement(Eye, { size: 14 }), showBasePlan ? 'Ẩn SL đầu năm' : 'Hiện SL đầu năm'), exportFn && /*#__PURE__*/React.createElement("button", {
+    onClick: exportFn,
+    title: "Xuất Excel giữ nguyên cấu trúc gập/mở",
+    className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
+  }, /*#__PURE__*/React.createElement(Download, { size: 14 }), "Xuất Excel"), tab !== 'diaban' && /*#__PURE__*/React.createElement("div", {
     className: "relative"
   }, /*#__PURE__*/React.createElement(Search, {
     size: 14,
@@ -4497,14 +4516,16 @@ function App() {
     regionFilter: regionFilter,
     custFilter: custFilter,
     groupFilter: groupFilter,
-    search: search
+    search: search,
+    onExport: setExporter
   }) : tab === 'prodsum' ? /*#__PURE__*/React.createElement(ProductSummaryView, {
     rows: summaryRows,
     psFilter: psFilter,
     regionFilter: regionFilter,
     custFilter: custFilter,
     groupFilter: groupFilter,
-    search: search
+    search: search,
+    onExport: setExporter
   }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "px-6 pb-8"
   }, canEdit && pendingCusts.map(c => /*#__PURE__*/React.createElement(NewCustomerCard, {
