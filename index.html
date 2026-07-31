@@ -2640,30 +2640,34 @@ function Modal({ open, onClose, title, icon, width = 560, children, footer }) {
     footer));
 }
 
+// Form thêm sản phẩm (dùng trong popup ở thẻ KH và ở bước 2 của popup thêm KH).
+// Chọn ĐƯỢC NHIỀU sản phẩm một lượt: mỗi dòng tick là 1 sản phẩm + 1 đơn giá riêng,
+// bấm 1 lần thêm hết (mỗi sản phẩm vẫn là 12 dòng T4→T3, SL = 0).
 function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, onSubmit }) {
   const h = React.createElement;
   const opts = psOptions && psOptions.length ? psOptions : [];
   const [ps, setPs] = useState(opts.length === 1 ? opts[0] : '');
   const [grp, setGrp] = useState('');
   const [mset, setMset] = useState('');
-  const [prod, setProd] = useState('');
-  // Thêm CẢ BỘ hay một VẬT TƯ RIÊNG LẺ trong bộ:
-  //   - cả bộ    → san_pham ghi vào DB = đúng tên bộ vật tư, không phải chọn gì thêm.
-  //   - riêng lẻ → chọn 1 sản phẩm thuộc bộ đó trong danh mục.
-  const [wholeSet, setWholeSet] = useState(false);
+  // Thêm CẢ BỘ hay các VẬT TƯ RIÊNG LẺ trong bộ:
+  //   - cả bộ    → san_pham ghi vào DB = đúng tên bộ vật tư, chỉ có 1 dòng để tick.
+  //   - riêng lẻ → tick bao nhiêu vật tư trong bộ cũng được.
+  const [mode, setMode] = useState('le');
   // Đơn giá theo tr.VND cho khớp mọi chỗ hiển thị, ghi DB theo VND (×1e6).
-  // Nhận cả dấu phẩy thập phân kiểu vi-VN ("1,5").
-  // Mặc định lấy đơn giá đang dùng cho đúng (nhóm|bộ vật tư|sản phẩm) đó trong kế
-  // hoạch — danh mục không có cột đơn giá. Chưa có ở đâu thì để trống, nhập tay.
-  const [priceTr, setPriceTr] = useState('');
-  const [priceAuto, setPriceAuto] = useState(false); // giá đang là giá gợi ý, chưa sửa tay
+  // Nhận cả dấu phẩy thập phân kiểu vi-VN ("1,5"). Mặc định lấy đơn giá đang dùng
+  // cho đúng vật tư đó trong kế hoạch (danh mục không có cột đơn giá).
+  const [sel, setSel] = useState(() => new Map()); // tên SP -> đơn giá (chuỗi tr.VND)
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(0);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
-  const priceVnd = useMemo(() => {
-    const n = parseFloat(String(priceTr).replace(/\s/g, '').replace(',', '.'));
+
+  const parseTr = (v) => {
+    const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
     return Number.isFinite(n) && n > 0 ? Math.round(n * 1e6) : null;
-  }, [priceTr]);
+  };
+  const fmtTr = (vnd) => (vnd ? String(vnd / 1e6).replace('.', ',') : '');
+
   // Nhóm SP được phép chọn = nhóm PS đó ĐANG phụ trách (lấy từ dữ liệu kế hoạch, vốn
   // đã lọc theo team đang xem) ∩ danh mục. Không cho PS thêm sang nhóm không phải của mình.
   const groups = useMemo(() => {
@@ -2672,55 +2676,89 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
     if (!allowed) return [];
     return catIdx.groups.filter(g => allowed.has(g));
   }, [catIdx, groupsByPs, ps]);
-  // Đổi PS thì nhóm/bộ vật tư/sản phẩm đã chọn có thể không còn hợp lệ → xoá chọn.
-  useEffect(() => {
-    setGrp(''); setMset(''); setProd(''); setWholeSet(false); setPriceTr(''); setPriceAuto(false); setMsg('');
-  }, [ps]);
   const msets = useMemo(() => grp ? catIdx.msetsOf(grp) : [], [catIdx, grp]);
   const prods = useMemo(() => grp ? catIdx.prodsOf(grp, mset) : [], [catIdx, grp, mset]);
   // NO_MSET chỉ là nhãn hiển thị cho nhóm không phân loại → ghi DB là rỗng.
   const msetVal = mset === NO_MSET ? '' : mset;
-  // "Cả bộ" chỉ có nghĩa khi đã chọn một bộ vật tư thật.
-  const canWholeSet = !!msetVal;
-  useEffect(() => { if (!canWholeSet) setWholeSet(false); }, [canWholeSet]);
-  // Tên sản phẩm ghi vào DB: cả bộ → chính tên bộ vật tư; riêng lẻ → SP đã chọn.
-  const prodName = wholeSet ? msetVal : prod;
-  // Chọn xong sản phẩm → điền sẵn đơn giá đang dùng cho vật tư đó. Chỉ ghi đè khi ô
-  // đang trống hoặc đang giữ giá gợi ý trước đó, không đụng vào giá người dùng tự gõ.
-  const suggested = useMemo(
-    () => (priceOf && grp && prodName ? priceOf(grp, msetVal, prodName) : null),
-    [priceOf, grp, msetVal, prodName]
-  );
-  useEffect(() => {
-    if (!priceAuto && priceTr) return; // đang là giá gõ tay → giữ nguyên
-    if (suggested) {
-      setPriceTr(String(suggested / 1e6).replace('.', ','));
-      setPriceAuto(true);
-    } else if (priceAuto) {
-      setPriceTr('');
-      setPriceAuto(false);
+  const canWholeSet = !!msetVal; // "cả bộ" chỉ có nghĩa khi đã chọn một bộ vật tư thật
+  useEffect(() => { if (!canWholeSet && mode === 'bo') setMode('le'); }, [canWholeSet, mode]);
+
+  // Danh sách dòng để tick: cả bộ → đúng 1 dòng là tên bộ; riêng lẻ → các vật tư trong bộ.
+  const items = useMemo(() => {
+    if (!grp) return [];
+    if (mode === 'bo') return canWholeSet ? [msetVal] : [];
+    const seen = new Set();
+    const out = [];
+    for (const c of prods) {
+      if (c.prod && !seen.has(c.prod)) { seen.add(c.prod); out.push(c.prod); }
     }
-  }, [suggested]);
-  const dupKey = grp && prodName ? `${ps}||${grp}||${msetVal}||${prodName}` : '';
-  const isDup = !!(dupKey && existing && existing.has(dupKey));
-  const ready = !!(ps && grp && prodName && priceVnd != null && !isDup);
+    return out;
+  }, [grp, mode, prods, msetVal, canWholeSet]);
+  const isDup = (name) => !!(existing && existing.has(`${ps}||${grp}||${msetVal}||${name}`));
+  const conTrong = useMemo(() => items.filter(n => !isDup(n)), [items, existing, ps, grp, msetVal]);
+
+  // Đổi PS / nhóm / bộ / kiểu chọn thì bỏ hết tick cũ (không còn hợp lệ).
+  useEffect(() => { setSel(new Map()); setMsg(''); setErr(''); }, [ps, grp, mset, mode]);
+
+  const toggle = (name) => setSel(prev => {
+    const n = new Map(prev);
+    if (n.has(name)) n.delete(name);
+    else n.set(name, fmtTr(priceOf && priceOf(grp, msetVal, name)));
+    return n;
+  });
+  const setPrice = (name, v) => setSel(prev => {
+    const n = new Map(prev);
+    n.set(name, v);
+    return n;
+  });
+  const chonHet = () => setSel(prev => prev.size >= conTrong.length
+    ? new Map()
+    : new Map(conTrong.map(n => [n, fmtTr(priceOf && priceOf(grp, msetVal, n))])));
+
+  const thieuGia = useMemo(
+    () => Array.from(sel.entries()).filter(([, v]) => parseTr(v) == null).map(([k]) => k),
+    [sel]
+  );
+  const ready = !!ps && !!grp && sel.size > 0 && thieuGia.length === 0 && !busy;
   const lbl = "block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1";
-  const sel = "w-full px-2.5 py-2 text-[13px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50";
+  const sels = "w-full px-2.5 py-2 text-[13px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50";
+
   const confirm = async () => {
-    if (!ready || busy) return;
-    setBusy(true); setMsg(''); setErr('');
-    const ok = await onSubmit({ ps, grp, mset: msetVal, prod: prodName, price: priceVnd });
+    if (!ready) return;
+    setBusy(true); setMsg(''); setErr(''); setDone(0);
+    const list = Array.from(sel.entries());
+    let ok = 0;
+    for (const [name, priceTr] of list) {
+      const res = await onSubmit({ ps, grp, mset: msetVal, prod: name, price: parseTr(priceTr) });
+      if (!res) { setErr(`Dừng ở "${name}" — xem thông báo lỗi phía trên.`); break; }
+      ok++;
+      setDone(ok);
+    }
     setBusy(false);
-    // Xoá luôn đơn giá cùng với sản phẩm: giữ lại dễ vô tình gán giá của SP trước
-    // cho SP tiếp theo. Giữ nguyên tick "cả bộ" để thêm liên tiếp nhiều bộ.
-    if (ok) { setMsg(`Đã thêm "${prodName}"`); setProd(''); setPriceTr(''); setPriceAuto(false); }
-    else setErr('Thêm thất bại — xem thông báo lỗi phía trên.');
+    if (ok > 0) {
+      setMsg(`Đã thêm ${ok} sản phẩm`);
+      setSel(new Map()); // giữ nguyên nhóm/bộ để thêm tiếp bộ khác
+    }
   };
-  return h("div", { className: "bg-slate-50/70 border-t border-slate-100 px-3 py-3" },
-    h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5" },
+
+  const radio = (v, nhan, moTa, disabled) => h("label", {
+    className: "flex-1 flex items-start gap-2 px-3 py-2 rounded-md border " +
+      (disabled ? "opacity-50 cursor-not-allowed border-slate-200 "
+                : "cursor-pointer " + (mode === v ? "border-emerald-400 bg-emerald-50/60" : "border-slate-200 hover:bg-slate-50"))
+  }, h("input", {
+    type: "radio", checked: mode === v, disabled,
+    onChange: () => !disabled && setMode(v),
+    className: "accent-emerald-600 mt-0.5"
+  }), h("span", null,
+    h("span", { className: "text-[12.5px] font-medium text-slate-700 block" }, nhan),
+    h("span", { className: "text-[11px] text-slate-400" }, moTa)));
+
+  return h("div", { className: "px-4 py-3 space-y-3" },
+    // --- Hàng chọn phạm vi: PS / Nhóm / Bộ vật tư, các ô bằng nhau, thẳng cột ---
+    h("div", { className: `grid gap-3 ${opts.length > 1 ? 'grid-cols-3' : 'grid-cols-2'}` },
       opts.length > 1 && h("div", null,
         h("label", { className: lbl }, "PS phụ trách"),
-        h("select", { value: ps, onChange: e => setPs(e.target.value), className: sel },
+        h("select", { value: ps, onChange: e => setPs(e.target.value), className: sels },
           h("option", { value: "" }, "— Chọn PS —"),
           opts.map(p => h("option", { key: p, value: p }, p)))),
       h("div", null,
@@ -2728,9 +2766,9 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
           ps && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · theo PS ", ps)),
         h("select", {
           value: grp,
-          onChange: e => { setGrp(e.target.value); setMset(''); setProd(''); setMsg(''); },
+          onChange: e => { setGrp(e.target.value); setMset(''); },
           disabled: !ps || groups.length === 0,
-          className: sel
+          className: sels
         }, h("option", { value: "" },
             !ps ? "— Chọn PS trước —" : groups.length ? "— Chọn nhóm —" : "(PS này chưa có nhóm SP nào)"),
           groups.map(g => h("option", { key: g, value: g }, g)))),
@@ -2738,73 +2776,79 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
         h("label", { className: lbl }, "Bộ vật tư"),
         h("select", {
           value: mset,
-          onChange: e => { setMset(e.target.value); setProd(''); setMsg(''); },
+          onChange: e => setMset(e.target.value),
           disabled: !grp || msets.length === 0,
-          className: sel
+          className: sels
         }, h("option", { value: "" }, msets.length ? "— Chọn bộ vật tư —" : "(không có)"),
-          msets.map(m => h("option", { key: m, value: m }, m)))),
-      h("div", null,
-        // Tick "cả bộ" nằm cùng hàng nhãn với ô Sản phẩm vì nó quyết định chính ô đó.
-        h("div", { className: "flex items-center justify-between gap-2 mb-1" },
-          h("label", { className: lbl + " mb-0" }, "Sản phẩm"),
-          h("label", {
-            className: "flex items-center gap-1 text-[11px] font-medium select-none " +
-              (canWholeSet ? "text-emerald-700 cursor-pointer" : "text-slate-300 cursor-not-allowed"),
-            title: canWholeSet
-              ? "Thêm cả bộ: sản phẩm ghi vào kế hoạch chính là tên bộ vật tư"
-              : "Chọn một bộ vật tư trước"
-          },
-            h("input", {
-              type: "checkbox",
-              checked: wholeSet,
-              disabled: !canWholeSet,
-              onChange: e => { setWholeSet(e.target.checked); setProd(''); setMsg(''); },
-              className: "accent-emerald-600"
-            }), "cả bộ")),
-        wholeSet
-          // Cả bộ → ô Sản phẩm khoá lại, hiện đúng tên bộ vật tư sẽ được ghi.
-          ? h("input", { value: msetVal, readOnly: true, disabled: true, className: sel })
-          : h("select", {
-              value: prod,
-              onChange: e => { setProd(e.target.value); setMsg(''); },
-              disabled: !grp,
-              className: sel
-            }, h("option", { value: "" }, prods.length ? "— Chọn vật tư riêng lẻ —" : "(bộ này chưa có vật tư trong danh mục)"),
-              prods.map((c, i) => h("option", { key: c.prod + i, value: c.prod }, c.prod)))),
-      h("div", null,
-        h("label", { className: lbl }, "Đơn giá (tr.VND)"),
-        h("input", {
-          value: priceTr,
-          onChange: e => { setPriceTr(e.target.value); setPriceAuto(false); setMsg(''); },
-          inputMode: "decimal",
-          placeholder: prodName && !suggested ? "chưa có giá — nhập tay" : "vd 1,5",
-          disabled: !prodName,
-          className: sel + (priceAuto ? " bg-emerald-50/60" : "")
-        }),
-        prodName && h("p", { className: "text-[11px] mt-1 " + (suggested ? "text-slate-400" : "text-amber-600") },
-          suggested ? (priceAuto ? "Giá đang dùng cho vật tư này — sửa được" : "Đang dùng giá bạn nhập")
-                    : "Vật tư này chưa có đơn giá trong kế hoạch"))),
-    h("div", { className: "flex items-center gap-3 mt-3 flex-wrap" },
-      prodName && h("div", { className: "text-[12px] text-slate-600" },
-        priceVnd == null
-          ? h("span", { className: "text-amber-600" }, "Nhập đơn giá để thêm sản phẩm")
-          : h(React.Fragment, null,
-              "Ghi ", h("span", { className: "font-semibold text-slate-800" }, prodName),
-              wholeSet ? " (cả bộ)" : "",
-              " · ", h("span", { className: "font-semibold text-slate-800" },
-                priceVnd.toLocaleString('vi-VN'), " đ"),
-              " · 12 dòng (T4→T3), SL = 0")),
-      h("div", { className: "flex-1" }),
-      isDup && h("span", { className: "text-[12px] text-amber-600" }, "Sản phẩm này đã có trong kế hoạch của PS ", ps),
+          msets.map(m => h("option", { key: m, value: m }, m))))),
+    // --- Kiểu thêm: tách hẳn thành 2 lựa chọn cho dễ nhìn, không nhét cạnh nhãn nữa ---
+    h("div", { className: "flex gap-2" },
+      radio('le', 'Vật tư riêng lẻ', 'chọn từng vật tư trong bộ', false),
+      radio('bo', 'Cả bộ', canWholeSet ? 'ghi 1 dòng tên bộ vật tư' : 'chọn bộ vật tư trước', !canWholeSet)),
+    // --- Danh sách tick + đơn giá từng dòng ---
+    h("div", null,
+      h("div", { className: "flex items-end justify-between mb-1" },
+        h("label", { className: lbl + " mb-0" }, "Sản phẩm ",
+          h("span", { className: "text-slate-400 normal-case tracking-normal" }, "· tick nhiều dòng để thêm một lượt")),
+        conTrong.length > 1 && h("button", {
+          onClick: chonHet,
+          className: "text-[11.5px] text-emerald-700 hover:underline"
+        }, sel.size >= conTrong.length ? "Bỏ chọn tất cả" : "Chọn tất cả")),
+      h("div", { className: "border border-slate-200 rounded-md max-h-56 overflow-y-auto divide-y divide-slate-100" },
+        items.length === 0
+          ? h("div", { className: "px-3 py-6 text-center text-[12.5px] text-slate-400" },
+              !grp ? "Chọn nhóm sản phẩm để bắt đầu" : "Bộ này chưa có vật tư trong danh mục")
+          : items.map(name => {
+              const dup = isDup(name);
+              const on = sel.has(name);
+              const goiY = priceOf ? priceOf(grp, msetVal, name) : null;
+              return h("div", {
+                key: name,
+                className: "flex items-center gap-2 px-3 py-1.5 " + (dup ? "bg-slate-50" : on ? "bg-emerald-50/40" : "")
+              },
+                h("input", {
+                  type: "checkbox", checked: on, disabled: dup || busy,
+                  onChange: () => toggle(name),
+                  className: "accent-emerald-600 flex-shrink-0"
+                }),
+                h("span", {
+                  className: "flex-1 min-w-0 truncate text-[12.5px] " + (dup ? "text-slate-400" : "text-slate-700"),
+                  title: name
+                }, name),
+                dup
+                  ? h("span", { className: "text-[11px] text-amber-600 flex-shrink-0" }, "đã có trong kế hoạch")
+                  : h(React.Fragment, null,
+                      h("input", {
+                        value: on ? (sel.get(name) || '') : fmtTr(goiY),
+                        onChange: e => setPrice(name, e.target.value),
+                        disabled: !on || busy,
+                        inputMode: "decimal",
+                        placeholder: goiY ? "" : "nhập giá",
+                        title: goiY ? "Giá đang dùng cho vật tư này trong kế hoạch"
+                                    : "Vật tư này chưa có đơn giá trong kế hoạch — nhập tay",
+                        className: "w-24 px-2 py-1 text-[12.5px] text-right border rounded-md outline-none focus:border-emerald-500 " +
+                          (on && parseTr(sel.get(name)) == null ? "border-amber-400 bg-amber-50"
+                            : on && goiY ? "border-slate-200 bg-emerald-50/60" : "border-slate-200")
+                      }),
+                      h("span", { className: "text-[11px] text-slate-400 w-11 flex-shrink-0" }, "tr.VND")));
+            }))),
+    // --- Chân form ---
+    h("div", { className: "flex items-center gap-3 flex-wrap" },
+      sel.size > 0 && h("span", { className: "text-[12px] text-slate-600" },
+        "Đã chọn ", h("span", { className: "font-semibold text-slate-800" }, sel.size), " sản phẩm · ",
+        sel.size * 12, " dòng (T4→T3), SL = 0"),
+      thieuGia.length > 0 && h("span", { className: "text-[12px] text-amber-600" },
+        "Còn ", thieuGia.length, " dòng chưa có đơn giá"),
       err && h("span", { className: "text-[12px] text-red-600" }, err),
       msg && h("span", { className: "text-[12px] text-emerald-600" }, msg),
+      h("div", { className: "flex-1" }),
       h("button", {
         onClick: confirm,
-        disabled: busy || !ready,
+        disabled: !ready,
         className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
       }, busy
-        ? h(React.Fragment, null, h(Loader2, { size: 14, className: "animate-spin" }), " Đang thêm…")
-        : h(React.Fragment, null, h(Plus, { size: 14 }), " Thêm sản phẩm"))));
+        ? h(React.Fragment, null, h(Loader2, { size: 14, className: "animate-spin" }), ` Đang thêm ${done}/${sel.size}…`)
+        : h(React.Fragment, null, h(Plus, { size: 14 }), sel.size > 1 ? ` Thêm ${sel.size} sản phẩm` : " Thêm sản phẩm"))));
 }
 
 // Panel "Thêm khách hàng": chọn KH + PS + miền. Chưa ghi DB (schema không có bảng
