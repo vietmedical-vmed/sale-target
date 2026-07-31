@@ -127,16 +127,28 @@ Bảng dạng bảng tính, mỗi dòng = một (Khách hàng × Sản phẩm ×
 - Tháng hiện tại được highlight.
 
 ### 6.2 Màn "Tổng hợp theo PS / Khách hàng"
-Cấu trúc phân cấp: **Miền → PS → Khách hàng**, có thể gập/mở.
+Cấu trúc phân cấp: **Miền → PS → Khách hàng → Nhóm SP → Sản phẩm**, có thể gập/mở.
 - Cột: Số KH, Số SP, Quota/Số lượng (Tổng Quota, Thực hiện YTD, KH còn lại YTD,
   Khả dụng còn lại), Doanh thu (triệu VND), % Chênh lệch, % Thực hiện YTD, Giải trình.
 - **KH còn lại YTD** = tổng SL update − Thực hiện YTD (= SL KH update từ tháng hiện tại
   đến hết năm); **% Thực hiện YTD** = DThu thực hiện YTD / DThu KH update.
 - Dòng tổng (grand total) ở cuối.
+- **Ngoài kế hoạch**: xem 6.5.
 
 ### 6.3 Màn "Tổng hợp theo Sản phẩm"
 Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể gập/mở.
 - Cột: SL KH update theo 12 tháng, Tổng Quota, Thực hiện YTD, KH còn lại YTD, Quota khả dụng còn lại.
+- **Ngoài kế hoạch**: xem 6.5.
+
+### 6.5 Phần "Ngoài kế hoạch" (2 màn tổng hợp)
+Các dòng thực hiện không khớp dòng kế hoạch nào (`v_actual_ngoai_ke_hoach`, trả về
+riêng qua `oopRows`, đánh dấu `_oop` ở client — **không** trộn vào màn chi tiết).
+- Ở cấp Khách hàng, tất cả gom vào **một dòng "Ngoài kế hoạch"** (badge *Ngoài KH*).
+- Mở dòng đó ra là **từng khách hàng thật** ghi trong dữ liệu thực hiện (mã KH + tên đã
+  chuẩn hoá như dòng kế hoạch); ở màn theo PS, dưới mỗi KH mới tới Nhóm SP → Sản phẩm.
+- Cột "Số KH" của dòng "Ngoài kế hoạch" = số KH thật bên dưới; không cộng vào Số KH
+  của PS/Miền (nhóm này luôn tính là 1 khách hàng).
+- Không có quota → **Khả dụng còn lại = "—"** ở mọi cấp trong nhóm này.
 
 ### 6.4 Màn "Cấu hình địa bàn"
 Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách** trong bảng

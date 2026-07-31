@@ -1578,19 +1578,25 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
         ? (Number(r.revUpd) || 0) : (Number(r.rev) || 0);
       // Tổng Quota: qOld+qMain+qAdd (chỉ nằm ở 1 dòng đại diện, các dòng khác = 0 nên cộng dồn = tổng)
       const dQuota = (Number(r.qOld) || 0) + (Number(r.qMain) || 0) + (Number(r.qAdd) || 0);
-      cell.moKh[i] += planUpd;
-      cell.moAct[i] += act;
-      cell.quota += dQuota;
-      if (isPast) { cell.thYtd += act; cell.khYtd += planUpd; }
-      // Cấp Khách hàng dưới Miền
-      const cKey = r.cust || '—';
+      const bump = (o) => {
+        o.moKh[i] += planUpd;
+        o.moAct[i] += act;
+        o.quota += dQuota;
+        if (isPast) { o.thYtd += act; o.khYtd += planUpd; }
+      };
+      bump(cell);
+      // Cấp Khách hàng dưới Miền. Dòng ngoài kế hoạch gom vào 1 nhóm "Ngoài kế hoạch",
+      // KH thật của dòng thực hiện nằm ở cấp con ngay dưới nhóm đó.
       // oop = dòng ngoài kế hoạch → không có quota nên không tính "khả dụng còn lại"
-      if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: r.custId, oop: cKey === OOP_CUST, ...blank() });
+      const isOop = !!r._oop;
+      const cKey = isOop ? OOP_CUST : (r.cust || '—');
+      if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: isOop ? '' : r.custId, oop: isOop, subMap: new Map(), ...blank() });
       const cc = cell.custMap.get(cKey);
-      cc.moKh[i] += planUpd;
-      cc.moAct[i] += act;
-      cc.quota += dQuota;
-      if (isPast) { cc.thYtd += act; cc.khYtd += planUpd; }
+      bump(cc);
+      if (isOop && r.cust && r.cust !== OOP_CUST) {
+        if (!cc.subMap.has(r.cust)) cc.subMap.set(r.cust, { cust: r.cust, custId: r.custId, oop: true, subMap: new Map(), ...blank() });
+        bump(cc.subMap.get(r.cust));
+      }
     }
     const fold = () => ({ moKh: MONTHS.map(() => 0), moAct: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
     const add = (a, c) => {
@@ -1600,7 +1606,11 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
     const sumMo = mo => mo.reduce((s, v) => s + v, 0);
     const prods = Array.from(prodMap.values()).map(p => {
       const regs = Array.from(p.regMap.values()).map(rg => {
-        const custs = Array.from(rg.custMap.values());
+        const custs = Array.from(rg.custMap.values()).map(cu => {
+          const subs = Array.from(cu.subMap.values());
+          subs.sort((a, b) => b.thYtd - a.thYtd); // KH ngoài kế hoạch: xếp theo SL thực hiện
+          return { ...cu, subs };
+        });
         custs.sort((a, b) => sumMo(b.moKh) - sumMo(a.moKh));
         return { region: rg.region, custs, moKh: rg.moKh, moAct: rg.moAct, thYtd: rg.thYtd, khYtd: rg.khYtd, quota: rg.quota };
       });
@@ -1741,22 +1751,31 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
                         )
                       );
                       if (rOpen) {
+                        // Nhóm "Ngoài kế hoạch" mở ra được để xem từng KH thật bên dưới
+                        const custRow = (cu, key, pad, kids) => h('tr', {
+                          key, className: 'border-b border-slate-100' + (kids ? ' cursor-pointer bg-amber-50/30' : ''),
+                          onClick: kids ? () => toggle(key) : undefined
+                        },
+                          h('td', { className: `${pad} pr-4 py-1.5 text-[11.5px] text-slate-500 ${stickyLabel('bg-white')}` },
+                            h('span', { className: 'inline-block w-3 text-slate-400' }, kids ? (open.has(key) ? '▾' : '▸') : ''),
+                            h('span', { className: 'truncate' + (cu.cust === OOP_CUST ? ' text-amber-700 font-medium' : '') }, cu.cust), ' ',
+                            cu.cust === OOP_CUST
+                              ? h('span', { className: 'text-[9.5px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium whitespace-nowrap' }, 'Ngoài KH')
+                              : h('span', { className: 'text-[10px] text-slate-400 font-mono' }, cu.custId)
+                          ),
+                          ...moCells(cu),
+                          ...ytdCells(cu),
+                          quotaCell(cu.quota),
+                          conLai(sumFromNow(cu.moKh)),
+                          khaDungCell(cu)
+                        );
                         for (const cu of rg.custs) {
-                          out.push(
-                            h('tr', { key: rKey + '||' + cu.cust, className: 'border-b border-slate-100' },
-                              h('td', { className: `pl-16 pr-4 py-1.5 text-[11.5px] text-slate-500 ${stickyLabel('bg-white')}` },
-                                h('span', { className: 'truncate' + (cu.cust === OOP_CUST ? ' text-amber-700 font-medium' : '') }, cu.cust), ' ',
-                                cu.cust === OOP_CUST
-                                  ? h('span', { className: 'text-[9.5px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium whitespace-nowrap' }, 'Ngoài KH')
-                                  : h('span', { className: 'text-[10px] text-slate-400 font-mono' }, cu.custId)
-                              ),
-                              ...moCells(cu),
-                              ...ytdCells(cu),
-                              quotaCell(cu.quota),
-                              conLai(sumFromNow(cu.moKh)),
-                              khaDungCell(cu)
-                            )
-                          );
+                          const cKeyStr = rKey + '||' + cu.cust;
+                          const subs = cu.subs || [];
+                          out.push(custRow(cu, cKeyStr, 'pl-16', subs.length > 0));
+                          if (subs.length && open.has(cKeyStr)) {
+                            for (const s of subs) out.push(custRow(s, cKeyStr + '||' + s.cust, 'pl-24', false));
+                          }
                         }
                       }
                     }
@@ -1815,17 +1834,22 @@ function exportSummaryPS(data) {
     ]);
     levels.push(level);
   };
+  // Nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật → đẩy các cấp dưới thụt vào 1 bậc
+  const pushCust = (level, c) => {
+    const subs = c.subs || [];
+    // Nhóm "Ngoài kế hoạch": cột Số KH = số KH thật bên dưới (KH thường vẫn để trống)
+    push(level, c.cust + (c.custId ? ` (${c.custId})` : ''), subs.length ? { ...c, custCount: subs.length } : c, c.note);
+    for (const s of subs) pushCust(level + 1, s);
+    for (const gp of c.grps) {
+      push(level + 1, gp.grp, gp, '');
+      for (const pp of gp.prods) push(level + 2, (pp.mset ? pp.mset + ' · ' : '') + pp.prod, pp, '');
+    }
+  };
   for (const reg of data.regions) {
     push(0, reg.region, reg, '');
     for (const ps of reg.psList) {
       push(1, ps.ps, ps, '');
-      for (const c of ps.custs) {
-        push(2, c.cust + (c.custId ? ` (${c.custId})` : ''), c, c.note);
-        for (const gp of c.grps) {
-          push(3, gp.grp, gp, '');
-          for (const pp of gp.prods) push(4, (pp.mset ? pp.mset + ' · ' : '') + pp.prod, pp, '');
-        }
-      }
+      for (const c of ps.custs) pushCust(2, c);
     }
   }
   push(0, 'TỔNG CỘNG', data.grand, '');
@@ -1901,7 +1925,11 @@ function exportProductSummary(data) {
     push(0, p.prod, p);
     for (const rg of p.regs) {
       push(1, rg.region, rg);
-      for (const cu of rg.custs) push(2, cu.cust + (cu.custId ? ` (${cu.custId})` : ''), cu);
+      for (const cu of rg.custs) {
+        push(2, cu.cust + (cu.custId ? ` (${cu.custId})` : ''), cu);
+        // Nhóm "Ngoài kế hoạch": liệt kê KH thật ở cấp dưới
+        for (const s of (cu.subs || [])) push(3, s.cust + (s.custId ? ` (${s.custId})` : ''), s);
+      }
     }
   }
   push(0, 'TỔNG CỘNG', data.grand);
@@ -1951,11 +1979,14 @@ function SummaryView({
         custMap: new Map()
       });
       const ps = reg.psMap.get(psKey);
-      const cKey = r.cust || '—';
-      if (!ps.custMap.has(cKey)) ps.custMap.set(cKey, {
-        cust: cKey,
-        custId: r.custId,
-        oop: cKey === OOP_CUST, // ngoài kế hoạch → không có quota, không tính khả dụng còn lại
+      // Dòng ngoài kế hoạch gom hết vào 1 nhóm "Ngoài kế hoạch";
+      // KH thật của dòng thực hiện nằm ở cấp con ngay dưới nhóm này.
+      const isOop = !!r._oop;
+      const cKey = isOop ? OOP_CUST : (r.cust || '—');
+      const newCust = (name, id) => ({
+        cust: name,
+        custId: id,
+        oop: isOop, // ngoài kế hoạch → không có quota, không tính khả dụng còn lại
         note: '',
         dt: 0,
         dtYtd: 0,
@@ -1964,8 +1995,10 @@ function SummaryView({
         ytd: 0,
         slUpd: 0,
         prods: new Set(),
+        subMap: new Map(),  // chỉ nhóm "Ngoài kế hoạch" dùng: KH thật → { grpMap }
         grpMap: new Map()   // Nhóm SP → { prodMap: Sản phẩm }
       });
+      if (!ps.custMap.has(cKey)) ps.custMap.set(cKey, newCust(cKey, isOop ? '' : r.custId));
       const c = ps.custMap.get(cKey);
       if (r.mo === NOTE_MONTH && r.note) c.note = r.note;
       const price = Number(r.price) || 0; // đơn giá TỪNG DÒNG
@@ -1987,16 +2020,26 @@ function SummaryView({
         o.slUpd += updQty; // tổng SL update = thực hiện YTD (quá khứ) + KH update các tháng còn lại
         o.dtYtd += dDtYtd;
       };
+      const prodKey = `${r.grp}||${r.mset}||${r.prod}`;
       bump(c);
-      c.prods.add(`${r.grp}||${r.mset}||${r.prod}`);
+      c.prods.add(prodKey);
+      // --- Cấp Khách hàng thật (chỉ dưới nhóm "Ngoài kế hoạch") ---
+      // Nhóm SP / Sản phẩm treo dưới KH thật, không treo thẳng vào nhóm "Ngoài kế hoạch".
+      let host = c;
+      if (isOop && r.cust && r.cust !== OOP_CUST) {
+        if (!c.subMap.has(r.cust)) c.subMap.set(r.cust, newCust(r.cust, r.custId));
+        host = c.subMap.get(r.cust);
+        bump(host);
+        host.prods.add(prodKey);
+      }
       // --- Cấp Nhóm sản phẩm ---
       const gKey = r.grp || '(Không rõ nhóm)';
-      if (!c.grpMap.has(gKey)) c.grpMap.set(gKey, {
+      if (!host.grpMap.has(gKey)) host.grpMap.set(gKey, {
         grp: gKey,
         dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0,
         prodMap: new Map()
       });
-      const gNode = c.grpMap.get(gKey);
+      const gNode = host.grpMap.get(gKey);
       bump(gNode);
       // --- Cấp Sản phẩm (trong 1 nhóm, phân biệt theo bộ vật tư + sản phẩm) ---
       const pKey = `${r.mset}||${r.prod}`;
@@ -2029,7 +2072,8 @@ function SummaryView({
     };
     const regions = Array.from(regMap.values()).map(reg => {
       const psList = Array.from(reg.psMap.values()).map(ps => {
-        const custs = Array.from(ps.custMap.values()).map(c => {
+        // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
+        const buildCust = (c) => {
           // KH ngoài kế hoạch: quotaAvail = null → hiển thị "—" (không tính, không để âm)
           const avail = (o) => c.oop ? null : o.quotaFY - o.slUpd;
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
@@ -2047,13 +2091,17 @@ function SummaryView({
             };
           });
           grps.sort((a, b) => b.dt - a.dt);
+          const subs = Array.from(c.subMap.values()).map(buildCust);
+          subs.sort((a, b) => b.ytd - a.ytd); // KH ngoài kế hoạch: xếp theo SL thực hiện
           return {
             ...c,
             grps,
+            subs,
             prodCount: c.prods.size,
             quotaAvail: avail(c)
           };
-        });
+        };
+        const custs = Array.from(ps.custMap.values()).map(buildCust);
         custs.sort((a, b) => b.dt - a.dt);
         const tot = custs.reduce(add, fold());
         tot.custCount = custs.length;
@@ -2279,12 +2327,16 @@ function SummaryPSRow({
     cust: c
   })));
 }
-// Cấp Khách hàng — có thể mở ra để xem Nhóm sản phẩm bên dưới.
+// Cấp Khách hàng — mở ra để xem Nhóm sản phẩm bên dưới.
+// Riêng nhóm "Ngoài kế hoạch": con là các KH thật (depth+1), rồi mới tới Nhóm SP.
 function SummaryCustRow({
-  cust: c
+  cust: c,
+  depth = 0
 }) {
   const [open, setOpen] = useState(false);
-  const hasKids = c.grps && c.grps.length > 0;
+  const subs = c.subs || [];
+  const grps = c.grps || [];
+  const hasKids = subs.length > 0 || grps.length > 0;
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("tr", {
     className: "hover:bg-slate-50/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
     onClick: hasKids ? () => setOpen(!open) : undefined
@@ -2292,7 +2344,7 @@ function SummaryCustRow({
     className: "px-4 py-1.5 text-[12px] text-slate-600 border-r border-slate-100"
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1",
-    style: { paddingLeft: 40 }
+    style: { paddingLeft: 40 + depth * 28 }
   }, hasKids ? open ? /*#__PURE__*/React.createElement(ChevronDown, {
     size: 12,
     className: "text-slate-400"
@@ -2308,8 +2360,8 @@ function SummaryCustRow({
   }, "Ngoài KH") : /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400 font-mono"
   }, c.custId))), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-400 border-r border-slate-100"
-  }, "—"), /*#__PURE__*/React.createElement("td", {
+    className: `px-3 py-1.5 text-right text-[12px] tabular-nums border-r border-slate-100 ${subs.length ? 'text-slate-500' : 'text-slate-400'}`
+  }, subs.length || "—"), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-500 border-r border-slate-100"
   }, c.prodCount), /*#__PURE__*/React.createElement(StatCells, {
     d: c,
@@ -2321,14 +2373,20 @@ function SummaryCustRow({
     title: c.note
   }, c.note || /*#__PURE__*/React.createElement("span", {
     className: "text-slate-300"
-  }, "—")))), open && c.grps.map(gp => /*#__PURE__*/React.createElement(SummaryGroupRow, {
+  }, "—")))), open && (subs.length ? subs.map(s => /*#__PURE__*/React.createElement(SummaryCustRow, {
+    key: s.cust,
+    cust: s,
+    depth: depth + 1
+  })) : grps.map(gp => /*#__PURE__*/React.createElement(SummaryGroupRow, {
     key: gp.grp,
-    grp: gp
-  })));
+    grp: gp,
+    depth: depth
+  }))));
 }
 // Cấp Nhóm sản phẩm — có thể mở ra để xem từng Sản phẩm bên dưới.
 function SummaryGroupRow({
-  grp: g
+  grp: g,
+  depth = 0
 }) {
   const [open, setOpen] = useState(false);
   const hasKids = g.prods && g.prods.length > 0;
@@ -2339,7 +2397,7 @@ function SummaryGroupRow({
     className: "px-4 py-1.5 text-[12px] text-slate-700 border-r border-slate-100"
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1",
-    style: { paddingLeft: 68 }
+    style: { paddingLeft: 68 + depth * 28 }
   }, hasKids ? open ? /*#__PURE__*/React.createElement(ChevronDown, {
     size: 12,
     className: "text-slate-400"
@@ -2366,7 +2424,7 @@ function SummaryGroupRow({
     className: "px-4 py-1.5 text-[11.5px] text-slate-500 border-r border-slate-100"
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1.5",
-    style: { paddingLeft: 96 }
+    style: { paddingLeft: 96 + depth * 28 }
   }, /*#__PURE__*/React.createElement("span", {
     className: "truncate"
   }, p.prod), p.mset ? /*#__PURE__*/React.createElement("span", {
@@ -3485,7 +3543,10 @@ function App() {
           const v = row[j];
           if (v !== '' && v !== null && v !== undefined) o[fields[j]] = v;
         }
-        oopObjs[i] = o; // KHÔNG fmtCust: nhãn "Ngoài kế hoạch" phải giữ nguyên
+        // Chuẩn hoá tên KH như dòng kế hoạch để cùng 1 KH hiện cùng một cách viết.
+        // Nhãn chung "Ngoài kế hoạch" (khi actual không có tên KH) giữ nguyên.
+        if (o.cust && o.cust !== OOP_CUST) o.cust = fmtCust(o.cust);
+        oopObjs[i] = o;
       }
       setOopRows(oopObjs);
       if (typeof r.rev === 'number') setDataRev(r.rev);

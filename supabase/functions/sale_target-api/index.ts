@@ -227,14 +227,15 @@ async function fetchAll(db, sess, payload) {
 // Các dòng thực hiện không khớp dòng kế hoạch nào (view v_actual_ngoai_ke_hoach).
 // Trả về DƯỚI DẠNG RIÊNG (oopRows), KHÔNG trộn vào rows: app chỉ dùng ở 2 màn tổng
 // hợp cho đủ số, còn màn chi tiết vẫn chỉ hiển thị/sửa được dòng kế hoạch thật.
-// Nhãn khách hàng cố định = "Ngoài kế hoạch" → khi app gộp theo KH sẽ ra đúng 1 dòng.
+// Giữ NGUYÊN khách hàng thật của dòng thực hiện: app gom tất cả vào 1 nhóm
+// "Ngoài kế hoạch" (nhận biết qua mảng oopRows riêng), bên dưới tách theo từng KH.
 const OOP_CUST = "Ngoài kế hoạch";
 
 async function fetchOutOfPlan(db, sess, payload) {
   const out = [];
   for (let from = 0; ; from += PAGE) {
     let q = db.from("v_actual_ngoai_ke_hoach")
-      .select("thang_ke_hoach,mien,ps,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien")
+      .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien")
       .range(from, from + PAGE - 1);
     q = applyScope(q, sess, payload); // cùng phân quyền như sale_target
     const { data, error } = await q;
@@ -247,7 +248,9 @@ async function fetchOutOfPlan(db, sess, payload) {
   return out.map((r) => {
     const o = {
       mo: r.thang_ke_hoach, region: r.mien, ps: r.ps,
-      cust: OOP_CUST, grp: r.nhom_san_pham, prod: r.san_pham,
+      // KH thật; thiếu tên thì để nhãn chung — app vẫn xếp dòng này vào "Ngoài kế hoạch"
+      cust: r.khach_hang || OOP_CUST, custId: r.ma_khach_hang,
+      grp: r.nhom_san_pham, prod: r.san_pham,
       mset: r.bo_vat_tu, act: r.sl_thuc_hien,
     };
     return FIELDS.map((f) => (o[f] === null || o[f] === undefined ? "" : o[f]));
