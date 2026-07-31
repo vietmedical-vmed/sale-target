@@ -130,25 +130,15 @@ Bảng dạng bảng tính, mỗi dòng = một (Khách hàng × Sản phẩm ×
 Cấu trúc phân cấp: **Miền → PS → Khách hàng → Nhóm SP → Sản phẩm**, có thể gập/mở.
 - Cột: Số KH, Số SP, Quota/Số lượng (Tổng Quota, Thực hiện YTD, KH còn lại YTD,
   Khả dụng còn lại), Doanh thu (triệu VND), % Chênh lệch, % Thực hiện YTD, Giải trình.
-- **KH còn lại YTD** = tổng SL update − Thực hiện YTD (= SL KH update từ tháng hiện tại
-  đến hết năm); **% Thực hiện YTD** = DThu thực hiện YTD / DThu KH update.
+- **KH còn lại YTD** = SL KH update từ tháng SAU tháng hiện tại đến hết năm (§7.2);
+  **% Thực hiện YTD** = DThu thực hiện YTD / DThu KH update.
 - Dòng tổng (grand total) ở cuối.
-- **Ngoài kế hoạch**: xem 6.5.
+- **Ngoài kế hoạch**: xem 6.6.
 
 ### 6.3 Màn "Tổng hợp theo Sản phẩm"
 Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể gập/mở.
 - Cột: SL KH update theo 12 tháng, Tổng Quota, Thực hiện YTD, KH còn lại YTD, Quota khả dụng còn lại.
-- **Ngoài kế hoạch**: xem 6.5.
-
-### 6.5 Phần "Ngoài kế hoạch" (2 màn tổng hợp)
-Các dòng thực hiện không khớp dòng kế hoạch nào (`v_actual_ngoai_ke_hoach`, trả về
-riêng qua `oopRows`, đánh dấu `_oop` ở client — **không** trộn vào màn chi tiết).
-- Ở cấp Khách hàng, tất cả gom vào **một dòng "Ngoài kế hoạch"** (badge *Ngoài KH*).
-- Mở dòng đó ra là **từng khách hàng thật** ghi trong dữ liệu thực hiện (mã KH + tên đã
-  chuẩn hoá như dòng kế hoạch); ở màn theo PS, dưới mỗi KH mới tới Nhóm SP → Sản phẩm.
-- Cột "Số KH" của dòng "Ngoài kế hoạch" = số KH thật bên dưới; không cộng vào Số KH
-  của PS/Miền (nhóm này luôn tính là 1 khách hàng).
-- Không có quota → **Khả dụng còn lại = "—"** ở mọi cấp trong nhóm này.
+- **Ngoài kế hoạch**: xem 6.6.
 
 ### 6.4 Màn "Cấu hình địa bàn"
 Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách** trong bảng
@@ -209,9 +199,23 @@ Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách**
 | **Bộ lọc** | Lọc theo Ngành hàng, Miền, Khách hàng (hiển thị theo quyền — ví dụ PS không có bộ lọc miền/KH riêng). |
 | **Chuyển team (TeamSwitcher)** | Chỉ admin/manager: chọn 1 team hoặc "Tất cả". |
 | **Thêm sản phẩm** | Chọn Khách hàng (từ `dm_khach_hang`, có ô tìm kiếm gần đúng), Miền, PS, Nhóm SP, Bộ vật tư, Sản phẩm + **nhập đơn giá tay** (đơn vị tr.VND, ghi DB theo VND) → sinh **12 dòng** (một dòng/tháng, 04/2026 → 03/2027), gắn `bu` của người tạo. Danh mục không giữ giá nên đơn giá phải nhập. |
+| **Ô tìm kiếm** | Tìm gần đúng theo tên KH / mã KH / sản phẩm / bộ vật tư. Dùng ở màn chi tiết **và 2 màn tổng hợp** (dùng chung 1 ô, giữ nguyên chữ khi chuyển tab). |
+| **Header dính** | 2 màn tổng hợp: khung bảng cao vừa hết màn hình (`useFitHeight`) nên chỉ bảng cuộn dọc, `<thead>` `position: sticky` đứng yên khi cuộn. Không đo được chiều cao màn hình (nhúng/snapshot) hoặc màn thấp < 400px → bỏ giới hạn chiều cao, bảng hiển thị như cũ. |
 | **Xuất Excel** | Xuất giữ nguyên cấu trúc phân cấp (gập/mở), header gộp (merge), dùng thư viện SheetJS (xlsx). |
 | **Đồng bộ (rev)** | Phát hiện thay đổi dữ liệu qua `rev`/`getRev`. |
 | **Đổi mật khẩu** | Ngay tại màn đăng nhập. |
+
+---
+
+### 6.6 Phần "Ngoài kế hoạch" (2 màn tổng hợp)
+Các dòng thực hiện không khớp dòng kế hoạch nào (`v_actual_ngoai_ke_hoach`, trả về
+riêng qua `oopRows`, đánh dấu `_oop` ở client — **không** trộn vào màn chi tiết).
+- Ở cấp Khách hàng, tất cả gom vào **một dòng "Ngoài kế hoạch"** (badge *Ngoài KH*).
+- Mở dòng đó ra là **từng khách hàng thật** ghi trong dữ liệu thực hiện (mã KH + tên đã
+  chuẩn hoá như dòng kế hoạch); ở màn theo PS, dưới mỗi KH mới tới Nhóm SP → Sản phẩm.
+- Cột "Số KH" của dòng "Ngoài kế hoạch" = số KH thật bên dưới; không cộng vào Số KH
+  của PS/Miền (nhóm này luôn tính là 1 khách hàng).
+- Không có quota → **Khả dụng còn lại = "—"** ở mọi cấp trong nhóm này.
 
 ---
 
