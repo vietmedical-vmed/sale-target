@@ -1798,19 +1798,20 @@ function exportSummaryPS(data) {
   const XLSX = window.XLSX;
   if (!XLSX) { alert('Chưa tải được thư viện Excel, vui lòng tải lại trang rồi thử lại.'); return; }
   const tr = v => (Number(v) || 0) / 1e6; // VND → triệu VND
-  const H1 = ['Miền / PS / Khách hàng', 'Số KH', 'Số SP', 'Quota / Số lượng', '', '', '', 'Doanh thu (triệu VND)', '', '', '', '% Chênh lệch', 'Giải trình'];
-  const H2 = ['', '', '', 'KH đầu năm', 'Thực hiện YTD', 'Khả dụng còn lại', 'SL kế hoạch', 'KH đầu năm', 'Thực hiện YTD', 'Update', 'Chênh lệch', '', ''];
+  const H1 = ['Miền / PS / Khách hàng', 'Số KH', 'Số SP', 'Quota / Số lượng', '', '', '', 'Doanh thu (triệu VND)', '', '', '', '% Chênh lệch', '% Thực hiện YTD', 'Giải trình'];
+  const H2 = ['', '', '', 'Tổng Quota', 'Thực hiện YTD', 'KH còn lại YTD', 'Khả dụng còn lại', 'KH đầu năm', 'Thực hiện YTD', 'Update', 'Chênh lệch', '', '', ''];
   const aoa = [H1, H2];
   const levels = [null, null];
   const push = (level, label, d, note) => {
     const dt = Number(d.dt) || 0, dtUpd = Number(d.dtUpd) || 0, ch = dtUpd - dt;
+    const dtYtd = Number(d.dtYtd) || 0;
     aoa.push([
       '   '.repeat(level) + label,
       Number.isFinite(d.custCount) ? d.custCount : '',
       Number.isFinite(d.prodCount) ? d.prodCount : '',
-      Math.round(d.quotaFY || 0), Math.round(d.ytd || 0), d.quotaAvail == null ? '-' : Math.round(d.quotaAvail), Math.round(d.sl || 0),
-      tr(dt), tr(d.dtYtd), tr(dtUpd), tr(ch),
-      dt ? ch / dt : '', note || ''
+      Math.round(d.quotaFY || 0), Math.round(d.ytd || 0), Math.round((d.slUpd || 0) - (d.ytd || 0)), d.quotaAvail == null ? '-' : Math.round(d.quotaAvail),
+      tr(dt), tr(dtYtd), tr(dtUpd), tr(ch),
+      dt ? ch / dt : '', dtUpd ? dtYtd / dtUpd : '', note || ''
     ]);
     levels.push(level);
   };
@@ -1832,14 +1833,15 @@ function exportSummaryPS(data) {
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
     { s: { r: 0, c: 3 }, e: { r: 0, c: 6 } }, { s: { r: 0, c: 7 }, e: { r: 0, c: 10 } },
-    { s: { r: 0, c: 11 }, e: { r: 1, c: 11 } }, { s: { r: 0, c: 12 }, e: { r: 1, c: 12 } }
+    { s: { r: 0, c: 11 }, e: { r: 1, c: 11 } }, { s: { r: 0, c: 12 }, e: { r: 1, c: 12 } }, { s: { r: 0, c: 13 }, e: { r: 1, c: 13 } }
   ];
-  ws['!cols'] = [{ wch: 34 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 13 }, { wch: 15 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
+  ws['!cols'] = [{ wch: 34 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 13 }, { wch: 14 }, { wch: 15 }, { wch: 13 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 40 }];
   ws['!rows'] = levels.map(l => l == null ? {} : { level: l });
   for (let r = 2; r < aoa.length; r++) {
     for (const c of [1, 2, 3, 4, 5, 6]) _fmt(ws, r, c, '#,##0');
     for (const c of [7, 8, 9, 10]) _fmt(ws, r, c, '#,##0.###');
     _fmt(ws, r, 11, '+0.0%;-0.0%;0.0%');
+    _fmt(ws, r, 12, '0.0%');
   }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Tong hop theo PS');
@@ -1955,7 +1957,6 @@ function SummaryView({
         custId: r.custId,
         oop: cKey === OOP_CUST, // ngoài kế hoạch → không có quota, không tính khả dụng còn lại
         note: '',
-        sl: 0,
         dt: 0,
         dtYtd: 0,
         dtUpd: 0,
@@ -1979,7 +1980,6 @@ function SummaryView({
       const dYtd = isPast ? actQty : 0;
       const dDtYtd = isPast ? actQty * price : 0;
       const bump = o => {
-        o.sl += dSl;
         o.dt += dDt;
         o.dtUpd += dDtUpd;
         o.quotaFY += dQuota;
@@ -1993,7 +1993,7 @@ function SummaryView({
       const gKey = r.grp || '(Không rõ nhóm)';
       if (!c.grpMap.has(gKey)) c.grpMap.set(gKey, {
         grp: gKey,
-        sl: 0, dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0,
+        dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0,
         prodMap: new Map()
       });
       const gNode = c.grpMap.get(gKey);
@@ -2003,12 +2003,11 @@ function SummaryView({
       if (!gNode.prodMap.has(pKey)) gNode.prodMap.set(pKey, {
         prod: r.prod || '—',
         mset: r.mset || '',
-        sl: 0, dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0
+        dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, slUpd: 0
       });
       bump(gNode.prodMap.get(pKey));
     }
     const fold = () => ({
-      sl: 0,
       dt: 0,
       dtYtd: 0,
       dtUpd: 0,
@@ -2019,7 +2018,6 @@ function SummaryView({
       custCount: 0
     });
     const add = (a, c) => {
-      a.sl += c.sl;
       a.dt += c.dt;
       a.dtYtd += c.dtYtd;
       a.dtUpd += c.dtUpd;
@@ -2125,6 +2123,9 @@ function SummaryView({
     className: "px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60 align-bottom"
   }, "% Chênh lệch"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
+    className: "px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-orange-800 border-r border-b border-slate-200 bg-emerald-50/60 align-bottom"
+  }, "% Thực hiện YTD"), /*#__PURE__*/React.createElement("th", {
+    rowSpan: 2,
     className: "px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-amber-700 border-b border-slate-200 align-bottom",
     style: {
       minWidth: 200
@@ -2133,13 +2134,13 @@ function SummaryView({
     className: "bg-slate-100"
   }, /*#__PURE__*/React.createElement("th", {
     className: "px-3 py-2 text-right text-[10.5px] font-semibold uppercase tracking-wide text-slate-600 border-b border-slate-200"
-  }, "KH đầu năm"), /*#__PURE__*/React.createElement("th", {
+  }, "Tổng Quota"), /*#__PURE__*/React.createElement("th", {
     className: "px-3 py-2 text-right text-[10.5px] font-semibold uppercase tracking-wide text-orange-700 border-b border-slate-200"
   }, "Thực hiện YTD"), /*#__PURE__*/React.createElement("th", {
     className: "px-3 py-2 text-right text-[10.5px] font-semibold uppercase tracking-wide text-slate-600 border-b border-slate-200"
-  }, "Khả dụng còn lại"), /*#__PURE__*/React.createElement("th", {
+  }, "KH còn lại YTD"), /*#__PURE__*/React.createElement("th", {
     className: "px-3 py-2 text-right text-[10.5px] font-semibold uppercase tracking-wide text-slate-600 border-r border-b border-slate-200"
-  }, "SL kế hoạch"), /*#__PURE__*/React.createElement("th", {
+  }, "Khả dụng còn lại"), /*#__PURE__*/React.createElement("th", {
     className: "px-3 py-2 text-right text-[10.5px] font-semibold uppercase tracking-wide text-slate-600 border-b border-slate-200"
   }, "KH đầu năm"), /*#__PURE__*/React.createElement("th", {
     className: "px-3 py-2 text-right text-[10.5px] font-semibold uppercase tracking-wide text-orange-700 border-b border-slate-200"
@@ -2163,10 +2164,10 @@ function SummaryView({
   }, fmtInt(g.quotaFY)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
   }, fmtInt(g.ytd)), /*#__PURE__*/React.createElement("td", {
+    className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200"
+  }, fmtInt(g.slUpd - g.ytd)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
   }, fmtInt(g.quotaAvail)), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
-  }, fmtInt(g.sl)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
   }, moneyTy3(g.dt)), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
@@ -2177,17 +2178,23 @@ function SummaryView({
   }, chG === 0 ? '—' : MASK_MONEY ? '•••' : (chG > 0 ? '+' : '') + fmtTy3(chG)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 py-2.5 text-right text-[12.5px] tabular-nums ${chG > 0 ? 'text-emerald-300' : chG < 0 ? 'text-red-300' : ''}`
   }, g.dt ? (chG > 0 ? '+' : '') + (chG / g.dt * 100).toFixed(1) + '%' : '—'), /*#__PURE__*/React.createElement("td", {
+    className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200"
+  }, pctYtd(g.dtYtd, g.dtUpd)), /*#__PURE__*/React.createElement("td", {
     className: "px-4 py-2.5"
   })))))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-2"
-  }, "Doanh thu = SL × đơn giá (theo từng dòng); ≥1 tỷ hiện theo tỷ (3 số lẻ), nhỏ hơn hiện theo triệu. Thực hiện YTD = tổng SL thực hiện các tháng đã qua. Khả dụng còn lại = Tổng Quota − Tổng SL update (thực hiện YTD + KH update các tháng còn lại). Chênh lệch = DThu update − DThu đầu năm. % Chênh lệch = Chênh lệch / DThu KH đầu năm."));
+  }, "Doanh thu = SL × đơn giá (theo từng dòng); ≥1 tỷ hiện theo tỷ (3 số lẻ), nhỏ hơn hiện theo triệu. Thực hiện YTD = tổng SL thực hiện các tháng đã qua. KH còn lại YTD = tổng SL KH update từ tháng hiện tại đến hết năm. Khả dụng còn lại = Tổng Quota − (Thực hiện YTD + KH còn lại YTD). Chênh lệch = DThu update − DThu đầu năm. % Chênh lệch = Chênh lệch / DThu KH đầu năm. % Thực hiện YTD = DThu thực hiện YTD / DThu KH update."));
 }
 const chCls = v => v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
+// % Thực hiện YTD = DThu thực hiện YTD / DThu KH update cả năm
+const pctYtd = (th, kh) => (kh > 0 ? (th / kh * 100).toFixed(1) + '%' : '—');
 function StatCells({
   d,
   size
 }) {
   const ch = d.dtUpd - d.dt;
+  // KH còn lại YTD = tổng SL KH update từ tháng hiện tại đến cuối năm = tổng SL update − thực hiện YTD
+  const khLeft = (d.slUpd || 0) - (d.ytd || 0);
   const p = size === 'sm' ? 'py-1.5 text-[12px]' : 'py-2 text-[13px]';
   const num = size === 'sm' ? 'text-slate-600' : 'text-slate-700';
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", {
@@ -2195,10 +2202,10 @@ function StatCells({
   }, fmtInt(d.quotaFY)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-medium text-orange-${size === 'sm' ? '600' : '700'}`
   }, fmtInt(d.ytd)), /*#__PURE__*/React.createElement("td", {
-    className: `px-3 ${p} text-right tabular-nums font-medium ${d.quotaAvail == null ? 'text-slate-300' : num}`
+    className: `px-3 ${p} text-right tabular-nums font-medium text-blue-${size === 'sm' ? '600' : '700'}`
+  }, fmtInt(khLeft)), /*#__PURE__*/React.createElement("td", {
+    className: `px-3 ${p} text-right tabular-nums font-medium ${d.quotaAvail == null ? 'text-slate-300' : num} border-r border-slate-100`
   }, d.quotaAvail == null ? '—' : fmtInt(d.quotaAvail)), /*#__PURE__*/React.createElement("td", {
-    className: `px-3 ${p} text-right tabular-nums font-medium ${num} border-r border-slate-100`
-  }, fmtInt(d.sl)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-medium ${num}`
   }, moneyTy3(d.dt)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-medium text-orange-${size === 'sm' ? '600' : '700'}`
@@ -2208,7 +2215,9 @@ function StatCells({
     className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${chCls(ch)}`
   }, ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)), /*#__PURE__*/React.createElement("td", {
     className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${chCls(ch)}`
-  }, d.dt ? (ch > 0 ? '+' : '') + (ch / d.dt * 100).toFixed(1) + '%' : '—'));
+  }, d.dt ? (ch > 0 ? '+' : '') + (ch / d.dt * 100).toFixed(1) + '%' : '—'), /*#__PURE__*/React.createElement("td", {
+    className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${d.dtUpd > 0 ? 'text-orange-700' : 'text-slate-300'}`
+  }, pctYtd(d.dtYtd, d.dtUpd)));
 }
 function SummaryRegionRow({
   reg

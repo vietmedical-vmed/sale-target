@@ -128,7 +128,10 @@ Bảng dạng bảng tính, mỗi dòng = một (Khách hàng × Sản phẩm ×
 
 ### 6.2 Màn "Tổng hợp theo PS / Khách hàng"
 Cấu trúc phân cấp: **Miền → PS → Khách hàng**, có thể gập/mở.
-- Cột: Số KH, Số SP, Quota/Số lượng, Doanh thu (triệu VND), % Chênh lệch, Giải trình.
+- Cột: Số KH, Số SP, Quota/Số lượng (Tổng Quota, Thực hiện YTD, KH còn lại YTD,
+  Khả dụng còn lại), Doanh thu (triệu VND), % Chênh lệch, % Thực hiện YTD, Giải trình.
+- **KH còn lại YTD** = tổng SL update − Thực hiện YTD (= SL KH update từ tháng hiện tại
+  đến hết năm); **% Thực hiện YTD** = DThu thực hiện YTD / DThu KH update.
 - Dòng tổng (grand total) ở cuối.
 
 ### 6.3 Màn "Tổng hợp theo Sản phẩm"
