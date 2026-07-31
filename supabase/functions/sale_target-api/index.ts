@@ -479,8 +479,15 @@ Deno.serve(async (req) => {
       // Popup "Thêm khách hàng" không còn ô Miền → client có thể gửi rỗng, suy từ PS.
       let mien = sess.r === "area_manager" ? sess.s : String(s.region || "").trim();
       if (!mien) mien = await mienForPs(db, psName);
+      // Tháng thầu (không bắt buộc) — thuộc tính của NHÓM SP nên ghi lên cả 12 dòng,
+      // giống commitGroupField ở client. Sai định dạng yyyy-mm thì bỏ qua, để null.
+      const thangThau = (v) => {
+        const t = String(v || "").trim();
+        return /^\d{4}-\d{2}$/.test(t) ? t : null;
+      };
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
+        thang_thau_chinh: thangThau(s.mMain), thang_thau_bo_sung: thangThau(s.mAdd),
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
         san_pham: s.prod, bo_vat_tu: s.mset, don_gia: price,
         bu,

@@ -2661,6 +2661,10 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
   const [done, setDone] = useState(0);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  // Tháng thầu là thuộc tính của NHÓM SP (ghi lên mọi dòng của nhóm) — form này
+  // mỗi lần chỉ thêm trong 1 nhóm nên dùng chung cho cả lô. Không bắt buộc.
+  const [mMain, setMMain] = useState('');
+  const [mAdd, setMAdd] = useState('');
 
   const parseTr = (v) => {
     const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
@@ -2729,7 +2733,7 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
     const list = Array.from(sel.entries());
     let ok = 0;
     for (const [name, priceTr] of list) {
-      const res = await onSubmit({ ps, grp, mset: msetVal, prod: name, price: parseTr(priceTr) });
+      const res = await onSubmit({ ps, grp, mset: msetVal, prod: name, price: parseTr(priceTr), mMain, mAdd });
       if (!res) { setErr(`Dừng ở "${name}" — xem thông báo lỗi phía trên.`); break; }
       ok++;
       setDone(ok);
@@ -2781,6 +2785,25 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
           className: sels
         }, h("option", { value: "" }, msets.length ? "— Chọn bộ vật tư —" : "(không có)"),
           msets.map(m => h("option", { key: m, value: m }, m))))),
+    // --- Tháng thầu của nhóm SP: không bắt buộc, để trống thì bỏ qua ---
+    h("div", { className: "grid grid-cols-2 gap-3" },
+      h("div", null,
+        h("label", { className: lbl }, "Tháng thầu chính",
+          h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · không bắt buộc")),
+        h("input", {
+          type: "month", value: mMain, onChange: e => setMMain(e.target.value),
+          disabled: !grp, className: sels
+        })),
+      h("div", null,
+        h("label", { className: lbl }, "Tháng thầu bổ sung",
+          h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · không bắt buộc")),
+        h("input", {
+          type: "month", value: mAdd, onChange: e => setMAdd(e.target.value),
+          disabled: !grp, className: sels
+        }))),
+    (mMain || mAdd) && h("p", { className: "text-[11px] text-slate-400 -mt-1" },
+      "Tháng thầu ghi cho cả nhóm ", h("span", { className: "font-medium text-slate-600" }, grp),
+      " của khách hàng này — sửa lại được ở thẻ KH sau khi thêm."),
     // --- Kiểu thêm: tách hẳn thành 2 lựa chọn cho dễ nhìn, không nhét cạnh nhãn nữa ---
     h("div", { className: "flex gap-2" },
       radio('le', 'Vật tư riêng lẻ', 'chọn từng vật tư trong bộ', false),
