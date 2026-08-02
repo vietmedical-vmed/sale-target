@@ -191,6 +191,9 @@ const moneyTy3 = v => MASK_MONEY ? '•••' : !v ? '—' : fmtTy3(v);
 
 // Bỏ dấu tiếng Việt để so khớp/tìm kiếm không phân biệt dấu & hoa/thường.
 const deaccent = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
+// "Vật tư riêng lẻ - <ngành>" không phải một bộ thật mà là rổ chứa vật tư lẻ của
+// ngành đó → không có khái niệm "thêm cả bộ". Bỏ dấu trước khi so cho chắc.
+const isLooseSet = name => deaccent(name).trim().startsWith('vat tu rieng le');
 // Chuẩn hoá tên khách hàng để HIỂN THỊ:
 //  - "BỆNH VIỆN X" → "BV X" (viết hoa chữ cái đầu mỗi từ)
 //  - không có "bệnh viện" → viết hoa chữ cái đầu mỗi từ
@@ -2684,7 +2687,10 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
   const prods = useMemo(() => grp ? catIdx.prodsOf(grp, mset) : [], [catIdx, grp, mset]);
   // NO_MSET chỉ là nhãn hiển thị cho nhóm không phân loại → ghi DB là rỗng.
   const msetVal = mset === NO_MSET ? '' : mset;
-  const canWholeSet = !!msetVal; // "cả bộ" chỉ có nghĩa khi đã chọn một bộ vật tư thật
+  // "cả bộ" chỉ có nghĩa với một bộ vật tư THẬT: chưa chọn bộ, hoặc bộ là rổ
+  // "Vật tư riêng lẻ - ..." thì luôn ở chế độ chọn từng vật tư.
+  const looseOnly = isLooseSet(msetVal);
+  const canWholeSet = !!msetVal && !looseOnly;
   useEffect(() => { if (!canWholeSet && mode === 'bo') setMode('le'); }, [canWholeSet, mode]);
 
   // Danh sách dòng để tick: cả bộ → đúng 1 dòng là tên bộ; riêng lẻ → các vật tư trong bộ.
@@ -2807,7 +2813,10 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
     // --- Kiểu thêm: tách hẳn thành 2 lựa chọn cho dễ nhìn, không nhét cạnh nhãn nữa ---
     h("div", { className: "flex gap-2" },
       radio('le', 'Vật tư riêng lẻ', 'chọn từng vật tư trong bộ', false),
-      radio('bo', 'Cả bộ', canWholeSet ? 'ghi 1 dòng tên bộ vật tư' : 'chọn bộ vật tư trước', !canWholeSet)),
+      radio('bo', 'Cả bộ',
+        canWholeSet ? 'ghi 1 dòng tên bộ vật tư'
+          : looseOnly ? 'bộ này vốn là vật tư lẻ' : 'chọn bộ vật tư trước',
+        !canWholeSet)),
     // --- Danh sách tick + đơn giá từng dòng ---
     h("div", null,
       h("div", { className: "flex items-end justify-between mb-1" },
@@ -2817,7 +2826,7 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
           onClick: chonHet,
           className: "text-[11.5px] text-emerald-700 hover:underline"
         }, sel.size >= conTrong.length ? "Bỏ chọn tất cả" : "Chọn tất cả")),
-      h("div", { className: "border border-slate-200 rounded-md max-h-56 overflow-y-auto divide-y divide-slate-100" },
+      h("div", { className: "border border-slate-200 rounded-md max-h-[52vh] min-h-[8rem] overflow-y-auto divide-y divide-slate-100" },
         items.length === 0
           ? h("div", { className: "px-3 py-6 text-center text-[12.5px] text-slate-400" },
               !grp ? "Chọn nhóm sản phẩm để bắt đầu" : "Bộ này chưa có vật tư trong danh mục")
