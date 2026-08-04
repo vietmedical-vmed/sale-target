@@ -138,16 +138,16 @@ const TEAM_ALL = { label: 'ALL', name: 'Tất cả team', gradient: '#65676b' };
 const canSwitchTeam = role => role === 'admin' || role === 'manager';
 
 // ============ HELPERS ============
-const fmtFull = v => v == null || v === '' ? '' : typeof v === 'number' ? v.toLocaleString('vi-VN') : v;
+const fmtFull = v => v == null || v === '' ? '' : typeof v === 'number' ? v.toLocaleString('en-US') : v;
 const fmtInt = v => {
   if (!v && v !== 0) return '—';
   if (v === 0) return '·';
-  return Math.round(v).toLocaleString('vi-VN');
+  return Math.round(v).toLocaleString('en-US');
 };
 const fmtM = v => {
   if (!v) return '—';
   const m = v / 1e6;
-  if (Math.abs(m) >= 1000) return Math.round(m).toLocaleString('vi-VN');
+  if (Math.abs(m) >= 1000) return Math.round(m).toLocaleString('en-US');
   if (Math.abs(m) >= 100) return m.toFixed(0);
   if (Math.abs(m) >= 10) return m.toFixed(1);
   return m.toFixed(2);
@@ -170,19 +170,19 @@ const parseNum = s => {
 let MASK_MONEY = false;
 const money = v => MASK_MONEY ? '•••' : fmtM(v);
 const moneyShort = v => MASK_MONEY ? '•••' : fmtShort(v);
-const moneyPrice = v => MASK_MONEY ? '•••' : !v ? '—' : (v / 1e6).toLocaleString('vi-VN', {
+const moneyPrice = v => MASK_MONEY ? '•••' : !v ? '—' : (v / 1e6).toLocaleString('en-US', {
   minimumFractionDigits: 3,
   maximumFractionDigits: 3
 }); // đơn giá: triệu VND, 3 số lẻ
-// DThu: >=1 tỷ → hiện theo tỷ (3 số thập phân); <1 tỷ → hiện theo triệu (0 số thập phân)
-// vi-VN: dấu phẩy ngăn thập phân, dấu chấm ngăn hàng nghìn
+// DThu: >=1 tỷ → hiện theo tỷ (1 số thập phân); <1 tỷ → hiện theo triệu (0 số thập phân)
+// en-US: dấu chấm ngăn thập phân, dấu phẩy ngăn hàng nghìn
 const fmtTy3 = v => {
   const n = Math.abs(v);
-  if (n >= 1e9) return (v / 1e9).toLocaleString('vi-VN', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3
+  if (n >= 1e9) return (v / 1e9).toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
   }) + 'tỷ';
-  return (v / 1e6).toLocaleString('vi-VN', {
+  return (v / 1e6).toLocaleString('en-US', {
     maximumFractionDigits: 0
   }) + 'tr';
 };
@@ -1907,7 +1907,7 @@ function exportSummaryPS(data) {
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 8 });
   moneyCols.push(c, c + 1); pctCols.push(c + 2); c += 3;
-  for (const t of [['KH đầu năm', 12], ['Chênh lệch', 12]]) {
+  for (const t of [['KH update', 12], ['KH đầu năm', 12], ['Chênh lệch', 12]]) {
     H1.push(t[0]); H2.push('');
     merges.push({ s: { r: 0, c }, e: { r: 1, c } });
     cols.push({ wch: t[1] }); moneyCols.push(c); c += 1;
@@ -1933,7 +1933,7 @@ function exportSummaryPS(data) {
       row.push(tr(kh), tr(act), kh > 0 ? act / kh : '');
     }
     row.push(tr(khYtdDt), tr(dtYtd), khYtdDt > 0 ? dtYtd / khYtdDt : '');
-    row.push(tr(dt), tr(ch));
+    row.push(tr(Number(d.dtUpd) || 0), tr(dt), tr(ch));
     row.push(Math.round(d.quotaFY || 0), Math.round(d.khLeft || 0), d.quotaAvail == null ? '-' : Math.round(d.quotaAvail));
     row.push(note || '');
     aoa.push(row);
@@ -2256,6 +2256,9 @@ function SummaryView({
     };
   }, [rows, psFilter, regionFilter, custFilter, groupFilter, search]);
   const g = data.grand;
+  // Thu gọn/mở phần thực hiện theo tháng (mặc định thu gọn → chỉ còn Luỹ kế YTD).
+  const [showMonths, setShowMonths] = useState(false);
+  SUM_SHOW_MONTHS = showMonths; // set trước khi render header/rows (chúng đọc biến module này)
   // Nút xuất Excel nằm trên thanh bộ lọc (do App vẽ) → đăng ký hàm xuất lên đó
   useEffect(() => {
     onExport(() => exportSummaryPS(data));
@@ -2266,6 +2269,12 @@ function SummaryView({
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg border border-slate-200 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-end gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/50"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowMonths(s => !s),
+    title: showMonths ? "Thu gọn, chỉ hiện Luỹ kế YTD" : "Hiện chi tiết doanh thu theo từng tháng",
+    className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+  }, showMonths ? "▾ Thu gọn theo tháng" : "▸ Chi tiết theo tháng")), /*#__PURE__*/React.createElement("div", {
     ref: boxRef,
     className: "overflow-auto scroll-shadow"
   }, /*#__PURE__*/React.createElement("table", {
@@ -2286,7 +2295,7 @@ function SummaryView({
     className: "px-4 py-2.5"
   })))))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-2"
-  }, "Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH update, TH = DThu thực hiện, % = TH / KH. ≥1 tỷ hiện theo tỷ (3 số lẻ), nhỏ hơn hiện theo triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. KH đầu năm = DThu kế hoạch đầu năm; Chênh lệch = DThu update − DThu đầu năm. Tổng Quota / KH còn lại YTD / Khả dụng còn lại = số lượng; Khả dụng còn lại = Tổng Quota − (Thực hiện YTD + KH còn lại YTD)."));
+  }, "Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH update, TH = DThu thực hiện, % = TH / KH. Nút \"Chi tiết theo tháng\" bật/tắt các cột tháng (mặc định thu gọn, chỉ hiện Luỹ kế YTD). ≥1 tỷ hiện theo tỷ (1 số lẻ), nhỏ hơn hiện theo triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. KH update = DThu update cả năm; KH đầu năm = DThu kế hoạch đầu năm; Chênh lệch = KH update − KH đầu năm. Tổng Quota / KH còn lại YTD / Khả dụng còn lại = số lượng; Khả dụng còn lại = Tổng Quota − (Thực hiện YTD + KH còn lại YTD)."));
 }
 const chCls = v => v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
 // % Thực hiện YTD = DThu thực hiện YTD / DThu KH update cả năm
@@ -2298,6 +2307,9 @@ const moHasAct = i => i <= SUM_CUR_IDX;   // tháng đã qua/hiện tại mới 
 const moBgSum = i => MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/50' : (i % 2 ? 'bg-slate-50/60' : '');
 const pctTxtSum = (th, kh) => kh > 0 ? Math.round(th / kh * 100) + '%' : '—';
 const pctClsSum = (th, kh) => { if (!(kh > 0)) return 'text-slate-300'; const r = th / kh; return r >= 1 ? 'text-green-700' : r >= 0.8 ? 'text-amber-600' : 'text-red-600'; };
+// Nút "chi tiết theo tháng": khi false chỉ hiện Luỹ kế YTD, ẩn toàn bộ cột tháng (mặc định thu gọn).
+// SummaryView set biến này trước khi render con (giống cơ chế MASK_MONEY).
+let SUM_SHOW_MONTHS = false;
 
 // Header 2 tầng cho màn Tổng hợp theo PS.
 function SummaryHead() {
@@ -2319,8 +2331,9 @@ function SummaryHead() {
     h('tr', { className: 'bg-slate-100' },
       h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Miền / PS / Khách hàng'),
       h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Số KH'),
-      ...monthTh,
+      ...(SUM_SHOW_MONTHS ? monthTh : []),
       h('th', { colSpan: 3, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-800 border-r border-b border-slate-200 bg-amber-50/60' }, 'Luỹ kế YTD'),
+      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-blue-700 bg-emerald-50/60 align-bottom` }, 'KH update'),
       h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-emerald-800 bg-emerald-50/60 align-bottom` }, 'KH đầu năm'),
       h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-emerald-800 bg-emerald-50/60 align-bottom` }, 'Chênh lệch'),
       h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Tổng Quota'),
@@ -2329,7 +2342,7 @@ function SummaryHead() {
       h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} text-amber-700 align-bottom`, style: { minWidth: 200 } }, 'Giải trình')
     ),
     h('tr', { className: 'bg-slate-100' },
-      ...MONTHS.flatMap((_, i) => moHasAct(i) ? sub('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []),
+      ...(SUM_SHOW_MONTHS ? MONTHS.flatMap((_, i) => moHasAct(i) ? sub('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []) : []),
       ...sub('sytd', 'bg-amber-50/40')
     )
   );
@@ -2344,8 +2357,8 @@ function StatCells({ d, size, dark }) {
   const orange = dark ? 'text-orange-200' : size === 'sm' ? 'text-orange-600' : 'text-orange-700';
   const blue = dark ? 'text-blue-200' : size === 'sm' ? 'text-blue-600' : 'text-blue-700';
   const cells = [];
-  // --- Cột theo tháng ---
-  for (let i = 0; i < 12; i++) {
+  // --- Cột theo tháng (ẩn khi thu gọn) ---
+  if (SUM_SHOW_MONTHS) for (let i = 0; i < 12; i++) {
     const bg = dark ? '' : moBgSum(i);
     const kh = d.moKhDt[i], act = d.moActDt[i];
     if (!moHasAct(i)) {
@@ -2361,9 +2374,10 @@ function StatCells({ d, size, dark }) {
   cells.push(h('td', { key: 'yk', className: `px-3 ${p} text-right tabular-nums font-medium ${base} ${ybg}` }, moneyTy3(d.khYtdDt)));
   cells.push(h('td', { key: 'ya', className: `px-3 ${p} text-right tabular-nums font-medium ${orange} ${ybg}` }, moneyTy3(d.dtYtd)));
   cells.push(h('td', { key: 'yp', className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-200 ${dark ? 'text-slate-300' : pctClsSum(d.dtYtd, d.khYtdDt)} ${ybg}` }, pctTxtSum(d.dtYtd, d.khYtdDt)));
-  // --- KH đầu năm + Chênh lệch (doanh thu) ---
+  // --- KH update + KH đầu năm + Chênh lệch (doanh thu) ---
   const ch = (d.dtUpd || 0) - (d.dt || 0);
   const chCol = dark ? (ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : '') : chCls(ch);
+  cells.push(h('td', { key: 'du', className: `px-3 ${p} text-right tabular-nums font-medium ${blue}` }, moneyTy3(d.dtUpd)));
   cells.push(h('td', { key: 'dt', className: `px-3 ${p} text-right tabular-nums font-medium ${base}` }, moneyTy3(d.dt)));
   cells.push(h('td', { key: 'ch', className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${chCol}` }, ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)));
   // --- Quota / số lượng ---
@@ -2408,7 +2422,7 @@ function SummaryPSRow({
     className: "bg-slate-50 hover:bg-slate-100 cursor-pointer border-b border-slate-200",
     onClick: () => setOpen(!open)
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-2 text-[13px] font-semibold text-slate-800 border-r border-slate-100"
+    className: "px-4 py-2 text-[13px] font-semibold text-slate-800 border-r border-slate-100 whitespace-nowrap"
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1.5 pl-4"
   }, open ? /*#__PURE__*/React.createElement(ChevronDown, {
