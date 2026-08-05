@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   );
 
   const { data: user, error } = await admin
-    .from("users")
+    .schema("shared").from("users")
     .select("username, password_hash, salt, role, scope, bu, mien, ho_va_ten")
     .eq("username", username)
     .maybeSingle();
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     }
     const newHash = await sha256Hex(user.salt ? (user.salt + ":" + String(newPassword)) : String(newPassword));
     const { error: upErr } = await admin
-      .from("users")
+      .schema("shared").from("users")
       .update({ password_hash: newHash })
       .eq("username", user.username);
     if (upErr) return json({ ok: false, error: "update_failed" }, 500);
