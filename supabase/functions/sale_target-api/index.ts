@@ -152,7 +152,7 @@ function admin() {
 }
 
 async function getRev(db) {
-  const { data } = await db.from("sale_target")
+  const { data } = await db.schema("shared").from("sale_target")
     .select("updated_at").order("updated_at", { ascending: false }).limit(1);
   if (data && data[0] && data[0].updated_at) return Date.parse(data[0].updated_at);
   return 0;
@@ -164,7 +164,7 @@ async function getRev(db) {
 // 1 tên PS có dữ liệu ở nhiều team → KHÔNG đoán, ném lỗi để người dùng biết.
 // Trả về `fallback` khi PS chưa có dòng kế hoạch nào.
 async function buForPs(db, psName, fallback) {
-  const { data, error } = await db.from("sale_target")
+  const { data, error } = await db.schema("shared").from("sale_target")
     .select("bu").eq("ps", psName).not("bu", "is", null).limit(1000);
   if (error) throw new Error(error.message);
   const list = [...new Set((data || []).map((r) => r.bu).filter(Boolean))];
@@ -183,7 +183,7 @@ async function buForPs(db, psName, fallback) {
 // Trả null khi không xác định được (PS chưa có dòng kế hoạch, hoặc đang có mặt ở
 // nhiều miền) — caller hiểu là "giữ nguyên miền đang lưu".
 async function mienForPs(db, psName) {
-  const { data, error } = await db.from("sale_target")
+  const { data, error } = await db.schema("shared").from("sale_target")
     .select("mien").eq("ps", psName).not("mien", "is", null).limit(1000);
   if (error) throw new Error(error.message);
   const list = [...new Set((data || []).map((r) => r.mien).filter(Boolean))];
@@ -200,7 +200,7 @@ async function fetchAll(db, sess, payload) {
   const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
 
   // 1) Đếm số dòng trong phạm vi quyền của user (head:true → không kéo data).
-  let countQ = db.from("sale_target").select("id", { count: "exact", head: true });
+  let countQ = db.schema("shared").from("sale_target").select("id", { count: "exact", head: true });
   countQ = applyScope(countQ, sess, payload);
   const { count, error: cErr } = await countQ;
   if (cErr) throw new Error(cErr.message);
@@ -216,7 +216,7 @@ async function fetchAll(db, sess, payload) {
   async function worker() {
     for (let p = next++; p < pages; p = next++) {
       const from = p * PAGE;
-      let q = db.from("sale_target").select(cols)
+      let q = db.schema("shared").from("sale_target").select(cols)
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       q = applyScope(q, sess, payload);
@@ -244,7 +244,7 @@ const OOP_CUST = "Ngoài kế hoạch";
 async function fetchOutOfPlan(db, sess, payload) {
   const out = [];
   for (let from = 0; ; from += PAGE) {
-    let q = db.from("v_actual_ngoai_ke_hoach")
+    let q = db.schema("app_sale").from("v_actual_ngoai_ke_hoach")
       .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien")
       .range(from, from + PAGE - 1);
     q = applyScope(q, sess, payload); // cùng phân quyền như sale_target
@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
       // payload thừa.
       const seen = new Set();
       for (let from = 0; ; from += PAGE) {
-        const { data, error } = await db.from("dm_bo_vat_tu_mapping")
+        const { data, error } = await db.schema("shared").from("dm_bo_vat_tu_mapping")
           .select("nhom_san_pham, bo_vat_tu, san_pham")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
@@ -359,7 +359,7 @@ Deno.serve(async (req) => {
       // Phân trang vì PostgREST giới hạn 1000 dòng/lần.
       const out = [];
       for (let from = 0; ; from += PAGE) {
-        const { data, error } = await db.from("dm_khach_hang")
+        const { data, error } = await db.schema("shared").from("dm_khach_hang")
           .select("customer_id, customer_name")
           .order("customer_id", { ascending: true })
           .range(from, from + PAGE - 1);
@@ -413,7 +413,7 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.rows || []).map(Number).filter((n) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
-      const { error } = await db.from("sale_target").delete().in("id", ids);
+      const { error } = await db.schema("shared").from("sale_target").delete().in("id", ids);
       if (error) throw new Error(error.message);
       return json({ ok: true, rev: await getRev(db) });
     }
@@ -428,7 +428,7 @@ Deno.serve(async (req) => {
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
       const CHUNK = 200;
       for (let i = 0; i < ids.length; i += CHUNK) {
-        const { error } = await db.from("sale_target").delete().in("id", ids.slice(i, i + CHUNK));
+        const { error } = await db.schema("shared").from("sale_target").delete().in("id", ids.slice(i, i + CHUNK));
         if (error) throw new Error(error.message);
       }
       return json({ ok: true, deleted: ids.length, rev: await getRev(db) });
@@ -438,7 +438,7 @@ Deno.serve(async (req) => {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const s = payload;
       // Lấy fy (năm tài chính) từ 1 dòng có sẵn
-      const { data: any1 } = await db.from("sale_target").select("nam_tai_chinh").limit(1);
+      const { data: any1 } = await db.schema("shared").from("sale_target").select("nam_tai_chinh").limit(1);
       const fy = any1 && any1[0] ? any1[0].nam_tai_chinh : "FY26";
       const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
@@ -496,7 +496,7 @@ Deno.serve(async (req) => {
       // Trả luôn 12 dòng vừa tạo (đúng thứ tự FIELDS) để app chèn thẳng vào state,
       // khỏi phải getData lại toàn bộ ~20k dòng sau mỗi lần thêm sản phẩm.
       const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
-      const { data: ins, error } = await db.from("sale_target").insert(rowsIns).select(cols);
+      const { data: ins, error } = await db.schema("shared").from("sale_target").insert(rowsIns).select(cols);
       if (error) throw new Error(error.message);
       const inserted = ins || [];
       return json({
@@ -520,7 +520,7 @@ Deno.serve(async (req) => {
     if (action === "getDiaBan") {
       const out = [];
       for (let from = 0; ; from += PAGE) {
-        let q = db.from("dm_dia_ban")
+        let q = db.schema("shared").from("dm_dia_ban")
           .select("id, bu, ma_khach_hang, khach_hang, nhom_san_pham, mien, ps, active, tu_thang, den_thang")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
@@ -550,7 +550,7 @@ Deno.serve(async (req) => {
       const ids = rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n));
       const oldMien = new Map();
       if (ids.length) {
-        const { data, error } = await db.from("dm_dia_ban").select("id, mien").in("id", ids);
+        const { data, error } = await db.schema("shared").from("dm_dia_ban").select("id, mien").in("id", ids);
         if (error) throw new Error(error.message);
         for (const d of data || []) oldMien.set(d.id, d.mien ?? "");
       }
