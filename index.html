@@ -218,6 +218,25 @@ const inSel = (sel, v) => !sel || sel.length === 0 || sel.includes(v);
 // Chỉ xuất hiện ở 2 màn tổng hợp; các dòng này không có kế hoạch nên cột KH để trống.
 const OOP_CUST = 'Ngoài kế hoạch';
 
+// Khách hàng ĐANG CÓ trong kế hoạch (suy từ chính các dòng kế hoạch của bộ dữ liệu
+// đang xem). Dòng THỰC HIỆN NGOÀI KẾ HOẠCH của những KH này được đẩy thẳng vào đúng
+// khách hàng + nhóm sản phẩm của họ, chỉ KH lạ mới gom vào nhóm "Ngoài kế hoạch" —
+// số thực hiện của một KH quen thuộc nằm lẫn trong rổ "Ngoài kế hoạch" thì rất khó
+// soát, mà bản chất nó vẫn là doanh số của KH đó.
+// Khớp theo MÃ KH trước; không có mã thì theo tên (cả 2 nguồn đều đã qua fmtCust).
+const nk = s => String(s == null ? '' : s).trim().toLowerCase();
+const planCustKeys = rows => {
+  const s = new Set();
+  for (const r of rows) {
+    if (r._oop) continue;
+    if (r.custId) s.add('#' + nk(r.custId));
+    if (r.cust) s.add('@' + nk(r.cust));
+  }
+  return s;
+};
+const custInPlan = (keys, r) =>
+  (r.custId && keys.has('#' + nk(r.custId))) || (r.cust && keys.has('@' + nk(r.cust)));
+
 // ============ API (Supabase Edge Functions) ============
 const SUPABASE_URL = "https://nrfxymnfmjhbsgpipvkb.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yZnh5bW5mbWpoYnNncGlwdmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4ODk2OTQsImV4cCI6MjA5ODQ2NTY5NH0.cN-jTdPOLWKd9kNa1nNMENzHcY0_BftyYgPEbuVTWeo";
@@ -1625,6 +1644,9 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
     // thYtd = tổng thực hiện luỹ kế (đến hết tháng hiện tại)
     // khYtd = tổng KH update THÔ luỹ kế (đến hết tháng hiện tại) → dùng để tính % TH YTD
     const blank = () => ({ moKh: MONTHS.map(() => 0), moAct: MONTHS.map(() => 0), thYtd: 0, khYtd: 0, quota: 0 });
+    // Tính trên TOÀN BỘ rows (không phải `filtered`): bộ lọc có thể đang ẩn dòng kế
+    // hoạch của KH đó, không vì thế mà coi họ là KH lạ.
+    const planCusts = planCustKeys(rows);
     const prodMap = new Map();
     for (const r of filtered) {
       const i = MONTHS.indexOf(r.mo);
@@ -1651,7 +1673,9 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
       // Cấp Khách hàng dưới Miền. Dòng ngoài kế hoạch gom vào 1 nhóm "Ngoài kế hoạch",
       // KH thật của dòng thực hiện nằm ở cấp con ngay dưới nhóm đó.
       // oop = dòng ngoài kế hoạch → không có quota nên không tính "khả dụng còn lại"
-      const isOop = !!r._oop;
+      // Chỉ KH LẠ (không có dòng kế hoạch nào) mới vào nhóm "Ngoài kế hoạch";
+      // KH đã có kế hoạch thì dòng thực hiện nhập thẳng vào chính KH đó.
+      const isOop = !!r._oop && !custInPlan(planCusts, r);
       const cKey = isOop ? OOP_CUST : (r.cust || '—');
       if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: isOop ? '' : r.custId, oop: isOop, subMap: new Map(), ...blank() });
       const cc = cell.custMap.get(cKey);
@@ -2072,6 +2096,9 @@ function SummaryView({
   const data = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
     const filtered = rows.filter(r => inSel(psFilter, r.ps) && inSel(regionFilter, r.region) && inSel(custFilter, r.cust) && inSel(groupFilter, r.grp) && matchSearch(r, q));
+    // Tính trên TOÀN BỘ rows (không phải `filtered`): bộ lọc có thể đang ẩn dòng kế
+    // hoạch của KH đó, không vì thế mà coi họ là KH lạ.
+    const planCusts = planCustKeys(rows);
     const regMap = new Map();
     for (const r of filtered) {
       // Bỏ dòng ngoài 12 tháng của năm tài chính. Dòng kế hoạch luôn nằm trong FY,
@@ -2093,7 +2120,10 @@ function SummaryView({
       const ps = reg.psMap.get(psKey);
       // Dòng ngoài kế hoạch gom hết vào 1 nhóm "Ngoài kế hoạch";
       // KH thật của dòng thực hiện nằm ở cấp con ngay dưới nhóm này.
-      const isOop = !!r._oop;
+      // Chỉ KH LẠ (không có dòng kế hoạch nào) mới vào nhóm "Ngoài kế hoạch";
+      // KH đã có kế hoạch thì dòng thực hiện nhập thẳng vào chính KH đó, rồi rơi
+      // xuống đúng nhóm SP / sản phẩm ở dưới như một dòng bình thường.
+      const isOop = !!r._oop && !custInPlan(planCusts, r);
       const cKey = isOop ? OOP_CUST : (r.cust || '—');
       const newCust = (name, id) => ({
         cust: name,
