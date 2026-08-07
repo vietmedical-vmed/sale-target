@@ -48,7 +48,8 @@ frontend host trên **GitHub Pages**.
 | `schema.sql` | Định nghĩa schema Postgres |
 | `supabase/functions/sale_target-api/` | Edge Function API (mọi action) |
 | `supabase/functions/sale_target-login/` | Edge Function đăng nhập / đổi mật khẩu |
-| `supabase/migrations/` | Migration (vd index hiệu năng) |
+| `supabase/migrations/` | Migration — `supabase db push` chạy **mọi** file ở đây |
+| `supabase/rollbacks/` | Script hoàn tác, **không bao giờ để trong `migrations/`** (xem dưới) |
 | `PRD.md` | Tài liệu yêu cầu sản phẩm |
 
 ---
@@ -58,6 +59,20 @@ frontend host trên **GitHub Pages**.
 ### Frontend
 Là một file tĩnh `index.html`, deploy **tự động qua GitHub Pages** khi push lên `main`.
 Chạy thử cục bộ chỉ cần mở file bằng một web server tĩnh bất kỳ.
+
+### Migration (Supabase)
+```bash
+supabase db push
+```
+
+> ⚠️ **Script hoàn tác KHÔNG được để trong `supabase/migrations/`.**
+> `db push` chạy mọi file `.sql` trong thư mục đó theo thứ tự tên file. Một file
+> `<version>_X_ROLLBACK.sql` nằm cạnh `<version>_X.sql` sẽ chạy **ngay sau** nó và
+> xoá sạch việc vừa làm — ngày 2026-08-07 đúng việc này đã đưa toàn bộ bảng từ
+> schema `shared` về `public` khiến app trắng dữ liệu (edge function gọi cứng
+> `.schema("shared")`).
+> Script hoàn tác để ở `supabase/rollbacks/` và chỉ chạy tay qua SQL Editor.
+> Hai file cùng số version cũng không được phép — mỗi version đúng một file.
 
 ### Edge Functions (Supabase)
 > ⚠️ **Phải deploy tay riêng** — không đi theo pipeline GitHub Pages.
