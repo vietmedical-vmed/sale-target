@@ -46,10 +46,12 @@ BEGIN
     ('Qúi Nguyễn',  'Quí Nguyễn');
 
   -- Chặn gõ sai: tên đích BẮT BUỘC phải có trong danh mục PS.
-  SELECT string_agg(ps_moi, ', ') INTO v_thieu
-    FROM _ren r
+  -- Alias là `x` chứ KHÔNG phải `r`: trùng tên biến record `r` thì plpgsql hiểu
+  -- r.ps_moi là biến (chưa gán) chứ không phải cột → lỗi 55000.
+  SELECT string_agg(x.ps_moi, ', ') INTO v_thieu
+    FROM _ren x
    WHERE NOT EXISTS (SELECT 1 FROM shared.dm_ps d
-                      WHERE lower(btrim(d.ps)) = lower(btrim(r.ps_moi)));
+                      WHERE lower(btrim(d.ps)) = lower(btrim(x.ps_moi)));
   IF v_thieu IS NOT NULL THEN
     RAISE EXCEPTION 'ten_ps_khong_co_trong_dm_ps: [%] — sửa bảng đổi tên hoặc bổ sung dm_ps trước', v_thieu;
   END IF;

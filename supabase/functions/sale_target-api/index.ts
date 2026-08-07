@@ -262,7 +262,7 @@ async function fetchOutOfPlan(db, sess, payload) {
   const out = [];
   for (let from = 0; ; from += PAGE) {
     let q = db.schema("app_sale").from("v_actual_ngoai_ke_hoach")
-      .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien")
+      .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien,don_gia")
       .range(from, from + PAGE - 1);
     q = applyScope(q, sess, payload); // cùng phân quyền như sale_target
     const { data, error } = await q;
@@ -279,6 +279,9 @@ async function fetchOutOfPlan(db, sess, payload) {
       cust: r.khach_hang || OOP_CUST, custId: r.ma_khach_hang,
       grp: r.nhom_san_pham, prod: r.san_pham,
       mset: r.bo_vat_tu, act: r.sl_thuc_hien,
+      // Đơn giá đại diện từ hoá đơn → app tính DThu = SL thực hiện × đơn giá.
+      // Các cột kế hoạch (rev/dt) vẫn để rỗng vì dòng này không có kế hoạch.
+      price: r.don_gia,
     };
     return FIELDS.map((f) => (o[f] === null || o[f] === undefined ? "" : o[f]));
   });

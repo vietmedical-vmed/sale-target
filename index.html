@@ -2074,6 +2074,11 @@ function SummaryView({
     const filtered = rows.filter(r => inSel(psFilter, r.ps) && inSel(regionFilter, r.region) && inSel(custFilter, r.cust) && inSel(groupFilter, r.grp) && matchSearch(r, q));
     const regMap = new Map();
     for (const r of filtered) {
+      // Bỏ dòng ngoài 12 tháng của năm tài chính. Dòng kế hoạch luôn nằm trong FY,
+      // chỉ dòng THỰC HIỆN NGOÀI KẾ HOẠCH mới có tháng của năm trước — mà
+      // isYtdMonth('2025-07') vẫn ra true nên nếu không chặn thì doanh số năm ngoái
+      // bị cộng vào Thực hiện YTD/DThu của FY này. Màn Tổng hợp theo SP đã chặn sẵn.
+      if (MONTHS.indexOf(r.mo) < 0) continue;
       const rKey = r.region || '(Không rõ miền)';
       if (!regMap.has(rKey)) regMap.set(rKey, {
         region: rKey,
