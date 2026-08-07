@@ -157,6 +157,13 @@ Khai báo **(Khách hàng × Ngành hàng `nhom_san_pham`) → PS phụ trách**
   Miền · PS · **Đối chiếu kế hoạch**. Trạng thái đối chiếu tính ở client từ dữ liệu
   kế hoạch đang tải: *Khớp kế hoạch* / *Lệch kế hoạch* (kèm PS mà kế hoạch đang gắn) /
   *Chưa có kế hoạch*.
+- **Danh sách PS lấy từ `shared.dm_ps`** (action `getPs`), không suy từ dữ liệu kế
+  hoạch nữa — PS mới chưa có dòng kế hoạch nào vẫn khai báo địa bàn trước được.
+  Vẫn giữ thêm PS đang có trong kế hoạch mà chưa có trong danh mục để sửa được dữ
+  liệu cũ; PS `Inactive` chỉ hiện nếu họ còn dòng kế hoạch. PS **không có trong
+  `dm_ps`** bị đánh dấu đỏ (badge `!` + đếm ở thanh công cụ): hoá đơn của họ được
+  dịch `ten_ps` → `ps` theo `dm_ps` nên sẽ **không bao giờ khớp** dòng kế hoạch,
+  toàn bộ số rơi sang "ngoài kế hoạch" mà không có lỗi nào báo ra.
 - **Miền không nhập tay** — là thuộc tính của PS: UI hiển thị miền suy từ PS (chỉ khi
   PS đó thuộc đúng 1 miền trong kế hoạch), và server tự suy lại khi lưu (`mienForPs`),
   không tin `mien` do client gửi. Không suy được (PS chưa có dòng kế hoạch, hoặc đang
@@ -263,6 +270,12 @@ riêng qua `oopRows`, đánh dấu `_oop` ở client — **không** trộn vào 
 
 Không bảng danh mục nào có `don_gia` — đơn giá chỉ tồn tại trên từng dòng `sale_target`, người dùng nhập tay khi thêm sản phẩm.
 
+**`shared.dm_ps`** — danh mục PS: `ps` (tên rút gọn, khớp `sale_target.ps`), `ten_ps`
+(tên đầy đủ trong hoá đơn), `bu` (tên BU đầy đủ), **`bu_code`** (mã team khớp
+`sale_target.bu`: `chcs`/`cttm`/`thnk` — `bu` KHÔNG dùng trực tiếp được), `area` (= miền),
+`team`, `trang_thai`. Là **nguồn chuẩn** cho PS/miền/team của app; view
+`shared.v_dm_ps_lech_ten` soi PS lệch tên giữa danh mục và kế hoạch.
+
 **`dm_khach_hang`** — danh mục khách hàng đầy đủ: `customer_id`, `customer_name` (RLS chặn anon; không chứa PS/Miền).
 
 **`dm_dia_ban`** — cấu hình địa bàn **có thời gian hiệu lực**: `bu`, `ma_khach_hang`,
@@ -346,7 +359,7 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 ### 10.1 Điểm triển khai quan trọng
 - **Frontend**: `index.html` deploy tự động qua **GitHub Pages** (GitHub Actions).
 - **Edge Functions**: **phải deploy tay riêng** (`supabase functions deploy ... --no-verify-jwt`); **không** đi theo pipeline Pages. Cần secret `SESSION_SECRET` giống nhau cho cả login & api.
-- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `updateCells`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `chuyenDiaBan`, `deleteDiaBan`, `applyDiaBan`.
+- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `getPs`, `updateCells`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `chuyenDiaBan`, `deleteDiaBan`, `applyDiaBan`.
 - **Migration mới phải `supabase db push`** (hoặc dán vào SQL Editor) — bảng/RPC mới không tự lộ qua Data API (`auto_expose_new_tables` tắt) nên migration tự `GRANT` cho `service_role`.
 
 ---
@@ -399,7 +412,7 @@ Xem bảng đầy đủ ở §7.1. Thứ tự field khi trả `getData`:
 `fy, mo, region, ps, cust, custId, grp, prod, mset, qOld, mMain, dMain, qMain, mAdd, qAdd, rev, revUpd, price, note, act, dt`
 
 ### 13.3 Danh sách action API
-`ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `updateCells` · `addProduct` ·
+`ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `getPs` · `updateCells` · `addProduct` ·
 `deleteProduct` · `deleteCustomer` · `getDiaBan` · `saveDiaBan` · `chuyenDiaBan` · `deleteDiaBan` · `applyDiaBan`
 
 ---

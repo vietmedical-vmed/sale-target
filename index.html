@@ -3139,10 +3139,13 @@ const diaBanErrMsg = m => {
 // Miền KHÔNG phải trường nhập tay: nó là thuộc tính của PS, chọn tay chỉ tạo cơ hội
 // gán lệch miền cho cùng một PS. Backend cũng tự suy lại khi lưu, không tin client.
 function DiaBanView({
-  rows, diaBan, customers, psOptions, mienByPs, groupOptions, canEdit,
+  rows, diaBan, customers, psOptions, mienByPs, psKnown, groupOptions, canEdit,
   psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, onMove, busy
 }) {
   const h = React.createElement;
+  // PS lạ = có trong kế hoạch/khai báo nhưng KHÔNG có trong danh mục dm_ps.
+  // psKnown rỗng (chưa tải được danh mục) → không kiểm tra, tránh báo động nhầm.
+  const psLa = ps => psKnown && psKnown.size > 0 && !psKnown.has(String(ps || '').trim().toLowerCase());
   const [edits, setEdits] = useState({}); // { id: ps } — PS đã đổi, chưa lưu
   const [search, setSearch] = useState('');
   const [viewMo, setViewMo] = useState(CURRENT_MONTH); // tháng đang xem (MO_ALL = cả lịch sử)
@@ -3333,6 +3336,10 @@ function DiaBanView({
   );
   const editCount = Object.keys(edits).length;
   const custCount = groups.length;
+  const psLaList = useMemo(
+    () => Array.from(new Set(list.filter(d => psLa(d.ps)).map(d => d.ps))).sort(),
+    [list, psKnown]
+  );
 
   // Chỉ PS là sửa được tại chỗ (sửa sai cho CẢ khoảng hiệu lực của bản đó); đổi
   // người phụ trách giữa năm phải dùng "Chuyển PS". Miền đi theo PS.
@@ -3448,6 +3455,10 @@ function DiaBanView({
         fmtInt(list.length), " địa bàn · ", fmtInt(custCount), " khách hàng",
         diffIds.length > 0 && h("span", { className: "text-amber-600 font-medium" }, " · ", diffIds.length, " lệch kế hoạch"),
         allGaps.length > 0 && h("span", { className: "text-red-600 font-medium" }, " · ", allGaps.length, " tổ hợp thiếu tháng"),
+        psLaList.length > 0 && h("span", {
+          className: "text-red-600 font-medium",
+          title: "PS đang được khai báo/dùng nhưng không có trong danh mục PS: " + psLaList.join(', ')
+        }, " · ", psLaList.length, " PS ngoài danh mục"),
         missing.length > 0 && h("span", { className: "text-slate-500" }, " · ", missing.length, " chưa khai báo")),
       h("div", { className: "flex-1" }),
       h("label", { className: "flex items-center gap-1.5 text-[12px] text-slate-600" }, "Xem theo tháng",
@@ -3645,16 +3656,21 @@ function DiaBanView({
                         className: td + " text-slate-500",
                         title: "Miền lấy theo PS phụ trách, không sửa trực tiếp"
                       }, d.mien || '—'),
-                      h("td", { className: td, style: { minWidth: 150 } }, canEdit
-                        ? h("select", {
-                            value: d.ps,
-                            onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
-                            title: "Sửa PS của CẢ khoảng hiệu lực này (sửa sai). Đổi người phụ trách giữa năm: dùng Chuyển PS.",
-                            className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
-                          }, psOptions.map(p => h("option", { key: p, value: p }, p)),
-                            // PS của dòng có thể không nằm trong danh sách suy từ kế hoạch
-                            !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
-                        : d.ps),
+                      h("td", { className: td, style: { minWidth: 150 } },
+                        canEdit
+                          ? h("select", {
+                              value: d.ps,
+                              onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
+                              title: "Sửa PS của CẢ khoảng hiệu lực này (sửa sai). Đổi người phụ trách giữa năm: dùng Chuyển PS.",
+                              className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
+                            }, psOptions.map(p => h("option", { key: p, value: p }, p)),
+                              // PS của dòng có thể không nằm trong danh sách suy từ kế hoạch
+                              !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
+                          : d.ps,
+                        psLa(d.ps) && h("span", {
+                          title: "PS này không có trong danh mục PS (dm_ps) — hoá đơn của họ được dịch tên theo dm_ps nên sẽ KHÔNG khớp dòng kế hoạch, số rơi hết sang \"ngoài kế hoạch\". Sửa tên trong dm_ps hoặc chọn đúng PS trong danh mục.",
+                          className: "ml-1 px-1 rounded bg-red-100 text-red-700 text-[10px] font-bold cursor-help"
+                        }, "!")),
                       h("td", { className: td },
                         h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
                         d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
@@ -3746,6 +3762,7 @@ function App() {
   const [fields, setFields] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [customers, setCustomers] = useState([]); // danh mục KH đầy đủ từ dm_khach_hang
+  const [psDir, setPsDir] = useState([]); // danh mục PS từ shared.dm_ps
   const [diaBan, setDiaBan] = useState([]); // cấu hình địa bàn (dm_dia_ban)
   const [diaBanBusy, setDiaBanBusy] = useState(false);
   const [dataRev, setDataRev] = useState(0);
@@ -3858,6 +3875,18 @@ function App() {
     api('getCatalog').then(r => setCatalog(r.catalog || [])).catch(() => {});
     api('getCustomers').then(r => setCustomers(r.customers || [])).catch(() => {});
   }, [authed]);
+
+  // Danh mục PS (shared.dm_ps) — nguồn chuẩn của PS/miền/team. Phải tải lại khi đổi
+  // team đang xem (admin/manager) vì backend lọc theo team. Lỗi KHÔNG chặn app:
+  // edge chưa deploy bản mới thì rơi về cách cũ (suy PS từ dữ liệu kế hoạch).
+  useEffect(() => {
+    if (!authed) return;
+    let huy = false;
+    api('getPs', canSwitchTeam(auth.role) ? { bu: viewBu } : {})
+      .then(r => { if (!huy) setPsDir(r.ps || []); })
+      .catch(() => { if (!huy) setPsDir([]); });
+    return () => { huy = true; };
+  }, [authed, auth.role, viewBu]);
 
   // Cấu hình địa bàn (dm_dia_ban): dùng ở màn "Cấu hình địa bàn" và ở panel thêm KH
   // (tự điền PS/Miền). Lọc theo team đang xem như getData. Lỗi ở đây KHÔNG được
@@ -4236,11 +4265,12 @@ function App() {
       if (r.region) bump(reg, r.ps, r.region);
       if (r.grp) bump(grp, r.ps, r.grp);
     });
-    return {
-      regionsByPs: new Map(Array.from(reg, ([k, v]) => [k, Array.from(v).sort()])),
-      groupsByPs: grp
-    };
-  }, [rows]);
+    const regions = new Map(Array.from(reg, ([k, v]) => [k, Array.from(v).sort()]));
+    // dm_ps.area là miền chính thức của PS → đè lên phần suy từ kế hoạch (dữ liệu
+    // cũ có thể để PS ở 2 miền, khi đó panel thêm KH đang bắt chọn tay).
+    psDir.forEach(p => { if (p.ps && p.mien) regions.set(p.ps, [p.mien]); });
+    return { regionsByPs: regions, groupsByPs: grp };
+  }, [rows, psDir]);
   // KH vừa thêm nhưng chưa có sản phẩm nào -> chỉ nằm ở client (xem NewCustomerCard).
   const [newCusts, setNewCusts] = useState([]);
   const pendingCusts = useMemo(
@@ -4250,8 +4280,25 @@ function App() {
   const addCustomer = useCallback(c => {
     setNewCusts(prev => prev.some(x => (x.custId || x.cust) === (c.custId || c.cust)) ? prev : prev.concat(c));
   }, []);
-  // Danh sách PS đầy đủ (không lọc) cho panel "Thêm sản phẩm" — vì dm_khach_hang không có PS.
-  const allPsList = useMemo(() => Array.from(new Set(rows.map(r => r.ps).filter(Boolean))).sort(), [rows]);
+  // Tên PS có trong danh mục dm_ps (chuẩn hoá lower/trim). Rỗng = chưa tải được
+  // danh mục → mọi nơi phải coi như "không kiểm tra", đừng báo động nhầm.
+  // PS nằm trong kế hoạch mà KHÔNG có trong tập này là lệch tên với danh mục:
+  // hoá đơn của họ được dịch ten_ps → ps theo dm_ps nên sẽ không bao giờ khớp
+  // dòng kế hoạch, toàn bộ số rơi sang "ngoài kế hoạch" mà không có lỗi nào báo.
+  const psKnown = useMemo(
+    () => new Set(psDir.map(p => String(p.ps || '').trim().toLowerCase()).filter(Boolean)),
+    [psDir]
+  );
+  // Danh sách PS cho mọi dropdown: DANH MỤC dm_ps là nguồn chính (PS mới chưa có
+  // dòng kế hoạch nào vẫn khai báo địa bàn được), cộng thêm PS đang có trong kế
+  // hoạch nhưng chưa có trong danh mục để không mất khả năng sửa dữ liệu cũ.
+  // PS Inactive vẫn giữ nếu họ còn dòng kế hoạch (doanh số lịch sử thuộc về họ).
+  const allPsList = useMemo(() => {
+    const inPlan = new Set(rows.map(r => r.ps).filter(Boolean));
+    const s = new Set(inPlan);
+    psDir.forEach(p => { if (p.ps && (p.active || inPlan.has(p.ps))) s.add(p.ps); });
+    return Array.from(s).sort();
+  }, [rows, psDir]);
   // Đơn giá gợi ý khi thêm sản phẩm. Danh mục (dm_bo_vat_tu / _mapping) KHÔNG có
   // cột đơn giá — giá chỉ nằm trên từng dòng sale_target, nên lấy theo giá đang
   // dùng nhiều nhất cho đúng (nhóm | bộ vật tư | sản phẩm) đó.
@@ -4282,16 +4329,18 @@ function App() {
     diaBan.forEach(d => { if (d.grp) s.add(d.grp); });
     return Array.from(s).sort();
   }, [catalog, rows, diaBan]);
-  // PS → Miền, chỉ khi PS đó thuộc đúng 1 miền trong dữ liệu kế hoạch. Màn cấu hình
-  // địa bàn dùng map này để HIỂN THỊ miền (miền là thuộc tính của PS, không nhập tay);
-  // backend suy lại y hệt khi lưu nên client không quyết được miền.
+  // PS → Miền. Ưu tiên dm_ps.area (câu trả lời dứt khoát, có cả cho PS chưa có dòng
+  // kế hoạch); chỉ khi PS không có trong danh mục mới suy từ kế hoạch, và chỉ nhận
+  // khi PS đó thuộc đúng 1 miền. Backend suy lại y hệt khi lưu nên client không
+  // quyết được miền — map này chỉ để hiển thị.
   const mienByPs = useMemo(() => {
     const m = new Map();
     regionsByPs.forEach((regs, ps) => {
       if (regs.length === 1) m.set(ps, regs[0]);
     });
+    psDir.forEach(p => { if (p.ps && p.mien) m.set(p.ps, p.mien); });
     return m;
-  }, [regionsByPs]);
+  }, [regionsByPs, psDir]);
   // Địa bàn theo khách hàng → panel "Thêm khách hàng" tự điền PS/Miền đã khai báo.
   const diaBanByCust = useMemo(() => {
     const m = new Map();
@@ -4755,6 +4804,7 @@ function App() {
     customers: custSource,
     psOptions: allPsList,
     mienByPs: mienByPs,
+    psKnown: psKnown,
     groupOptions: allGroupNames,
     canEdit: isAdmin, // gán địa bàn là quyết định quản lý -> chỉ admin, PS chỉ xem
     psFilter: psFilter,

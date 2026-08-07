@@ -163,7 +163,22 @@ async function getRev(db) {
 // của người tạo là gán sai team, dòng đó sẽ lọt vào báo cáo của team khác.
 // 1 tên PS có dữ liệu ở nhiều team → KHÔNG đoán, ném lỗi để người dùng biết.
 // Trả về `fallback` khi PS chưa có dòng kế hoạch nào.
+// Danh mục PS (shared.dm_ps) — NGUỒN CHUẨN cho team/miền của một PS.
+// Suy từ sale_target chỉ là phương án dự phòng: PS mới chưa có dòng kế hoạch nào
+// thì không suy được gì, và PS xuất hiện ở nhiều team/miền thì không quyết được.
+// bu_code = mã team khớp sale_target.bu ('chcs'…); dm_ps.bu là tên đầy đủ ('CH&CS').
+async function psInfo(db, psName) {
+  const key = String(psName || "").trim().toLowerCase();
+  if (!key) return null;
+  const { data, error } = await db.schema("shared").from("dm_ps")
+    .select("ps, ten_ps, bu, bu_code, area, team, trang_thai").limit(500);
+  if (error) return null; // dm_ps chưa có/chưa cấp quyền → rơi về cách suy cũ
+  return (data || []).find((d) => String(d.ps || "").trim().toLowerCase() === key) || null;
+}
+
 async function buForPs(db, psName, fallback) {
+  const info = await psInfo(db, psName);
+  if (info && info.bu_code) return info.bu_code;
   const { data, error } = await db.schema("shared").from("sale_target")
     .select("bu").eq("ps", psName).not("bu", "is", null).limit(1000);
   if (error) throw new Error(error.message);
@@ -172,7 +187,7 @@ async function buForPs(db, psName, fallback) {
   if (list.length > 1) {
     throw new Error(
       `PS "${psName}" đang có dữ liệu ở ${list.length} team (${list.join(", ")}) ` +
-      `— không xác định được team để gắn cho dòng mới`,
+      `và chưa có trong danh mục PS (dm_ps) — không xác định được team để gắn cho dòng mới`,
     );
   }
   return fallback;
@@ -183,6 +198,8 @@ async function buForPs(db, psName, fallback) {
 // Trả null khi không xác định được (PS chưa có dòng kế hoạch, hoặc đang có mặt ở
 // nhiều miền) — caller hiểu là "giữ nguyên miền đang lưu".
 async function mienForPs(db, psName) {
+  const info = await psInfo(db, psName);
+  if (info && info.area) return info.area; // dm_ps.area = miền của PS
   const { data, error } = await db.schema("shared").from("sale_target")
     .select("mien").eq("ps", psName).not("mien", "is", null).limit(1000);
   if (error) throw new Error(error.message);
@@ -370,6 +387,31 @@ Deno.serve(async (req) => {
       }
       const customers = out.filter((c) => c.cust || c.custId);
       return json({ ok: true, customers });
+    }
+
+    // Danh mục PS (shared.dm_ps) — nguồn của dropdown PS, miền và team.
+    // Trước đây app suy PS/miền từ chính dữ liệu kế hoạch nên PS mới (chưa có dòng
+    // nào) không xuất hiện ở đâu cả → không khai báo địa bàn trước cho họ được.
+    // Phạm vi: ps chỉ thấy mình, area_manager thấy miền mình; admin/manager có thể
+    // giới hạn theo team đang xem (payload.bu).
+    if (action === "getPs") {
+      const { data, error } = await db.schema("shared").from("dm_ps")
+        .select("ps, ten_ps, bu, bu_code, area, team, trang_thai")
+        .order("ps", { ascending: true }).limit(1000);
+      if (error) throw new Error(error.message);
+      let list = (data || []).map((d) => ({
+        ps: d.ps ?? "", tenPs: d.ten_ps ?? "",
+        bu: d.bu_code ?? "", buLabel: d.bu ?? "",
+        mien: d.area ?? "", team: d.team ?? "",
+        active: String(d.trang_thai || "").toLowerCase() !== "inactive",
+      })).filter((p) => p.ps);
+      const role = sess.r;
+      if (role === "ps") list = list.filter((p) => p.ps === sess.s);
+      else if (role === "area_manager") list = list.filter((p) => p.mien === sess.s);
+      else if ((role === "admin" || role === "manager") && payload.bu) {
+        list = list.filter((p) => p.bu === payload.bu);
+      }
+      return json({ ok: true, ps: list });
     }
 
     if (action === "updateCells") {
