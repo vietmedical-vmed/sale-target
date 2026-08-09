@@ -2330,9 +2330,7 @@ function SummaryView({
     className: "bg-slate-800 text-white font-semibold"
   }, /*#__PURE__*/React.createElement("td", {
     className: "px-4 py-2.5 text-[12.5px] border-t-2 border-slate-900"
-  }, "TỔNG CỘNG"), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-2.5 text-right text-[12.5px] tabular-nums"
-  }, g.custCount), /*#__PURE__*/React.createElement(StatCells, {
+  }, "TỔNG CỘNG"), /*#__PURE__*/React.createElement(StatCells, {
     d: g,
     dark: true
   }), /*#__PURE__*/React.createElement("td", {
@@ -2366,15 +2364,14 @@ function SummaryHead() {
       className: `px-2 py-1.5 text-[10px] ${base} border-r align-bottom ${moHasAct(i) ? 'text-center' : 'text-right'} ${tone}`
     }, m);
   });
-  const sub = (key, tone) => [
+  const sub = (key, tone, pctLabel = '%') => [
     h('th', { key: key + 'k', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 ${tone}` }, 'KH'),
     h('th', { key: key + 'a', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 ${tone}` }, 'TH'),
-    h('th', { key: key + 'p', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-r border-b border-slate-200 ${tone}` }, '%')
+    h('th', { key: key + 'p', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-r border-b border-slate-200 whitespace-nowrap ${tone}` }, pctLabel)
   ];
   return h(React.Fragment, null,
     h('tr', { className: 'bg-slate-100' },
       h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Miền / PS / Khách hàng'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Số KH'),
       ...(SUM_SHOW_MONTHS ? monthTh : []),
       h('th', { colSpan: 3, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-800 border-r border-b border-slate-200 bg-amber-50/60' }, 'Luỹ kế YTD'),
       h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-blue-700 bg-emerald-50/60 align-bottom` }, 'KH update'),
@@ -2387,7 +2384,7 @@ function SummaryHead() {
     ),
     h('tr', { className: 'bg-slate-100' },
       ...(SUM_SHOW_MONTHS ? MONTHS.flatMap((_, i) => moHasAct(i) ? sub('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []) : []),
-      ...sub('sytd', 'bg-amber-50/40')
+      ...sub('sytd', 'bg-amber-50/40', '% TH YTD')
     )
   );
 }
@@ -2447,9 +2444,7 @@ function SummaryRegionRow({
   }) : /*#__PURE__*/React.createElement(ChevronRight, {
     size: 14,
     className: "text-sky-600"
-  }), reg.region)), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-2 text-right text-[13px] tabular-nums font-semibold text-sky-900 border-r border-slate-100"
-  }, reg.custCount), /*#__PURE__*/React.createElement(StatCells, {
+  }), reg.region)), /*#__PURE__*/React.createElement(StatCells, {
     d: reg
   }), /*#__PURE__*/React.createElement("td", {
     className: "border-b border-slate-100"
@@ -2475,9 +2470,7 @@ function SummaryPSRow({
   }) : /*#__PURE__*/React.createElement(ChevronRight, {
     size: 14,
     className: "text-slate-500"
-  }), ps.ps)), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-2 text-right text-[13px] tabular-nums font-medium text-slate-700 border-r border-slate-100"
-  }, ps.custCount), /*#__PURE__*/React.createElement(StatCells, {
+  }), ps.ps)), /*#__PURE__*/React.createElement(StatCells, {
     d: ps
   }), /*#__PURE__*/React.createElement("td", {
     className: "border-b border-slate-100"
@@ -2518,15 +2511,13 @@ function SummaryCustRow({
     className: "text-[9.5px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium whitespace-nowrap"
   }, "Ngoài KH") : /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400 font-mono"
-  }, c.custId))), /*#__PURE__*/React.createElement("td", {
-    className: `px-3 py-1.5 text-right text-[12px] tabular-nums border-r border-slate-100 ${subs.length ? 'text-slate-500' : 'text-slate-400'}`
-  }, subs.length || "—"), /*#__PURE__*/React.createElement(StatCells, {
+  }, c.custId))), /*#__PURE__*/React.createElement(StatCells, {
     d: c,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-left text-[11.5px] text-slate-600 max-w-xs"
+    className: "px-4 py-1.5 text-left text-[11.5px] text-slate-600 align-top"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "truncate",
+    className: "whitespace-pre-wrap break-words",
     title: c.note
   }, c.note || /*#__PURE__*/React.createElement("span", {
     className: "text-slate-300"
@@ -2565,9 +2556,7 @@ function SummaryGroupRow({
     style: { width: 12, display: 'inline-block' }
   }), /*#__PURE__*/React.createElement("span", {
     className: "truncate font-medium"
-  }, g.grp))), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-400 border-r border-slate-100"
-  }, "—"), /*#__PURE__*/React.createElement(StatCells, {
+  }, g.grp))), /*#__PURE__*/React.createElement(StatCells, {
     d: g,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
@@ -2584,9 +2573,7 @@ function SummaryGroupRow({
     className: "truncate"
   }, p.prod), p.mset ? /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "· ", p.mset) : null)), /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-300 border-r border-slate-100"
-  }, "—"), /*#__PURE__*/React.createElement(StatCells, {
+  }, "· ", p.mset) : null)), /*#__PURE__*/React.createElement(StatCells, {
     d: p,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
@@ -3803,7 +3790,7 @@ function App() {
   const [dataRev, setDataRev] = useState(0);
   const [stale, setStale] = useState(false);
   const [maskMoney, setMaskMoney] = useState(true);
-  const [showBasePlan, setShowBasePlan] = useState(true);
+  const [showBasePlan, setShowBasePlan] = useState(false);
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
   // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
   const [exportFn, setExportFn] = useState(null);
