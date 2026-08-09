@@ -4524,6 +4524,25 @@ function App() {
     };
   }, [tree]);
 
+  // Mẫu số của thẻ "Số lượng account": số khách hàng ĐƯỢC PHÂN CHIA theo cấu hình
+  // địa bàn (dm_dia_ban), lọc theo đúng bộ lọc đang áp dụng cho tử số (KH có kế hoạch).
+  const accountsAssigned = useMemo(() => {
+    const q = deaccent(search.trim());
+    const set = new Set();
+    for (const d of diaBan) {
+      const ps = d.ps;
+      const mien = mienByPs.get(ps) || d.mien || '';
+      if (!inSel(regionFilter, mien)) continue;
+      if (!inSel(psFilter, ps)) continue;
+      if (!inSel(groupFilter, d.grp)) continue;
+      if (!inSel(custFilter, fmtCust(d.cust))) continue;
+      if (q && !(deaccent(d.cust).includes(q) || deaccent(d.custId).includes(q) ||
+                 deaccent(ps).includes(q) || deaccent(d.grp).includes(q))) continue;
+      set.add(dbCustKey(d.custId, d.cust));
+    }
+    return set.size;
+  }, [diaBan, mienByPs, regionFilter, psFilter, groupFilter, custFilter, search]);
+
   // nhãn cột giống Google Sheet, theo field key
   const FIELD_LABEL = {
     fy: 'Năm tài chính',
@@ -4720,8 +4739,8 @@ function App() {
     className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4"
   }, /*#__PURE__*/React.createElement(StatCard, {
     label: "Số lượng account",
-    value: fmtInt(stats.customers),
-    sublabel: "khách hàng có kế hoạch",
+    value: fmtInt(stats.customers) + '/' + fmtInt(accountsAssigned),
+    sublabel: "KH có kế hoạch / được phân địa bàn",
     accent: "emerald"
   }), /*#__PURE__*/React.createElement(StatCard, {
     label: "DThu KH đầu năm",
