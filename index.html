@@ -30,6 +30,16 @@ tailwind.config = { theme: { extend: { colors: {
      header dính lại khi cuộn. Dính cả <thead> chứ không dính từng <th> để nền
      của dòng header (bg trên <tr>) đi theo, không bị lộ dữ liệu phía sau. */
   .sticky-head thead { position: sticky; top: 0; z-index: 20; }
+  /* Màn chi tiết: bộ lọc dính ngay dưới thanh tiêu đề, thẻ tổng hợp của khách
+     hàng dính ngay dưới bộ lọc. Mỗi thẻ KH là một khung riêng nên position
+     sticky tự lo phần "cuộn hết sản phẩm thì sang KH tiếp theo": thẻ sau đẩy
+     thẻ trước ra khỏi vị trí dính, không cần JS theo dõi vị trí cuộn.
+     Chiều cao 2 thanh trên đo bằng JS (useStickyBars) vì màn hình hẹp làm
+     chúng xuống dòng -> không hardcode được. */
+  :root { --app-header-h: 0px; --app-filter-h: 0px; }
+  .sticky-filter { position: sticky; top: var(--app-header-h); z-index: 20; background: #f0f2f5; }
+  .sticky-cust { position: sticky; top: calc(var(--app-header-h) + var(--app-filter-h)); z-index: 10;
+                 background: #fff; box-shadow: 0 1px 0 rgba(0,0,0,0.06); }
   .scroll-shadow::-webkit-scrollbar { height: 8px; width: 8px; }
   .scroll-shadow::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
@@ -1474,9 +1484,14 @@ function CustomerCard({
     };
   }, [groups]);
   return /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-lg border border-slate-200 mb-3 overflow-hidden shadow-sm"
+    // KHÔNG dùng overflow-hidden ở đây: nó biến thẻ thành khung cuộn riêng và
+    // làm chết position:sticky của thanh tiêu đề KH bên trong. Bo góc chuyển
+    // xuống cho tiêu đề (góc trên) và phần thân (góc dưới).
+    className: "bg-white rounded-lg border border-slate-200 mb-3 shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-stretch"
+    // Thanh tiêu đề + số tổng hợp của KH: dính lại trong suốt quá trình cuộn
+    // các sản phẩm của chính KH này (giới hạn bởi chiều cao thẻ).
+    className: `flex items-stretch sticky-cust overflow-hidden ${open ? 'rounded-t-lg' : 'rounded-lg'}`
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open),
     className: "flex-1 min-w-0 flex items-stretch text-left"
@@ -1566,7 +1581,10 @@ function CustomerCard({
       cust: customer,
       region: region
     })
-  })), open && /*#__PURE__*/React.createElement("div", null, groups.map(g => /*#__PURE__*/React.createElement(ProductGroupSection, {
+  })), open && /*#__PURE__*/React.createElement("div", {
+    // Bo góc dưới ở đây vì thẻ ngoài cùng đã bỏ overflow-hidden (xem ghi chú trên).
+    className: "rounded-b-lg overflow-hidden"
+  }, groups.map(g => /*#__PURE__*/React.createElement(ProductGroupSection, {
     key: g.name + '||' + (g.ps || ''),
     groupName: g.name,
     ps: g.ps,
@@ -1615,6 +1633,36 @@ function useFitHeight() {
     return () => window.removeEventListener('resize', fit);
   }, []);
   return ref;
+}
+
+// Đo chiều cao thanh tiêu đề + thanh bộ lọc rồi ghi vào CSS var, để .sticky-filter
+// và .sticky-cust canh đúng chỗ. Phải đo động vì cả 2 thanh đều flex-wrap: màn hình
+// hẹp là chúng cao thêm một dòng, hardcode px sẽ lệch.
+// Làm tròn lên để không hở 1 vệt nội dung phía trên thanh dính do lẻ subpixel.
+function useStickyBars(active) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const measure = () => {
+      const head = document.querySelector('header.sticky');
+      const filt = document.querySelector('.sticky-filter');
+      root.style.setProperty('--app-header-h', Math.ceil(head ? head.getBoundingClientRect().height : 0) + 'px');
+      root.style.setProperty('--app-filter-h', Math.ceil(filt ? filt.getBoundingClientRect().height : 0) + 'px');
+    };
+    measure();
+    if (!active) return; // tab khác không có thanh dính -> đo 1 lần là đủ
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    if (ro) {
+      const head = document.querySelector('header.sticky');
+      const filt = document.querySelector('.sticky-filter');
+      if (head) ro.observe(head);
+      if (filt) ro.observe(filt);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [active]);
 }
 
 // Tìm gần đúng theo KH / mã KH / sản phẩm / bộ vật tư — dùng chung cho 2 màn tổng hợp
@@ -3774,6 +3822,9 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban'
+  // Chỉ đo được sau khi đã đăng nhập và tải xong (trước đó App return sớm,
+  // chưa có thanh tiêu đề lẫn thanh lọc trong DOM).
+  useStickyBars(authed && !loading && tab === 'detail');
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   // Bộ lọc đa lựa chọn: mảng rỗng = tất cả (không lọc).
@@ -4768,7 +4819,10 @@ function App() {
     sublabel: draftCount > 0 ? 'nhấn Xác nhận để lưu' : 'đã đồng bộ',
     accent: "amber"
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "px-6"
+    // Chỉ dính ở màn chi tiết. 2 màn tổng hợp đã có khung bảng cao vừa màn hình
+    // + header bảng dính sẵn bên trong khung (useFitHeight), thêm thanh dính ở
+    // ngoài sẽ che mất header bảng đó.
+    className: "px-6" + (tab === 'detail' ? ' sticky-filter' : '')
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg border border-slate-200 px-3 py-2.5 flex items-center gap-2.5 flex-wrap mb-4"
   }, /*#__PURE__*/React.createElement("span", {
