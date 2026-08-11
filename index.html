@@ -4075,6 +4075,9 @@ function App() {
   const [diaBanBusy, setDiaBanBusy] = useState(false);
   const [dataRev, setDataRev] = useState(0);
   const [stale, setStale] = useState(false);
+  // Bản mới của web app đã deploy nhưng user đang có bản nháp chưa lưu → không
+  // reload ngay, chờ user lưu/huỷ rồi mới reload để không mất bản nháp.
+  const [pendingReload, setPendingReload] = useState(false);
   const [maskMoney, setMaskMoney] = useState(true);
   const [showBasePlan, setShowBasePlan] = useState(false);
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
@@ -4403,7 +4406,7 @@ function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [drafts]);
 
-  // Poll phát hiện dữ liệu thay đổi từ user khác (45s/lần)
+  // Poll phát hiện dữ liệu thay đổi từ user khác (45s/lần) + version web app mới.
   const revRef = useRef(0);
   useEffect(() => {
     revRef.current = dataRev;
@@ -4412,19 +4415,61 @@ function App() {
   useEffect(() => {
     draftRef.current = draftCount;
   }, [draftCount]);
+  // Version bản web app đang chạy — đọc từ /version.json (GitHub Actions ghi
+  // mỗi lần deploy). Fetch lại khi user focus tab: nếu version khác = có bản
+  // mới đã deploy → reload để user không kẹt ở bản cũ do cache.
+  const currentVersionRef = useRef(null);
+  const pendingReloadRef = useRef(false);
+  useEffect(() => {
+    pendingReloadRef.current = pendingReload;
+  }, [pendingReload]);
+  const fetchAppVersion = useCallback(async () => {
+    try {
+      const r = await fetch('version.json?_=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j && j.version || null;
+    } catch { return null; }
+  }, []);
+  // Đọc version hiện tại 1 lần lúc app khởi động.
+  useEffect(() => {
+    fetchAppVersion().then(v => {
+      if (v) currentVersionRef.current = v;
+    });
+  }, [fetchAppVersion]);
+  // Kiểm tra cả version web app + rev dữ liệu trong 1 lượt. Không có draft →
+  // reload ngay; có draft → cắm cờ chờ, sẽ reload sau khi user lưu/huỷ để
+  // không mất bản nháp.
+  const checkForUpdates = useCallback(async () => {
+    // 1) Bản web app mới đã deploy?
+    const v = await fetchAppVersion();
+    if (v && currentVersionRef.current && v !== currentVersionRef.current) {
+      if (draftRef.current === 0) { location.reload(); return; }
+      setPendingReload(true);
+    }
+    // 2) Dữ liệu có thay đổi từ user khác?
+    try {
+      const r = await api('getRev');
+      if (typeof r.rev === 'number' && r.rev !== revRef.current) {
+        if (draftRef.current === 0) loadData();
+        else setStale(true);
+      }
+    } catch {}
+  }, [fetchAppVersion, loadData]);
   useEffect(() => {
     if (!authed) return;
-    const id = setInterval(async () => {
-      try {
-        const r = await api('getRev');
-        if (typeof r.rev === 'number' && r.rev !== revRef.current) {
-          if (draftRef.current === 0) loadData(); // không có gì chưa lưu → tự tải bản mới
-          else setStale(true); // đang sửa dở → chỉ báo, không ghi đè
-        }
-      } catch (e) {}
-    }, 45000);
-    return () => clearInterval(id);
-  }, [authed, loadData]);
+    const onFocus = () => checkForUpdates();
+    const onVis = () => { if (document.visibilityState === 'visible') checkForUpdates(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    // Vẫn giữ interval để phát hiện xung đột khi user để tab mở lâu, không focus.
+    const id = setInterval(checkForUpdates, 45000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(id);
+    };
+  }, [authed, checkForUpdates]);
 
   // Accumulate edits into drafts (NOT sent yet)
   const commit = useCallback(updates => {
@@ -4505,6 +4550,25 @@ function App() {
       };
     });
     try {
+      // Guard chống ghi đè: kiểm tra rev NGAY TRƯỚC khi ghi (khoảng cách với
+      // lần poll trước có thể là 45s — đủ để 1 user khác kịp lưu). rev khác
+      // local = có người vừa lưu → hỏi user muốn tải lại hay vẫn ghi đè.
+      try {
+        const rc = await api('getRev');
+        if (typeof rc.rev === 'number' && rc.rev !== revRef.current) {
+          const reload = confirm(
+            'Người khác vừa cập nhật dữ liệu.\n\n' +
+            '• OK  = TẢI LẠI bản mới (mất các thay đổi chưa lưu của bạn).\n' +
+            '• Cancel = VẪN GHI ĐÈ bằng bản nháp của bạn (có thể đè lên phần vừa cập nhật).'
+          );
+          if (reload) {
+            setDrafts({});
+            loadData();
+            setSaving(false);
+            return;
+          }
+        }
+      } catch {}
       const res = await api('updateCells', {
         updates: batch
       });
@@ -4525,6 +4589,12 @@ function App() {
       setStale(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
+      // Có bản web app mới đang chờ → giờ đã lưu xong, reload để lấy bản mới.
+      if (pendingReloadRef.current) {
+        setTimeout(() => location.reload(), 600);
+        setSaving(false);
+        return;
+      }
     } catch (err) {
       // forbidden_rows: có dòng ngoài phạm vi quyền hoặc đã bị xóa ở nơi khác.
       // Backend không ghi dòng nào trong trường hợp này -> bảo người dùng tải lại.
@@ -4535,7 +4605,10 @@ function App() {
     setSaving(false);
   }, [drafts]);
   const discardDrafts = () => {
-    if (confirm('Hủy tất cả thay đổi chưa lưu?')) setDrafts({});
+    if (!confirm('Hủy tất cả thay đổi chưa lưu?')) return;
+    setDrafts({});
+    // Đã huỷ hết bản nháp → không còn gì để mất, reload luôn để nhận bản web app mới.
+    if (pendingReloadRef.current) setTimeout(() => location.reload(), 100);
   };
 
   // effective rows overlay drafts
@@ -5150,7 +5223,7 @@ function App() {
     className: "px-6 py-2 bg-amber-50 border-t border-amber-200 text-[12px] text-amber-900 flex items-center gap-3"
   }, /*#__PURE__*/React.createElement(AlertCircle, {
     size: 14
-  }), /*#__PURE__*/React.createElement("span", null, "Dữ liệu đã được cập nhật từ nơi khác. Thay đổi bạn lưu vẫn chỉ ghi vào phần của mình."), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("span", null, "Người khác vừa cập nhật dữ liệu. Nếu bấm Lưu, hệ thống sẽ hỏi lại để tránh ghi đè nhầm."), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       if (draftCount === 0 || confirm('Tải lại sẽ bỏ các thay đổi chưa lưu. Tiếp tục?')) {
         setDrafts({});
@@ -5161,7 +5234,18 @@ function App() {
   }, "Tải lại bản mới"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setStale(false),
     className: "text-amber-600 hover:text-amber-800 text-[12px]"
-  }, "Bỏ qua"))), /*#__PURE__*/React.createElement("div", {
+  }, "Bỏ qua")), pendingReload && /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-2 bg-sky-50 border-t border-sky-200 text-[12px] text-sky-900 flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement(AlertCircle, {
+    size: 14
+  }), /*#__PURE__*/React.createElement("span", null, "Có bản mới của ứng dụng đã được triển khai. Sẽ tự tải lại sau khi bạn lưu hoặc huỷ bản nháp."), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      if (draftCount === 0 || confirm('Tải lại ngay sẽ mất các thay đổi chưa lưu. Tiếp tục?')) {
+        location.reload();
+      }
+    },
+    className: "ml-auto px-2.5 py-1 text-[12px] font-medium bg-sky-500 hover:bg-sky-600 text-white rounded-md"
+  }, "Tải lại ngay")), /*#__PURE__*/React.createElement("div", {
     className: "px-6 pt-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4"

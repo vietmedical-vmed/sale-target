@@ -33,6 +33,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      # Ghi version.json = commit SHA + thời điểm build. Client fetch file này khi
+      # focus lại tab để phát hiện có bản mới rồi reload — không phụ thuộc cache HTML.
+      - name: Write version.json
+        run: |
+          printf '{"version":"%s","builtAt":"%s"}\n' \
+            "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > version.json
+          cat version.json
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
