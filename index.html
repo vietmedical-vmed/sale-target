@@ -36,10 +36,12 @@ tailwind.config = { theme: { extend: { colors: {
      thẻ trước ra khỏi vị trí dính, không cần JS theo dõi vị trí cuộn.
      Chiều cao 2 thanh trên đo bằng JS (useStickyBars) vì màn hình hẹp làm
      chúng xuống dòng -> không hardcode được. */
-  :root { --app-header-h: 0px; --app-filter-h: 0px; }
+  :root { --app-header-h: 0px; --app-filter-h: 0px; --app-cust-h: 0px; }
   .sticky-filter { position: sticky; top: var(--app-header-h); z-index: 20; background: #f0f2f5; }
   .sticky-cust { position: sticky; top: calc(var(--app-header-h) + var(--app-filter-h)); z-index: 10;
                  background: #fff; box-shadow: 0 1px 0 rgba(0,0,0,0.06); }
+  .sticky-grp { position: sticky; z-index: 9; background: #e4e6eb;
+                top: calc(var(--app-header-h) + var(--app-filter-h) + var(--app-cust-h)); }
   .scroll-shadow::-webkit-scrollbar { height: 8px; width: 8px; }
   .scroll-shadow::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
@@ -1161,6 +1163,11 @@ function ProductGroupSection({
     setNoteDraft(note || '');
   }, [note]);
   const notePending = aprRow != null && pendingKeys.has(`${aprRow}:note`);
+  // Ô giải trình tự cao theo nội dung: hạ height về auto rồi lấy scrollHeight.
+  // Nhờ vậy luôn thấy hết chữ, không phải kéo tay, không sinh thanh cuộn trong ô.
+  // Chạy lại khi đổi nội dung, khi mở nhóm (textarea mới mount) và khi đổi bề
+  // rộng cửa sổ (chữ dàn lại dòng -> số dòng khác).
+  const noteRef = useRef(null);
   const saveNote = () => {
     if (aprRow != null && noteDraft !== (note || '')) onCommit([{
       row: aprRow,
@@ -1203,12 +1210,26 @@ function ProductGroupSection({
       chenh: dtUpd - dt
     };
   }, [products]);
+  useEffect(() => {
+    const el = noteRef.current;
+    if (!el) return;
+    const grow = () => {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    };
+    grow();
+    window.addEventListener('resize', grow);
+    return () => window.removeEventListener('resize', grow);
+  }, [noteDraft, open]);
   // products: [{ mset, product, monthly }], đã sort theo mset → product
   return /*#__PURE__*/React.createElement("div", {
     className: "border-t border-slate-200"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open),
-    className: "w-full flex items-center gap-2 px-4 py-2 bg-slate-100/70 hover:bg-slate-100 text-left"
+    // Dính ngay dưới thanh KH, trong phạm vi nhóm SP này -> cuộn hết sản phẩm
+    // của nhóm thì nhóm sau đẩy ra. Nền phải ĐỤC (sticky-grp) chứ không phải
+    // bg-slate-100/70 như cũ, không thì lộ dữ liệu chạy phía sau.
+    className: "w-full flex items-center gap-2 px-4 py-2 hover:bg-slate-100 text-left sticky-grp"
   }, open ? /*#__PURE__*/React.createElement(ChevronDown, {
     size: 14,
     className: "text-slate-600"
@@ -1268,13 +1289,16 @@ function ProductGroupSection({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[10.5px] font-semibold text-amber-800 uppercase tracking-wide pt-1.5 flex-shrink-0"
   }, "Giải trình"), /*#__PURE__*/React.createElement("textarea", {
+    ref: noteRef,
     value: noteDraft,
     onChange: e => setNoteDraft(e.target.value),
     onBlur: saveNote,
     disabled: !canEdit,
     placeholder: canEdit ? `Giải trình cho nhóm ${groupName} (lý do điều chỉnh / chênh lệch)…` : "(chỉ xem)",
     rows: 1,
-    className: `flex-1 text-[12px] px-2.5 py-1.5 rounded-md border outline-none resize-y min-h-[32px] ${notePending ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'}`
+    // resize-none + overflow-hidden: chiều cao do JS tính (xem useEffect ở trên),
+    // để người dùng kéo tay nữa thì cứ gõ 1 chữ là bị đặt lại -> gây khó chịu.
+    className: `flex-1 text-[12px] px-2.5 py-1.5 rounded-md border outline-none resize-none overflow-hidden min-h-[32px] ${notePending ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'}`
   }), notePending && /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-amber-600 pt-2 flex-shrink-0"
   }, "chưa lưu")), /*#__PURE__*/React.createElement("div", {
@@ -1495,14 +1519,14 @@ function CustomerCard({
     };
   }, [groups]);
   return /*#__PURE__*/React.createElement("div", {
-    // KHÔNG dùng overflow-hidden ở đây: nó biến thẻ thành khung cuộn riêng và
-    // làm chết position:sticky của thanh tiêu đề KH bên trong. Bo góc chuyển
-    // xuống cho tiêu đề (góc trên) và phần thân (góc dưới).
-    className: "bg-white rounded-lg border border-slate-200 mb-3 shadow-sm"
+    // overflow-CLIP chứ không phải overflow-hidden: hidden biến thẻ thành khung
+    // cuộn riêng và làm chết position:sticky của các thanh bên trong, còn clip
+    // vẫn cắt bo góc mà không tạo khung cuộn (đã đo bằng thử nghiệm).
+    className: "bg-white rounded-lg border border-slate-200 mb-3 overflow-clip shadow-sm"
   }, /*#__PURE__*/React.createElement("div", {
     // Thanh tiêu đề + số tổng hợp của KH: dính lại trong suốt quá trình cuộn
     // các sản phẩm của chính KH này (giới hạn bởi chiều cao thẻ).
-    className: `flex items-stretch sticky-cust overflow-hidden ${open ? 'rounded-t-lg' : 'rounded-lg'}`
+    className: "flex items-stretch sticky-cust"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open),
     className: "flex-1 min-w-0 flex items-stretch text-left"
@@ -1592,10 +1616,7 @@ function CustomerCard({
       cust: customer,
       region: region
     })
-  })), open && /*#__PURE__*/React.createElement("div", {
-    // Bo góc dưới ở đây vì thẻ ngoài cùng đã bỏ overflow-hidden (xem ghi chú trên).
-    className: "rounded-b-lg overflow-hidden"
-  }, groups.map(g => /*#__PURE__*/React.createElement(ProductGroupSection, {
+  })), open && /*#__PURE__*/React.createElement("div", null, groups.map(g => /*#__PURE__*/React.createElement(ProductGroupSection, {
     key: g.name + '||' + (g.ps || ''),
     groupName: g.name,
     ps: g.ps,
@@ -1650,14 +1671,17 @@ function useFitHeight() {
 // và .sticky-cust canh đúng chỗ. Phải đo động vì cả 2 thanh đều flex-wrap: màn hình
 // hẹp là chúng cao thêm một dòng, hardcode px sẽ lệch.
 // Làm tròn lên để không hở 1 vệt nội dung phía trên thanh dính do lẻ subpixel.
-function useStickyBars(active) {
+function useStickyBars(active, hasCards) {
   useEffect(() => {
     const root = document.documentElement;
     const measure = () => {
       const head = document.querySelector('header.sticky');
       const filt = document.querySelector('.sticky-filter');
+      // Mọi thẻ KH cao như nhau -> đo thẻ đầu tiên là đủ cho thanh nhóm SP.
+      const cust = document.querySelector('.sticky-cust');
       root.style.setProperty('--app-header-h', Math.ceil(head ? head.getBoundingClientRect().height : 0) + 'px');
       root.style.setProperty('--app-filter-h', Math.ceil(filt ? filt.getBoundingClientRect().height : 0) + 'px');
+      root.style.setProperty('--app-cust-h', Math.ceil(cust ? cust.getBoundingClientRect().height : 0) + 'px');
     };
     measure();
     if (!active) return; // tab khác không có thanh dính -> đo 1 lần là đủ
@@ -1673,7 +1697,117 @@ function useStickyBars(active) {
       if (ro) ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [active]);
+  }, [active, hasCards]);
+}
+
+// Bảng phân cấp (2 màn tổng hợp): ghim hàng nhóm lại theo cấp khi cuộn trong
+// khung bảng — cuộn hết phần con của một nhóm thì nhóm sau thay chỗ.
+//
+// KHÔNG làm được bằng CSS thuần như các thẻ ở màn chi tiết: đã đo thực tế,
+// <tbody> không chặn được position:sticky của <tr>, nên mọi hàng cùng cấp cùng
+// dính vào một chỗ, chồng lên nhau và hàng của nhóm cũ treo lại vĩnh viễn.
+// Vì vậy tự chọn: mỗi cấp chỉ ĐÚNG MỘT hàng được sticky — chuỗi tổ tiên của
+// vùng đang xem. Hàng cần ghim đánh dấu bằng data-lv="0|1|2…".
+function useStickyRows(boxRef) {
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    let rows = [];       // { el, lv, top (vị trí tự nhiên), h }
+    let base = 0;        // chiều cao thead — vạch ghim của cấp 0
+    let pinned = [];
+    let raf = 0;
+    const clear = el => { el.style.position = ''; el.style.top = ''; el.style.zIndex = ''; };
+
+    // Đo lại vị trí TỰ NHIÊN của các hàng. Phải gỡ sticky trước khi đo: hàng
+    // đang ghim trả về vị trí đã dịch, lấy số đó tính tiếp là sai chồng sai.
+    const remeasure = () => {
+      pinned.forEach(clear);
+      pinned = [];
+      const els = Array.from(box.querySelectorAll('tr[data-lv]'));
+      els.forEach(clear);
+      const head = box.querySelector('thead');
+      base = head ? head.offsetHeight : 0;
+      const origin = box.getBoundingClientRect().top - box.scrollTop;
+      rows = els.map(el => ({
+        el,
+        lv: Number(el.dataset.lv) || 0,
+        top: el.getBoundingClientRect().top - origin,
+        h: el.offsetHeight
+      }));
+      // end[i] = vị trí hàng nhóm kế tiếp có cấp NGANG HOẶC NÔNG HƠN — tức là
+      // chỗ nhóm i kết thúc. Hàng ghim của nhóm i không được vượt quá mốc này,
+      // nhờ vậy nhóm sau đẩy nhóm trước ra thay vì che khuất nó.
+      const st = [];
+      for (let i = rows.length - 1; i >= 0; i--) {
+        while (st.length && rows[st[st.length - 1]].lv > rows[i].lv) st.pop();
+        rows[i].end = st.length ? rows[st[st.length - 1]].top : box.scrollHeight;
+        st.push(i);
+      }
+    };
+
+    const apply = () => {
+      const s = box.scrollTop;
+      // Chuỗi tổ tiên của vùng đang xem: hàng nào đã cuộn qua vạch ghim của cấp
+      // nó thì thay chỗ hàng cùng cấp trước đó và xoá các cấp sâu hơn. Quét hết
+      // mảng: hàng nằm dưới vị trí đang xem không bao giờ thoả điều kiện nên
+      // chuỗi tự dừng cập nhật (mảng chỉ gồm hàng nhóm nên rất ngắn).
+      const chain = [];
+      for (const r of rows) {
+        let pin = base;
+        for (let i = 0; i < r.lv; i++) if (chain[i]) pin += chain[i].h;
+        if (r.top - s > pin) continue;
+        chain.length = r.lv;
+        chain[r.lv] = r;
+      }
+      const keep = chain.filter(Boolean);
+      const want = new Set(keep.map(r => r.el));
+      pinned.forEach(el => { if (!want.has(el)) clear(el); });
+      let top = base;
+      keep.forEach(r => {
+        // Kẹp theo mốc kết thúc nhóm -> nhóm sắp tới đẩy hàng ghim này lên và ra.
+        const t = Math.min(top, r.end - s - r.h);
+        r.el.style.position = 'sticky';
+        r.el.style.top = t + 'px';
+        r.el.style.zIndex = String(15 - r.lv); // vẫn dưới thead (z-20)
+        top = t + r.h;
+      });
+      pinned = keep.map(r => r.el);
+    };
+
+    // Một khe rAF dùng chung: cuộn thì chỉ cần tính lại vị trí ghim, còn
+    // gập/mở hay đổi kích thước thì phải đo lại trước khi tính.
+    let needRe = false;
+    const tick = () => {
+      raf = 0;
+      if (needRe) { needRe = false; remeasure(); }
+      apply();
+    };
+    const schedule = re => {
+      if (re) needRe = true;
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    remeasure();
+    apply();
+    const onScroll = () => schedule(false);
+    const onResize = () => schedule(true);
+    box.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
+    // Gập/mở nhóm nằm trong state của từng hàng con -> component cha không hay
+    // biết. Theo dõi thay đổi DOM để đo lại, thay vì phải nâng state lên.
+    // Chỉ nghe childList: apply() ghi style (đổi attribute), nghe cả attribute
+    // là tự gọi lại chính mình thành vòng lặp.
+    const mo = typeof MutationObserver === 'function'
+      ? new MutationObserver(() => schedule(true)) : null;
+    if (mo) mo.observe(box, { childList: true, subtree: true });
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (mo) mo.disconnect();
+      box.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+      pinned.forEach(clear);
+    };
+  }, [boxRef]);
 }
 
 // Tìm gần đúng theo KH / mã KH / sản phẩm / bộ vật tư — dùng chung cho 2 màn tổng hợp
@@ -1688,6 +1822,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
   // Thu gọn/mở phần thực hiện theo tháng (mặc định thu gọn → chỉ còn Luỹ kế YTD).
   const [showMonths, setShowMonths] = useState(false);
   const boxRef = useFitHeight();
+  useStickyRows(boxRef); // ghim hàng Sản phẩm / Miền khi cuộn
 
   const data = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
@@ -1881,7 +2016,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
               : data.prods.map(p => {
                   const isOpen = open.has(p.prod);
                   const out = [
-                    h('tr', { key: p.prod, className: 'bg-slate-50 cursor-pointer border-b border-slate-200', onClick: () => toggle(p.prod) },
+                    h('tr', { key: p.prod, 'data-lv': 0, className: 'bg-slate-50 cursor-pointer border-b border-slate-200', onClick: () => toggle(p.prod) },
                       h('td', { className: `px-4 py-2 text-[12.5px] font-semibold text-slate-800 ${stickyLabel('bg-slate-50')}` },
                         h('span', { className: 'inline-block w-3 text-slate-400' }, isOpen ? '▾' : '▸'), ' ', p.prod
                       ),
@@ -1898,7 +2033,8 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
                       const rOpen = open.has(rKey);
                       const hasCust = rg.custs && rg.custs.length > 0;
                       out.push(
-                        h('tr', { key: rKey, className: 'border-b border-slate-100 bg-slate-50/40' + (hasCust ? ' cursor-pointer' : ''), onClick: hasCust ? () => toggle(rKey) : undefined },
+                        // bg đục (không phải /40) để lúc bị ghim không lộ dữ liệu chạy phía sau
+                        h('tr', { key: rKey, 'data-lv': 1, className: 'border-b border-slate-100 bg-slate-50' + (hasCust ? ' cursor-pointer' : ''), onClick: hasCust ? () => toggle(rKey) : undefined },
                           h('td', { className: `pl-10 pr-4 py-1.5 text-[12px] font-medium text-slate-700 ${stickyLabel('bg-slate-50')}` },
                             h('span', { className: 'inline-block w-3 text-slate-400' }, hasCust ? (rOpen ? '▾' : '▸') : ''), ' ', rg.region
                           ),
@@ -2152,6 +2288,7 @@ function SummaryView({
   onExport
 }) {
   const boxRef = useFitHeight();
+  useStickyRows(boxRef); // ghim hàng Miền / PS / Khách hàng / Nhóm SP khi cuộn
   const data = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
     const filtered = rows.filter(r => inSel(psFilter, r.ps) && inSel(regionFilter, r.region) && inSel(custFilter, r.cust) && inSel(groupFilter, r.grp) && matchSearch(r, q));
@@ -2491,6 +2628,7 @@ function SummaryRegionRow({
 }) {
   const [open, setOpen] = useState(true);
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("tr", {
+    "data-lv": 0,
     className: "bg-sky-50 hover:bg-sky-100 cursor-pointer border-b border-slate-200",
     onClick: () => setOpen(!open)
   }, /*#__PURE__*/React.createElement("td", {
@@ -2517,6 +2655,7 @@ function SummaryPSRow({
 }) {
   const [open, setOpen] = useState(false);
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("tr", {
+    "data-lv": 1,
     className: "bg-slate-50 hover:bg-slate-100 cursor-pointer border-b border-slate-200",
     onClick: () => setOpen(!open)
   }, /*#__PURE__*/React.createElement("td", {
@@ -2549,7 +2688,10 @@ function SummaryCustRow({
   const grps = c.grps || [];
   const hasKids = subs.length > 0 || grps.length > 0;
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("tr", {
-    className: "hover:bg-slate-50/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
+    "data-lv": 2,
+    // bg-white thay vì để trong suốt: hàng này bị ghim khi cuộn, phải che được
+    // dữ liệu chạy phía sau (trên nền bảng trắng nên nhìn không khác gì trước).
+    className: "bg-white hover:bg-slate-50/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
     onClick: hasKids ? () => setOpen(!open) : undefined
   }, /*#__PURE__*/React.createElement("td", {
     className: "px-4 py-1.5 text-[12px] text-slate-600 border-r border-slate-100"
@@ -2598,7 +2740,8 @@ function SummaryGroupRow({
   const [open, setOpen] = useState(false);
   const hasKids = g.prods && g.prods.length > 0;
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("tr", {
-    className: "bg-slate-50/40 hover:bg-slate-100/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
+    "data-lv": 3,
+    className: "bg-slate-50 hover:bg-slate-100/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
     onClick: hasKids ? () => setOpen(!open) : undefined
   }, /*#__PURE__*/React.createElement("td", {
     className: "px-4 py-1.5 text-[12px] text-slate-700 border-r border-slate-100"
@@ -3834,9 +3977,6 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban'
-  // Chỉ đo được sau khi đã đăng nhập và tải xong (trước đó App return sớm,
-  // chưa có thanh tiêu đề lẫn thanh lọc trong DOM).
-  useStickyBars(authed && !loading && tab === 'detail');
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   // Bộ lọc đa lựa chọn: mảng rỗng = tất cả (không lọc).
@@ -4586,6 +4726,10 @@ function App() {
       }).filter(g => g.products.length > 0).sort((a, b) => b._dt - a._dt)
     })).filter(c => c.groups.length > 0).sort((a, b) => b._dt - a._dt); // DThu KH đầu năm giảm dần
   }, [effectiveRows, search, psFilter, regionFilter, custFilter, groupFilter]);
+  // Đo sau khi đã đăng nhập + tải xong (trước đó App return sớm, chưa có thanh
+  // tiêu đề/bộ lọc trong DOM) và đo lại khi danh sách KH đổi từ rỗng sang có
+  // (thẻ KH đầu tiên mới xuất hiện thì mới đo được chiều cao của nó).
+  useStickyBars(authed && !loading && tab === 'detail', tree.length > 0);
   const stats = useMemo(() => {
     let plan = 0,
       dt = 0,
