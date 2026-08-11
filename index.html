@@ -4803,12 +4803,41 @@ function App() {
       }));
       return dt;
     };
+    // DThu KH update (giống stats.dtUpd): tháng đã qua lấy thực hiện, tháng còn lại lấy SL update (nếu có) hoặc SL đầu năm.
+    const custDtUpd = c => {
+      let v = 0;
+      c.gMap.forEach(g => g.pMap.forEach(p => {
+        p.monthly.forEach((cell, i) => {
+          const past = MONTHS[i] < CURRENT_MONTH;
+          cell.rows.forEach(r => {
+            const pr = Number(r.price) || 0;
+            const upd = past ? (Number(r.act) || 0)
+              : (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0);
+            v += upd * pr;
+          });
+        });
+      }));
+      return v;
+    };
+    // DThu thực hiện luỹ kế YTD (đến hết tháng hiện tại).
+    const custThYtd = c => {
+      let v = 0;
+      c.gMap.forEach(g => g.pMap.forEach(p => {
+        p.monthly.forEach((cell, i) => {
+          if (!isYtdMonth(MONTHS[i])) return;
+          cell.rows.forEach(r => { v += (Number(r.act) || 0) * (Number(r.price) || 0); });
+        });
+      }));
+      return v;
+    };
     return Array.from(byCust.values()).map(c => ({
       customer: c.customer,
       custId: c.custId,
       region: c.region,
       psList: Array.from(c.psSet),
       _dt: custDt(c),
+      _dtUpd: custDtUpd(c),
+      _thYtd: custThYtd(c),
       groups: Array.from(c.gMap.values()).map(g => {
         const products = Array.from(g.pMap.values()); // hiện mọi SP, kể cả DThu = 0 (SP mới thêm)
         products.sort((a, b) => (a.mset || '').localeCompare(b.mset || '') || (a.product || '').localeCompare(b.product || ''));
@@ -4825,7 +4854,15 @@ function App() {
           _dt: gdt
         };
       }).filter(g => g.products.length > 0).sort((a, b) => b._dt - a._dt)
-    })).filter(c => c.groups.length > 0).sort((a, b) => b._dt - a._dt); // DThu KH đầu năm giảm dần
+    })).filter(c => c.groups.length > 0).sort((a, b) => {
+      // Ngoài KH luôn xuống cuối
+      const oa = a.customer === OOP_CUST ? 1 : 0, ob = b.customer === OOP_CUST ? 1 : 0;
+      if (oa !== ob) return oa - ob;
+      // Có DThu KH update xếp trước (giảm dần theo KH update); không có thì xếp sau (giảm dần theo TH YTD)
+      const ha = a._dtUpd > 0 ? 0 : 1, hb = b._dtUpd > 0 ? 0 : 1;
+      if (ha !== hb) return ha - hb;
+      return ha === 0 ? b._dtUpd - a._dtUpd : b._thYtd - a._thYtd;
+    });
   }, [effectiveRows, search, psFilter, regionFilter, custFilter, groupFilter]);
   // Đo sau khi đã đăng nhập + tải xong (trước đó App return sớm, chưa có thanh
   // tiêu đề/bộ lọc trong DOM) và đo lại khi danh sách KH đổi từ rỗng sang có
