@@ -2476,6 +2476,15 @@ function SummaryView({
       a.prodCount += c.prodCount;
       return a;
     };
+    // Thứ tự PS/KH: có DThu KH update xếp trước (giảm dần theo KH update); không có thì
+    // xếp sau (giảm dần theo DThu thực hiện YTD); "Ngoài kế hoạch" luôn xuống cuối.
+    const orderByUpd = (a, b) => {
+      const oa = a.cust === OOP_CUST ? 1 : 0, ob = b.cust === OOP_CUST ? 1 : 0;
+      if (oa !== ob) return oa - ob;
+      const ha = (a.dtUpd || 0) > 0 ? 0 : 1, hb = (b.dtUpd || 0) > 0 ? 0 : 1;
+      if (ha !== hb) return ha - hb;
+      return ha === 0 ? (b.dtUpd || 0) - (a.dtUpd || 0) : (b.dtYtd || 0) - (a.dtYtd || 0);
+    };
     const regions = Array.from(regMap.values()).map(reg => {
       const psList = Array.from(reg.psMap.values()).map(ps => {
         // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
@@ -2508,7 +2517,7 @@ function SummaryView({
           };
         };
         const custs = Array.from(ps.custMap.values()).map(buildCust);
-        custs.sort((a, b) => b.dt - a.dt);
+        custs.sort(orderByUpd);
         const tot = custs.reduce(add, fold());
         tot.custCount = custs.length;
         return {
@@ -2518,7 +2527,7 @@ function SummaryView({
           quotaAvail: tot.quotaFY - (tot.ytd + tot.khLeft)
         };
       });
-      psList.sort((a, b) => b.dt - a.dt);
+      psList.sort(orderByUpd);
       const tot = psList.reduce((a, p) => {
         add(a, p);
         a.custCount += p.custCount;
