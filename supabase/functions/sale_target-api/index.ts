@@ -380,12 +380,13 @@ Deno.serve(async (req) => {
       const out = [];
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await db.schema("shared").from("dm_khach_hang")
-          .select("customer_id, customer_name")
+          .select("customer_id, customer_name, customer_alias")
           .order("customer_id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
         if (!data || data.length === 0) break;
-        for (const c of data) out.push({ custId: c.customer_id ?? "", cust: c.customer_name ?? "" });
+        // cust = tên gốc (dùng làm khoá & lưu khi thêm SP); alias = tên hiển thị rút gọn.
+        for (const c of data) out.push({ custId: c.customer_id ?? "", cust: c.customer_name ?? "", alias: String(c.customer_alias ?? "").trim() });
         if (data.length < PAGE) break;
       }
       const customers = out.filter((c) => c.cust || c.custId);
