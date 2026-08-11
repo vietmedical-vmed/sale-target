@@ -262,7 +262,7 @@ async function fetchOutOfPlan(db, sess, payload) {
   const out = [];
   for (let from = 0; ; from += PAGE) {
     let q = db.schema("app_sale").from("v_actual_ngoai_ke_hoach")
-      .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien,don_gia")
+      .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien,don_gia,ly_do,ps_dia_ban")
       .range(from, from + PAGE - 1);
     q = applyScope(q, sess, payload); // cùng phân quyền như sale_target
     const { data, error } = await q;
@@ -270,21 +270,24 @@ async function fetchOutOfPlan(db, sess, payload) {
     out.push(...(data || []));
     if (!data || data.length < PAGE) break;
   }
-  // Ánh xạ sang đúng thứ tự FIELDS; các cột kế hoạch để rỗng (KHÔNG phải 0)
-  // để app hiển thị "—" và không tính % hoàn thành cho dòng này.
-  return out.map((r) => {
+  // Trả 2 mảng SONG SONG: rows (chuẩn theo FIELDS) + meta (ngoài FIELDS).
+  // ly_do/ps_dia_ban không nằm trong FIELDS — nhét vào FIELDS sẽ làm mọi chỗ đọc
+  // theo index bị đẩy; app tự đọc oopMeta[i] theo đúng chỉ số i của oopRows.
+  const rows = out.map((r) => {
     const o = {
       mo: r.thang_ke_hoach, region: r.mien, ps: r.ps,
-      // KH thật; thiếu tên thì để nhãn chung — app vẫn xếp dòng này vào "Ngoài kế hoạch"
       cust: r.khach_hang || OOP_CUST, custId: r.ma_khach_hang,
       grp: r.nhom_san_pham, prod: r.san_pham,
       mset: r.bo_vat_tu, act: r.sl_thuc_hien,
-      // Đơn giá đại diện từ hoá đơn → app tính DThu = SL thực hiện × đơn giá.
-      // Các cột kế hoạch (rev/dt) vẫn để rỗng vì dòng này không có kế hoạch.
       price: r.don_gia,
     };
     return FIELDS.map((f) => (o[f] === null || o[f] === undefined ? "" : o[f]));
   });
+  const meta = out.map((r) => ({
+    ly_do: r.ly_do || "",
+    ps_dia_ban: r.ps_dia_ban || "",
+  }));
+  return { rows, meta };
 }
 
 Deno.serve(async (req) => {
@@ -319,9 +322,9 @@ Deno.serve(async (req) => {
     if (action === "getData") {
       // fetchAll / fetchOutOfPlan / getRev độc lập → chạy song song để tiết kiệm lượt chờ.
       // fetchOutOfPlan hỏng KHÔNG được làm sập getData (vd view chưa tạo) → nuốt lỗi, trả [].
-      const [dbRows, oopRows, rev] = await Promise.all([
+      const [dbRows, oop, rev] = await Promise.all([
         fetchAll(db, sess, payload),
-        fetchOutOfPlan(db, sess, payload).catch(() => []),
+        fetchOutOfPlan(db, sess, payload).catch(() => ({ rows: [], meta: [] })),
         getRev(db),
       ]);
       const rows = dbRows.map((r) => FIELDS.map((f) => {
@@ -330,7 +333,8 @@ Deno.serve(async (req) => {
       }));
       const rowNums = dbRows.map((r) => r.id);
       return json({
-        ok: true, fields: FIELDS, rows, rowNums, oopRows, rev,
+        ok: true, fields: FIELDS, rows, rowNums,
+        oopRows: oop.rows, oopMeta: oop.meta, rev,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
       });
     }

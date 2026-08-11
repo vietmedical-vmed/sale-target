@@ -241,6 +241,16 @@ const inSel = (sel, v) => !sel || sel.length === 0 || sel.includes(v);
 // Chỉ xuất hiện ở 2 màn tổng hợp; các dòng này không có kế hoạch nên cột KH để trống.
 const OOP_CUST = 'Ngoài kế hoạch';
 
+// Nhãn ngắn cho từng lý do "ngoài kế hoạch" (view app_sale.v_actual_ngoai_ke_hoach).
+// Giữ ngắn để chèn vừa được vào các bảng tổng hợp mà không phá layout.
+const LY_DO_LABEL = {
+  chua_co_dia_ban:     { short: 'Chưa có địa bàn',    color: 'red',    desc: 'KH × nhóm SP chưa được khai báo địa bàn' },
+  thieu_dong_ke_hoach: { short: 'Thiếu SP trong KH',  color: 'amber',  desc: 'Địa bàn đúng PS, kế hoạch chưa có sản phẩm này' },
+  sai_bo_vat_tu:       { short: 'Sai bộ vật tư',      color: 'orange', desc: 'Kế hoạch có SP nhưng khác bộ vật tư' },
+  sai_ps:              { short: 'Sai PS',             color: 'red',    desc: 'Hoá đơn ghi PS khác PS trong địa bàn' },
+  ps_la:               { short: 'PS ngoài dm_ps',     color: 'red',    desc: 'PS trong hoá đơn không có trong danh mục PS' },
+};
+
 // Khách hàng ĐANG CÓ trong kế hoạch (suy từ chính các dòng kế hoạch của bộ dữ liệu
 // đang xem). Dòng THỰC HIỆN NGOÀI KẾ HOẠCH của những KH này được đẩy thẳng vào đúng
 // khách hàng + nhóm sản phẩm của họ, chỉ KH lạ mới gom vào nhóm "Ngoài kế hoạch" —
@@ -4128,6 +4138,7 @@ function App() {
       // Chỉ 2 màn tổng hợp dùng tới (cho đủ số); màn chi tiết không thấy, không sửa được.
       // Không đặt _row → mọi thao tác sửa/xoá theo id đều không đụng tới các dòng này.
       const oopArr = r.oopRows || [];
+      const oopMeta = r.oopMeta || [];
       const oopObjs = new Array(oopArr.length);
       for (let i = 0; i < oopArr.length; i++) {
         const row = oopArr[i];
@@ -4141,6 +4152,13 @@ function App() {
         if (o.cust && o.cust !== OOP_CUST) {
           o.custRaw = o.cust;
           o.cust = custLabel(o.custId, o.cust);
+        }
+        // Meta ngoài FIELDS: ly_do + ps_dia_ban để biết cách sửa cho từng dòng.
+        // Bản edge cũ chưa trả oopMeta -> mảng rỗng, o._lyDo undefined, UI ẩn nhãn.
+        const m = oopMeta[i];
+        if (m) {
+          if (m.ly_do) o._lyDo = m.ly_do;
+          if (m.ps_dia_ban) o._psDiaBan = m.ps_dia_ban;
         }
         oopObjs[i] = o;
       }
@@ -4818,6 +4836,32 @@ function App() {
     };
   }, [tree]);
 
+  // Đối chiếu thực hiện: gom oopRows theo ly_do — cảnh báo tổng để người cấu hình
+  // biết cần sửa gì. Lọc theo bộ lọc chung (miền/PS/nhóm SP/KH) để khớp với ngữ
+  // cảnh đang xem. KH được gom theo (mã KH hoặc tên) như planCustKeys.
+  const oopByReason = useMemo(() => {
+    const acc = new Map();
+    const cnt = new Map(); // ly_do -> {rows, dt, custs:Set, samples:[]}
+    for (const r of oopRows) {
+      if (!inSel(regionFilter, r.region)) continue;
+      if (!inSel(psFilter, r.ps)) continue;
+      if (!inSel(groupFilter, r.grp)) continue;
+      const ly = r._lyDo || 'unknown';
+      let a = cnt.get(ly);
+      if (!a) { a = { rows: 0, dt: 0, custs: new Set(), samples: [] }; cnt.set(ly, a); }
+      a.rows++;
+      a.dt += (Number(r.act) || 0) * (Number(r.price) || 0);
+      a.custs.add(r.custId ? '#' + r.custId : '@' + (r.cust || ''));
+      if (a.samples.length < 5) a.samples.push(r);
+    }
+    for (const [ly, a] of cnt) acc.set(ly, { ...a, custCount: a.custs.size });
+    return acc;
+  }, [oopRows, regionFilter, psFilter, groupFilter]);
+  const oopTotal = useMemo(() => {
+    let n = 0; oopByReason.forEach(a => n += a.rows); return n;
+  }, [oopByReason]);
+  const [oopOpen, setOopOpen] = useState(false);
+
   // Mẫu số của thẻ "Số lượng account": số khách hàng ĐƯỢC PHÂN CHIA theo cấu hình
   // địa bàn (dm_dia_ban), lọc theo đúng bộ lọc đang áp dụng cho tử số (KH có kế hoạch).
   const accountsAssigned = useMemo(() => {
@@ -5062,7 +5106,15 @@ function App() {
     value: String(draftCount),
     sublabel: draftCount > 0 ? 'nhấn Xác nhận để lưu' : 'đã đồng bộ',
     accent: "amber"
-  }))), /*#__PURE__*/React.createElement("div", {
+  })),
+    oopTotal > 0 && React.createElement(OopReasonBanner, {
+      total: oopTotal,
+      byReason: oopByReason,
+      open: oopOpen,
+      onToggle: () => setOopOpen(v => !v),
+      onGoDiaBan: () => setTab('diaban')
+    })
+    ), /*#__PURE__*/React.createElement("div", {
     // Chỉ dính ở màn chi tiết. 2 màn tổng hợp đã có khung bảng cao vừa màn hình
     // + header bảng dính sẵn bên trong khung (useFitHeight), thêm thanh dính ở
     // ngoài sẽ che mất header bảng đó.
@@ -5211,6 +5263,81 @@ function TabBtn({
     className: `px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors ${active ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`
   }, label);
 }
+// Banner "Đối chiếu thực hiện": gom oopRows theo ly_do. Đây là bước cảnh báo mức 1
+// theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động sửa. Không có UI
+// dm_ps nên ps_la chỉ hiển thị để nhận biết; các loại còn lại đều dẫn về màn Cấu
+// hình địa bàn (nơi có nút Áp dụng / Chuyển PS / Khai báo).
+function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan }) {
+  const h = React.createElement;
+  const rows = Array.from(byReason.entries())
+    .filter(([_, a]) => a.rows > 0)
+    .sort((a, b) => b[1].rows - a[1].rows);
+  const colorCls = c => ({
+    red:    'bg-red-50 text-red-700 border-red-200',
+    orange: 'bg-orange-50 text-orange-700 border-orange-200',
+    amber:  'bg-amber-50 text-amber-700 border-amber-200'
+  })[c] || 'bg-slate-50 text-slate-700 border-slate-200';
+  return h("div", {
+    className: "col-span-full bg-white border border-red-200 rounded-xl shadow-sm mb-4",
+    role: "region",
+    "aria-label": "Đối chiếu thực hiện ngoài kế hoạch"
+  },
+    h("button", {
+      onClick: onToggle,
+      className: "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-red-50/40 rounded-xl"
+    },
+      h(AlertCircle, { size: 15, className: "text-red-600 shrink-0" }),
+      h("div", { className: "flex-1 min-w-0" },
+        h("div", { className: "text-[12.5px] font-semibold text-slate-800" },
+          "Đối chiếu thực hiện — ",
+          h("span", { className: "text-red-600" }, fmtInt(total)),
+          " dòng ngoài kế hoạch"),
+        h("div", { className: "text-[11px] text-slate-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5" },
+          rows.map(([ly, a]) => {
+            const lb = LY_DO_LABEL[ly] || { short: ly, color: 'slate' };
+            return h("span", { key: ly, className: "inline-flex items-center gap-1" },
+              h("span", { className: `inline-block w-1.5 h-1.5 rounded-full bg-${lb.color}-500` }),
+              lb.short, ": ", h("span", { className: "font-semibold text-slate-700" }, fmtInt(a.rows)));
+          }))),
+      h("span", { className: "text-[11px] text-slate-400" }, open ? 'Thu gọn' : 'Chi tiết'),
+      open ? h(ChevronDown, { size: 14, className: "text-slate-400" })
+           : h(ChevronRight, { size: 14, className: "text-slate-400" })),
+    open && h("div", { className: "px-4 pb-4 pt-1 border-t border-slate-100" },
+      h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2" },
+        rows.map(([ly, a]) => {
+          const lb = LY_DO_LABEL[ly] || { short: ly, color: 'slate', desc: ly };
+          const action = ly === 'chua_co_dia_ban' ? 'Khai báo địa bàn cho các KH này'
+                       : ly === 'sai_ps'           ? 'Đồng bộ PS ở màn Cấu hình địa bàn'
+                       : ly === 'sai_bo_vat_tu'    ? 'Sửa bộ vật tư ở dòng kế hoạch tương ứng'
+                       : ly === 'thieu_dong_ke_hoach' ? 'Thêm SP vào kế hoạch cho các KH này'
+                       : ly === 'ps_la'            ? 'Bổ sung/sửa tên PS trong shared.dm_ps'
+                       : null;
+          const canGoDb = ly === 'chua_co_dia_ban' || ly === 'sai_ps';
+          return h("div", { key: ly, className: `border rounded-md px-2.5 py-2 ${colorCls(lb.color)}` },
+            h("div", { className: "flex items-center gap-2" },
+              h("span", { className: "text-[11.5px] font-semibold" }, lb.short),
+              h("span", { className: "ml-auto text-[11px] tabular-nums font-semibold" }, fmtInt(a.rows), ' dòng'),
+              h("span", { className: "text-[10.5px] opacity-70" }, "· ", fmtInt(a.custCount), ' KH')),
+            h("div", { className: "text-[11px] mt-0.5 opacity-90" }, lb.desc),
+            action && h("div", { className: "text-[11px] mt-1 flex items-center gap-2" },
+              h("span", { className: "opacity-70" }, "→ ", action),
+              canGoDb && h("button", {
+                onClick: onGoDiaBan,
+                className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
+              }, "Mở màn địa bàn")),
+            a.samples.length > 0 && h("details", { className: "mt-1.5" },
+              h("summary", { className: "text-[10.5px] cursor-pointer opacity-80" }, "Mẫu 5 dòng"),
+              h("div", { className: "text-[10.5px] mt-1 space-y-0.5 opacity-90" },
+                a.samples.map((r, i) => h("div", { key: i, className: "truncate" },
+                  r.mo, ' · ', fmtCust(r.cust) || '—', ' · ', r.grp || '—',
+                  ly === 'sai_ps' && r._psDiaBan
+                    ? h("span", null, ' · PS: ', r.ps, ' → ', h("b", null, r._psDiaBan))
+                    : ly === 'ps_la' ? h("span", null, ' · PS: ', h("b", null, r.ps))
+                    : ly === 'sai_bo_vat_tu' ? h("span", null, ' · Bộ: ', r.mset)
+                    : h("span", null, ' · SP: ', r.prod))))));
+        }))));
+}
+
 function StatCard({
   label,
   value,
