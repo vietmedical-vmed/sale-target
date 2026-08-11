@@ -1978,10 +1978,13 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
     return out;
   };
 
+  // KH update cả năm (SL) = tháng đã qua lấy thực hiện, từ tháng hiện tại trở đi lấy SL update
+  // → giống định nghĩa cột "KH update" ở màn PS, để % KH YTD nhất quán giữa 2 màn.
+  const updAnnual = (node) => node.moKh.reduce((s, v, i) => s + (i < curIdx ? node.moAct[i] : v), 0);
   // Luỹ kế YTD (đến hết tháng hiện tại): KH · TH · % TH YTD · % KH YTD · CL tốc độ
-  // % KH YTD = KH YTD / KH update cả năm (tổng SL update 12 tháng) ; CL tốc độ = % TH YTD − % KH YTD (điểm %).
+  // % KH YTD = KH YTD / KH update cả năm ; CL tốc độ = % TH YTD − % KH YTD (điểm %).
   const ytdCells = (node, extra) => {
-    const totKh = node.moKh.reduce((s, v) => s + v, 0);
+    const totKh = updAnnual(node);
     const thPct = node.khYtd > 0 ? node.thYtd / node.khYtd : null;
     const khPct = totKh > 0 ? node.khYtd / totKh : null;
     const clVal = (thPct != null && khPct != null) ? Math.round((thPct - khPct) * 100) : null;
@@ -2120,9 +2123,9 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
               h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, fmtInt(data.grand.khYtd)),
               h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200' }, fmtInt(data.grand.thYtd)),
               h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums' }, pctTxt(data.grand.thYtd, data.grand.khYtd)),
-              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300' }, pctTxt(data.grand.khYtd, data.grand.moKh.reduce((s, v) => s + v, 0))),
+              h('td', { className: 'px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300' }, pctTxt(data.grand.khYtd, updAnnual(data.grand))),
               (() => {
-                const totKh = data.grand.moKh.reduce((s, v) => s + v, 0);
+                const totKh = updAnnual(data.grand);
                 const thPct = data.grand.khYtd > 0 ? data.grand.thYtd / data.grand.khYtd : null;
                 const khPct = totKh > 0 ? data.grand.khYtd / totKh : null;
                 const clVal = (thPct != null && khPct != null) ? Math.round((thPct - khPct) * 100) : null;
@@ -2289,7 +2292,8 @@ function exportProductSummary(data) {
       const act = Math.round(d.moAct[i] || 0);
       row.push(kh, act, kh > 0 ? act / kh : '');
     }
-    const totKh = d.moKh.reduce((s, v) => s + v, 0);
+    // KH update cả năm (SL): tháng đã qua lấy thực hiện, từ tháng hiện tại trở đi lấy SL update
+    const totKh = d.moKh.reduce((s, v, i) => s + (i < curIdx ? (d.moAct[i] || 0) : v), 0);
     const thP = khYtd > 0 ? thYtd / khYtd : null;       // % TH YTD
     const khP = totKh > 0 ? khYtd / totKh : null;        // % KH YTD = KH YTD / KH update cả năm
     const clP = (thP != null && khP != null) ? thP - khP : ''; // CL tốc độ
