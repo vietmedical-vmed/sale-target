@@ -3235,21 +3235,27 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
 // KHÔNG có ô Miền: miền là thuộc tính của PS, suy từ PS đã chọn (PS nào có nhiều
 // miền thì rơi về miền đã khai báo trong địa bàn); client không suy được thì để
 // trống, server tự điền bằng mienForPs().
-function AddCustomerModal({ open, onClose, customers, psOptions, regionsByPs, diaBanByCust, existingCustKeys, catIdx, groupsByPs, priceOf, onAdd, onAddProduct }) {
+function AddCustomerModal({ open, onClose, customers, psOptions, regionsByPs, diaBanByCust, existingCustKeys, catIdx, groupsByPs, priceOf, onAdd, onAddProduct, prefill }) {
   const h = React.createElement;
   const [custKey, setCustKey] = useState('');
   const [ps, setPs] = useState(psOptions && psOptions.length === 1 ? psOptions[0] : '');
   const [step, setStep] = useState(1);   // 1 = chọn KH/PS, 2 = thêm sản phẩm đầu tiên
   const [added, setAdded] = useState(0); // số SP đã thêm trong lần mở này
-  // Mỗi lần mở lại là một lần thêm mới → xoá lựa chọn cũ
+  // Mỗi lần mở lại là một lần thêm mới → xoá lựa chọn cũ, TRỪ KHI có prefill từ
+  // modal OOP (thieu_dong_ke_hoach): điền sẵn KH + PS + nhóm SP và nhảy thẳng step 2.
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (prefill && (prefill.custId || prefill.cust)) {
+      setCustKey(prefill.custId || prefill.cust);
+      if (prefill.ps) setPs(prefill.ps);
+      setStep(2);
+    } else {
       setCustKey('');
       setPs(psOptions && psOptions.length === 1 ? psOptions[0] : '');
       setStep(1);
-      setAdded(0);
     }
-  }, [open]);
+    setAdded(0);
+  }, [open, prefill]);
   const cust = useMemo(() => customers.find(c => (c.custId || c.cust) === custKey), [customers, custKey]);
   // Địa bàn đã khai báo cho KH này (dm_dia_ban) — nguồn chuẩn cho PS/Miền.
   const terr = useMemo(
@@ -4313,6 +4319,25 @@ function App() {
       setDiaBanBusy(false);
     }
   }, [loadData]);
+
+  // Lưu vào shared.dm_ps (chỉ admin). Sau khi lưu tải lại psDir để mọi màn dùng tên
+  // rút gọn mới. Không tự chạy map — nhắc user chạy "Cập nhật thực hiện" nếu muốn
+  // số của PS này khớp lại dòng kế hoạch.
+  const [psBusy, setPsBusy] = useState(false);
+  const savePs = useCallback(async row => {
+    setPsBusy(true); setError('');
+    try {
+      await api('savePs', row);
+      const r = await api('getPs', canSwitchTeam(auth.role) ? { bu: viewBu } : {});
+      setPsDir(r.ps || []);
+      setNotice(`Đã lưu "${row.tenPs}" vào dm_ps (tên rút gọn: ${row.ps}). Chạy "Cập nhật thực hiện" để số của PS này khớp lại dòng kế hoạch.`);
+      return true;
+    } catch (err) {
+      setError('Lưu dm_ps thất bại: ' + err.message);
+      return false;
+    } finally { setPsBusy(false); }
+  }, [auth.role, viewBu]);
+
   // Ref cho dữ liệu addProduct cần đọc lúc gọi — để hàm addProduct giữ nguyên identity
   // (không tạo lại mỗi khi rows đổi, tránh render lại toàn bộ thẻ KH).
   const fieldsRef = useRef([]);
@@ -4860,7 +4885,25 @@ function App() {
   const oopTotal = useMemo(() => {
     let n = 0; oopByReason.forEach(a => n += a.rows); return n;
   }, [oopByReason]);
+  // Dòng OOP lọc theo bộ lọc chung (miền/PS/nhóm/KH) — modal chi tiết dùng cái này.
+  // Không lọc theo search vì search chỉ áp cho màn Chi tiết.
+  const oopRowsFiltered = useMemo(
+    () => oopRows.filter(r =>
+      inSel(regionFilter, r.region) && inSel(psFilter, r.ps) &&
+      inSel(groupFilter, r.grp) && inSel(custFilter, r.cust)),
+    [oopRows, regionFilter, psFilter, groupFilter, custFilter]
+  );
   const [oopOpen, setOopOpen] = useState(false);
+  // Modal "Đối chiếu ngoài kế hoạch — chi tiết": null = đóng, 'all' = mọi lý do,
+  // 'chua_co_dia_ban' | 'sai_ps' | ... = đúng 1 lý do (lọc sẵn).
+  const [oopDetailReason, setOopDetailReason] = useState(null);
+  // Điền sẵn form "Thêm sản phẩm" khi cross-tab từ modal OOP → tab Chi tiết.
+  // Đặt {custId, cust, grp, ps, prod, mset} rồi setTab('detail') — AddCustomerModal
+  // đọc state này và tự mở với dữ liệu đã điền.
+  const [addProductPrefill, setAddProductPrefill] = useState(null);
+  // Modal "Danh mục PS" (dm_ps) — dành cho ly_do='ps_la'. null = đóng, {} = thêm mới,
+  // { ten_ps } = sửa bản có sẵn.
+  const [dmpsForm, setDmpsForm] = useState(null);
 
   // Mẫu số của thẻ "Số lượng account": số khách hàng ĐƯỢC PHÂN CHIA theo cấu hình
   // địa bàn (dm_dia_ban), lọc theo đúng bộ lọc đang áp dụng cho tử số (KH có kế hoạch).
@@ -5107,14 +5150,44 @@ function App() {
     sublabel: draftCount > 0 ? 'nhấn Xác nhận để lưu' : 'đã đồng bộ',
     accent: "amber"
   })),
-    oopTotal > 0 && React.createElement(OopReasonBanner, {
+    // Đối chiếu ngoài kế hoạch — chỉ admin thấy (mọi role khác không có action gì
+    // để sửa được, chỉ tăng nhiễu). Backend đã lọc dữ liệu theo phạm vi quyền nên
+    // OOP người khác thấy không rò rỉ; đây thuần là gate hiển thị.
+    isAdmin && oopTotal > 0 && React.createElement(OopReasonBanner, {
       total: oopTotal,
       byReason: oopByReason,
       open: oopOpen,
       onToggle: () => setOopOpen(v => !v),
+      onOpenDetail: (ly) => setOopDetailReason(ly || 'all'),
       onGoDiaBan: () => setTab('diaban')
     })
-    ), /*#__PURE__*/React.createElement("div", {
+    ),
+    // Modal chi tiết OOP + form dm_ps — treo ở root vì dùng fixed inset-0
+    isAdmin && oopDetailReason && React.createElement(OopDetailModal, {
+      filterReason: oopDetailReason,
+      oopRows: oopRowsFiltered,
+      isAdmin: isAdmin,
+      onClose: () => setOopDetailReason(null),
+      onGoDiaBan: (ctx) => {
+        setOopDetailReason(null);
+        setTab('diaban');
+        // TODO: pass ctx (custId/grp) tới màn địa bàn để tự lọc — tạm chỉ chuyển tab.
+      },
+      onAddProduct: (ctx) => {
+        setOopDetailReason(null);
+        setTab('detail');
+        setAddProductPrefill(ctx);
+      },
+      onEditDmps: (init) => setDmpsForm(init)
+    }),
+    isAdmin && dmpsForm && React.createElement(DmpsForm, {
+      init: dmpsForm,
+      psDir: psDir,
+      onSave: savePs,
+      onClose: () => setDmpsForm(null),
+      busy: psBusy
+    }),
+    /*#__PURE__*/React.createElement("div", {
     // Chỉ dính ở màn chi tiết. 2 màn tổng hợp đã có khung bảng cao vừa màn hình
     // + header bảng dính sẵn bên trong khung (useFitHeight), thêm thanh dính ở
     // ngoài sẽ che mất header bảng đó.
@@ -5177,8 +5250,8 @@ function App() {
     placeholder: "Tìm KH, sản phẩm, bộ vật tư…",
     className: "pl-8 pr-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-64 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
   })))), canAddCust && /*#__PURE__*/React.createElement(AddCustomerModal, {
-    open: addCustOpen,
-    onClose: closeAddCust,
+    open: addCustOpen || !!addProductPrefill,
+    onClose: () => { closeAddCust(); setAddProductPrefill(null); },
     customers: custSource,
     psOptions: allPsList,
     regionsByPs: regionsByPs,
@@ -5188,7 +5261,8 @@ function App() {
     groupsByPs: groupsByPs,
     priceOf: priceOf,
     onAdd: addCustomer,
-    onAddProduct: addProduct
+    onAddProduct: addProduct,
+    prefill: addProductPrefill
   }), tab === 'diaban' ? /*#__PURE__*/React.createElement(DiaBanView, {
     rows: effectiveRows,
     diaBan: diaBan,
@@ -5267,7 +5341,7 @@ function TabBtn({
 // theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động sửa. Không có UI
 // dm_ps nên ps_la chỉ hiển thị để nhận biết; các loại còn lại đều dẫn về màn Cấu
 // hình địa bàn (nơi có nút Áp dụng / Chuyển PS / Khai báo).
-function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan }) {
+function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail }) {
   const h = React.createElement;
   const rows = Array.from(byReason.entries())
     .filter(([_, a]) => a.rows > 0)
@@ -5299,7 +5373,11 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan }) {
               h("span", { className: `inline-block w-1.5 h-1.5 rounded-full bg-${lb.color}-500` }),
               lb.short, ": ", h("span", { className: "font-semibold text-slate-700" }, fmtInt(a.rows)));
           }))),
-      h("span", { className: "text-[11px] text-slate-400" }, open ? 'Thu gọn' : 'Chi tiết'),
+      h("span", {
+        onClick: e => { e.stopPropagation(); onOpenDetail('all'); },
+        className: "text-[11px] font-medium text-red-700 hover:bg-red-50 px-2 py-0.5 rounded cursor-pointer"
+      }, "Xem tất cả"),
+      h("span", { className: "text-[11px] text-slate-400" }, open ? 'Thu gọn' : 'Breakdown'),
       open ? h(ChevronDown, { size: 14, className: "text-slate-400" })
            : h(ChevronRight, { size: 14, className: "text-slate-400" })),
     open && h("div", { className: "px-4 pb-4 pt-1 border-t border-slate-100" },
@@ -5321,10 +5399,10 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan }) {
             h("div", { className: "text-[11px] mt-0.5 opacity-90" }, lb.desc),
             action && h("div", { className: "text-[11px] mt-1 flex items-center gap-2" },
               h("span", { className: "opacity-70" }, "→ ", action),
-              canGoDb && h("button", {
-                onClick: onGoDiaBan,
+              h("button", {
+                onClick: () => onOpenDetail(ly),
                 className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
-              }, "Mở màn địa bàn")),
+              }, "Xem ", fmtInt(a.rows), " dòng")),
             a.samples.length > 0 && h("details", { className: "mt-1.5" },
               h("summary", { className: "text-[10.5px] cursor-pointer opacity-80" }, "Mẫu 5 dòng"),
               h("div", { className: "text-[10.5px] mt-1 space-y-0.5 opacity-90" },
@@ -5336,6 +5414,242 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan }) {
                     : ly === 'sai_bo_vat_tu' ? h("span", null, ' · Bộ: ', r.mset)
                     : h("span", null, ' · SP: ', r.prod))))));
         }))));
+}
+
+// Modal "Đối chiếu ngoài kế hoạch — chi tiết". Nhận toàn bộ oopRows đã filter theo
+// bộ lọc chung, cho phép lọc tiếp theo lý do + tìm KH/nhóm SP. Mỗi dòng có nút hành
+// động tương ứng với ly_do — cross-tab jump về màn Cấu hình địa bàn (khai báo/chuyển
+// PS) hoặc màn Chi tiết (thêm SP với dữ liệu điền sẵn), hoặc mở form dm_ps.
+function OopDetailModal({
+  filterReason, oopRows, isAdmin, onClose,
+  onGoDiaBan, onAddProduct, onEditDmps
+}) {
+  const h = React.createElement;
+  const [ly, setLy] = useState(filterReason === 'all' ? '' : (filterReason || ''));
+  const [q, setQ] = useState('');
+  useEffect(() => { setLy(filterReason === 'all' ? '' : (filterReason || '')); }, [filterReason]);
+  const list = useMemo(() => {
+    const nq = deaccent((q || '').trim());
+    return oopRows.filter(r => {
+      if (ly && r._lyDo !== ly) return false;
+      if (nq) {
+        const hay = deaccent((r.cust || '') + ' ' + (r.grp || '') + ' ' + (r.prod || '') + ' ' + (r.ps || ''));
+        if (!hay.includes(nq)) return false;
+      }
+      return true;
+    });
+  }, [oopRows, ly, q]);
+  const cntByLy = useMemo(() => {
+    const m = new Map();
+    oopRows.forEach(r => m.set(r._lyDo || 'unknown', (m.get(r._lyDo || 'unknown') || 0) + 1));
+    return m;
+  }, [oopRows]);
+  // Trần hiện: 500 dòng — đủ để soi hầu hết case, còn lại lọc tiếp bằng lý do/tìm.
+  const MAX = 500;
+  const shown = list.slice(0, MAX);
+  const cellCls = "px-2 py-1.5 text-[11.5px] border-t border-slate-100";
+  const th = "px-2 py-1.5 text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold whitespace-nowrap bg-slate-50 sticky top-0 z-10";
+
+  const actionFor = r => {
+    if (!isAdmin) return null;
+    if (r._lyDo === 'ps_la') return h("button", {
+      onClick: () => onEditDmps({ tenPs: r.ps }),
+      title: "Bổ sung PS này vào shared.dm_ps để hoá đơn dịch được tên sang mã ps rút gọn",
+      className: "px-1.5 py-0.5 text-[10.5px] font-medium text-red-700 hover:bg-red-100 rounded"
+    }, "Thêm vào dm_ps");
+    if (r._lyDo === 'chua_co_dia_ban' || r._lyDo === 'sai_ps') return h("button", {
+      onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp }),
+      title: r._lyDo === 'chua_co_dia_ban'
+        ? "Chuyển sang màn Cấu hình địa bàn để khai báo cho (KH × ngành hàng) này"
+        : `Chuyển sang màn Cấu hình địa bàn — địa bàn đang là ${r._psDiaBan || '?'}`,
+      className: "px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-100 rounded"
+    }, "Mở màn địa bàn");
+    if (r._lyDo === 'thieu_dong_ke_hoach') return h("button", {
+      onClick: () => onAddProduct({
+        custId: r.custId, cust: r.cust, grp: r.grp,
+        // Chỉ điền PS nếu địa bàn có bản khai báo — nếu không thì để rỗng cho user chọn.
+        ps: r._psDiaBan || r.ps, mset: r.mset, prod: r.prod
+      }),
+      title: "Chuyển sang màn Chi tiết và mở form Thêm sản phẩm với dữ liệu điền sẵn",
+      className: "px-1.5 py-0.5 text-[10.5px] font-medium text-blue-700 hover:bg-blue-100 rounded"
+    }, "Thêm SP vào KH");
+    if (r._lyDo === 'sai_bo_vat_tu') return h("span", {
+      title: "Kế hoạch có SP này nhưng khác bộ vật tư. Vào màn Chi tiết, tìm KH này, sửa cột Bộ vật tư (chỉ admin).",
+      className: "text-[10.5px] text-slate-400"
+    }, "Sửa ở màn Chi tiết");
+    return null;
+  };
+
+  return h("div", {
+    className: "fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4",
+    onClick: onClose
+  },
+    h("div", {
+      onClick: e => e.stopPropagation(),
+      className: "bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+    },
+      h("div", { className: "px-4 py-3 border-b border-slate-100 flex items-center gap-3" },
+        h(AlertCircle, { size: 16, className: "text-red-600" }),
+        h("div", { className: "text-[14px] font-semibold text-slate-800" }, "Đối chiếu ngoài kế hoạch"),
+        h("span", { className: "text-[11.5px] text-slate-500" }, fmtInt(list.length), " dòng",
+          list.length > MAX ? ` (hiện ${MAX} đầu)` : ''),
+        h("div", { className: "flex-1" }),
+        h("button", {
+          onClick: onClose,
+          className: "p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+        }, h(XIcon, { size: 16 }))),
+
+      h("div", { className: "px-4 py-2 border-b border-slate-100 flex items-center gap-2 flex-wrap" },
+        h("span", { className: "text-[11px] uppercase text-slate-500 font-semibold" }, "Lý do"),
+        h("button", {
+          onClick: () => setLy(''),
+          className: `px-2 py-0.5 text-[11.5px] rounded ${!ly ? 'bg-slate-800 text-white' : 'bg-slate-100 hover:bg-slate-200'}`
+        }, "Tất cả ", h("span", { className: "opacity-70" }, fmtInt(oopRows.length))),
+        [...cntByLy.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => {
+          const lb = LY_DO_LABEL[k] || { short: k };
+          return h("button", {
+            key: k,
+            onClick: () => setLy(k),
+            className: `px-2 py-0.5 text-[11.5px] rounded ${ly === k ? 'bg-slate-800 text-white' : 'bg-slate-100 hover:bg-slate-200'}`
+          }, lb.short, " ", h("span", { className: "opacity-70" }, fmtInt(v)));
+        }),
+        h("div", { className: "flex-1" }),
+        h("div", { className: "relative" },
+          h(Search, { size: 12, className: "absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" }),
+          h("input", {
+            value: q, onChange: e => setQ(e.target.value),
+            placeholder: "Tìm KH, ngành hàng, sản phẩm…",
+            className: "pl-7 pr-2 py-1 text-[11.5px] border border-slate-200 rounded w-52 outline-none focus:border-emerald-500"
+          }))),
+
+      h("div", { className: "flex-1 overflow-auto" },
+        list.length === 0
+          ? h("div", { className: "p-12 text-center text-slate-400 text-sm" }, "Không có dòng nào khớp bộ lọc")
+          : h("table", { className: "w-full" },
+              h("thead", null, h("tr", null,
+                h("th", { className: th }, "Tháng"),
+                h("th", { className: th }, "Khách hàng"),
+                h("th", { className: th }, "Ngành hàng"),
+                h("th", { className: th }, "PS hoá đơn"),
+                h("th", { className: th }, "PS địa bàn"),
+                h("th", { className: th }, "Bộ vật tư · Sản phẩm"),
+                h("th", { className: th + " text-right" }, "SL · DT"),
+                h("th", { className: th }, "Lý do"),
+                isAdmin && h("th", { className: th }, ""))),
+              h("tbody", null, shown.map((r, i) => {
+                const lb = LY_DO_LABEL[r._lyDo] || { short: r._lyDo, color: 'slate' };
+                const dt = (Number(r.act) || 0) * (Number(r.price) || 0);
+                return h("tr", { key: i, className: "hover:bg-slate-50" },
+                  h("td", { className: cellCls + " whitespace-nowrap text-slate-500 font-mono" }, r.mo),
+                  h("td", { className: cellCls + " text-slate-800" },
+                    h("div", { className: "font-medium truncate max-w-[220px]" }, fmtCust(r.cust) || '—'),
+                    r.custId && h("div", { className: "text-[10px] text-slate-400 font-mono" }, r.custId)),
+                  h("td", { className: cellCls + " text-slate-600 max-w-[140px] truncate" }, r.grp || '—'),
+                  h("td", { className: cellCls + " text-slate-700 whitespace-nowrap" }, r.ps || '—'),
+                  h("td", { className: cellCls + " whitespace-nowrap" },
+                    r._psDiaBan
+                      ? (r._psDiaBan === r.ps
+                          ? h("span", { className: "text-slate-500" }, r._psDiaBan)
+                          : h("span", { className: "text-emerald-700 font-medium" }, r._psDiaBan))
+                      : h("span", { className: "text-slate-300" }, "—")),
+                  h("td", { className: cellCls + " text-slate-500 max-w-[280px] truncate" },
+                    h("div", { className: "text-[10.5px] text-slate-400 truncate" }, r.mset || '—'),
+                    h("div", { className: "truncate" }, r.prod || '—')),
+                  h("td", { className: cellCls + " text-right tabular-nums whitespace-nowrap" },
+                    h("div", { className: "font-medium" }, fmtInt(r.act)),
+                    h("div", { className: "text-[10px] text-slate-400" }, money(dt))),
+                  h("td", { className: cellCls },
+                    h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-${lb.color}-50 text-${lb.color}-700` }, lb.short)),
+                  isAdmin && h("td", { className: cellCls + " whitespace-nowrap" }, actionFor(r)));
+              })))),
+
+      h("div", { className: "px-4 py-2 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-3" },
+        h("span", null, "Hành động cross-tab chuyển tab tương ứng và điền sẵn form. Vì view khớp theo mã KH + tên chuẩn hoá, một số dòng có thể trùng nhau ở SL nhưng khác bộ vật tư."),
+        h("div", { className: "flex-1" }),
+        h("button", {
+          onClick: onClose,
+          className: "px-3 py-1 text-[12px] text-slate-600 hover:bg-slate-100 rounded"
+        }, "Đóng"))));
+}
+
+// Modal quản lý danh mục PS (shared.dm_ps). Hiện dùng khi bấm "Thêm vào dm_ps" từ
+// modal OOP cho ly_do='ps_la'. Cho phép admin thêm tên đầy đủ ↔ tên rút gọn.
+function DmpsForm({ init, psDir, onSave, onClose, busy }) {
+  const h = React.createElement;
+  const [tenPs, setTenPs] = useState(init?.tenPs || '');
+  const [ps, setPs] = useState(init?.ps || '');
+  const [buCode, setBuCode] = useState(init?.buCode || 'chcs');
+  const [mien, setMien] = useState(init?.mien || 'Miền Bắc');
+  const [team, setTeam] = useState(init?.team || '');
+  const [active, setActive] = useState(init?.active !== false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    // Tra dm_ps đã có bản chưa: nếu có, tự điền form (edit mode).
+    const nk = String(init?.tenPs || '').trim().toLowerCase();
+    if (!nk) return;
+    const found = psDir && psDir.find(p => String(p.tenPs || '').trim().toLowerCase() === nk);
+    if (found) {
+      setPs(found.ps || ''); setBuCode(found.bu || 'chcs');
+      setMien(found.mien || 'Miền Bắc'); setTeam(found.team || '');
+      setActive(found.active !== false);
+    } else if (init?.ps) setPs(init.ps);
+  }, [init, psDir]);
+
+  const BU_CHOICES = [['chcs', 'CH&CS'], ['cttm', 'CTTM & CTUT'], ['thnk', 'THNS & CSVT'], ['test', 'TEST']];
+  const MIEN_CHOICES = ['Miền Bắc', 'Miền Trung', 'Miền Nam'];
+  const lbl = "block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1";
+  const inp = "w-full px-2.5 py-2 text-[13px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+  const doSave = async () => {
+    setErr('');
+    const t = String(tenPs || '').trim(); const p = String(ps || '').trim();
+    if (!t || !p) { setErr('thiếu tên đầy đủ / tên rút gọn'); return; }
+    if (await onSave({ tenPs: t, ps: p, buCode, mien, team, active })) onClose();
+    else setErr('lỗi lưu');
+  };
+
+  return h("div", {
+    className: "fixed inset-0 bg-slate-900/40 z-[60] flex items-center justify-center p-4",
+    onClick: onClose
+  }, h("div", {
+    onClick: e => e.stopPropagation(),
+    className: "bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-lg"
+  },
+    h("div", { className: "px-4 py-3 border-b border-slate-100 flex items-center gap-3" },
+      h("div", { className: "text-[14px] font-semibold text-slate-800" }, "Danh mục PS (dm_ps)"),
+      h("div", { className: "flex-1" }),
+      h("button", { onClick: onClose, className: "p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" },
+        h(XIcon, { size: 16 }))),
+    h("div", { className: "p-4 space-y-3" },
+      h("div", null, h("label", { className: lbl }, "Tên đầy đủ (khớp hoá đơn)"),
+        h("input", { value: tenPs, onChange: e => setTenPs(e.target.value), className: inp,
+          placeholder: "Vd Nguyễn Văn A" })),
+      h("div", { className: "grid grid-cols-2 gap-2" },
+        h("div", null, h("label", { className: lbl }, "Tên rút gọn (khớp sale_target)"),
+          h("input", { value: ps, onChange: e => setPs(e.target.value), className: inp,
+            placeholder: "Vd A Nguyễn" })),
+        h("div", null, h("label", { className: lbl }, "Team (BU)"),
+          h("select", { value: buCode, onChange: e => setBuCode(e.target.value), className: inp },
+            BU_CHOICES.map(([k, v]) => h("option", { key: k, value: k }, k, ' — ', v))))),
+      h("div", { className: "grid grid-cols-2 gap-2" },
+        h("div", null, h("label", { className: lbl }, "Miền"),
+          h("select", { value: mien, onChange: e => setMien(e.target.value), className: inp },
+            MIEN_CHOICES.map(m => h("option", { key: m, value: m }, m)))),
+        h("div", null, h("label", { className: lbl }, "Team con"),
+          h("input", { value: team, onChange: e => setTeam(e.target.value), className: inp,
+            placeholder: "vd CHCS 1 MN" }))),
+      h("label", { className: "flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer" },
+        h("input", { type: "checkbox", checked: active, onChange: e => setActive(e.target.checked),
+          className: "accent-emerald-600" }), "Active"),
+      err && h("div", { className: "text-[11.5px] text-red-600" }, err)),
+    h("div", { className: "px-4 py-3 border-t border-slate-100 flex items-center gap-2" },
+      h("div", { className: "text-[11px] text-slate-500" },
+        "Sau khi lưu: chạy “Cập nhật thực hiện” để số của PS này khớp lại dòng kế hoạch."),
+      h("div", { className: "flex-1" }),
+      h("button", { onClick: onClose, className: "px-3 py-1.5 text-[12.5px] text-slate-600 hover:bg-slate-100 rounded" }, "Huỷ"),
+      h("button", { onClick: doSave, disabled: busy,
+        className: "px-4 py-1.5 text-[12.5px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50" },
+        busy ? "Đang lưu…" : "Lưu vào dm_ps"))));
 }
 
 function StatCard({

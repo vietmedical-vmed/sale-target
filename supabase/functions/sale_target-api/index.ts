@@ -422,6 +422,44 @@ Deno.serve(async (req) => {
       return json({ ok: true, ps: list });
     }
 
+    // Bổ sung / sửa danh mục PS (shared.dm_ps). Chỉ admin — vì thêm PS = mở
+    // quyền cho một tên mới trong hệ thống. Dùng khi ly_do='ps_la' (hoá đơn có
+    // ten_ps không nằm trong dm_ps → dịch không được, số rơi ngoài kế hoạch).
+    // p_id null = thêm mới; có id = sửa tên rút gọn (không đổi ten_ps: cột đó
+    // là khoá dịch với hoá đơn, đổi = mất khớp hàng loạt).
+    if (action === "savePs") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const p = payload || {};
+      const ten = String(p.tenPs || "").trim(); // tên đầy đủ trong hoá đơn (khoá dịch)
+      const ps  = String(p.ps || "").trim();     // tên rút gọn (khớp sale_target.ps)
+      if (!ten || !ps) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+      const bu_code = String(p.buCode || "").trim().toLowerCase();
+      const known = new Set(["chcs", "cttm", "thnk", "test"]);
+      if (bu_code && !known.has(bu_code)) {
+        return json({ ok: false, error: `bu_code không hợp lệ: ${bu_code}` }, 400);
+      }
+      const row = {
+        ten_ps: ten, ps, bu: p.bu || null, bu_code: bu_code || null,
+        area: p.mien || null, team: p.team || null,
+        trang_thai: p.active === false ? "Inactive" : "Active",
+      };
+      // upsert theo ten_ps: có rồi → cập nhật, chưa có → thêm mới. Không đổi
+      // ten_ps để không mất khớp với hoá đơn cũ. Tên rút gọn 'ps' đổi được:
+      // sau khi đổi, chạy lại map_hoadon để số về đúng dòng kế hoạch mới.
+      const q = db.schema("shared").from("dm_ps");
+      const { data: existed } = await q.select("ten_ps").eq("ten_ps", ten).limit(1);
+      const { error } = existed && existed.length
+        ? await q.update(row).eq("ten_ps", ten)
+        : await q.insert(row);
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("duplicate") || msg.includes("unique"))
+          return json({ ok: false, error: "dup_ps" }, 409);
+        return json({ ok: false, error: msg }, 500);
+      }
+      return json({ ok: true });
+    }
+
     if (action === "updateCells") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const isAdmin = sess.r === "admin";
