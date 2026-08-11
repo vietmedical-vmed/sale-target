@@ -2171,10 +2171,11 @@ function exportSummaryPS(data) {
   const pushCust = (level, c) => {
     const subs = c.subs || [];
     // Nhóm "Ngoài kế hoạch": cột Số KH = số KH thật bên dưới (KH thường vẫn để trống)
-    push(level, c.cust + (c.custId ? ` (${c.custId})` : ''), subs.length ? { ...c, custCount: subs.length } : c, c.note);
+    push(level, c.cust + (c.custId ? ` (${c.custId})` : ''), subs.length ? { ...c, custCount: subs.length } : c, '');
     for (const s of subs) pushCust(level + 1, s);
     for (const gp of c.grps) {
-      push(level + 1, gp.grp, gp, '');
+      // Giải trình đi theo NHÓM SP, không phải theo khách hàng.
+      push(level + 1, gp.grp, gp, gp.note);
       for (const pp of gp.prods) push(level + 2, (pp.mset ? pp.mset + ' · ' : '') + pp.prod, pp, '');
     }
   };
@@ -2325,7 +2326,6 @@ function SummaryView({
         cust: name,
         custId: id,
         oop: isOop, // ngoài kế hoạch → không có quota, không tính khả dụng còn lại
-        note: '',
         dt: 0,
         dtYtd: 0,
         dtUpd: 0,
@@ -2341,7 +2341,6 @@ function SummaryView({
       });
       if (!ps.custMap.has(cKey)) ps.custMap.set(cKey, newCust(cKey, isOop ? '' : r.custId));
       const c = ps.custMap.get(cKey);
-      if (r.mo === NOTE_MONTH && r.note) c.note = r.note;
       const price = Number(r.price) || 0; // đơn giá TỪNG DÒNG
       const mi = MONTHS.indexOf(r.mo);             // vị trí tháng (−1 nếu ngoài 12 tháng)
       const isPast = (r.mo || '') < CURRENT_MONTH; // tháng đã đóng → DThu update lấy theo thực hiện
@@ -2387,11 +2386,15 @@ function SummaryView({
       const gKey = r.grp || '(Không rõ nhóm)';
       if (!host.grpMap.has(gKey)) host.grpMap.set(gKey, {
         grp: gKey,
+        note: '',
         dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, ytd: 0, khLeft: 0,
         moKhDt: MONTHS.map(() => 0), moActDt: MONTHS.map(() => 0), khYtdDt: 0,
         prodMap: new Map()
       });
       const gNode = host.grpMap.get(gKey);
+      // Giải trình tính cho NHÓM SP (giống màn chi tiết), không phải cho cả
+      // khách hàng: một KH có thể có nhiều nhóm SP, mỗi nhóm một giải trình.
+      if (r.mo === NOTE_MONTH && r.note) gNode.note = r.note;
       bump(gNode);
       // --- Cấp Sản phẩm (trong 1 nhóm, phân biệt theo bộ vật tư + sản phẩm) ---
       const pKey = `${r.mset}||${r.prod}`;
@@ -2716,13 +2719,9 @@ function SummaryCustRow({
     d: c,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-left text-[11.5px] text-slate-600 align-top"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "whitespace-pre-wrap break-words",
-    title: c.note
-  }, c.note || /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-300"
-  }, "—")))), open && (subs.length ? subs.map(s => /*#__PURE__*/React.createElement(SummaryCustRow, {
+    // Giải trình nằm ở dòng NHÓM SP bên dưới, không phải ở dòng khách hàng.
+    className: "border-b border-slate-100"
+  })), open && (subs.length ? subs.map(s => /*#__PURE__*/React.createElement(SummaryCustRow, {
     key: s.cust,
     cust: s,
     depth: depth + 1
@@ -2762,8 +2761,13 @@ function SummaryGroupRow({
     d: g,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
-    className: "border-b border-slate-100"
-  })), open && g.prods.map((p, i) => /*#__PURE__*/React.createElement("tr", {
+    className: "px-4 py-1.5 text-left text-[11.5px] text-slate-600 align-top border-b border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "whitespace-pre-wrap break-words",
+    title: g.note
+  }, g.note || /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-300"
+  }, "—")))), open && g.prods.map((p, i) => /*#__PURE__*/React.createElement("tr", {
     key: p.mset + '||' + p.prod + '||' + i,
     className: "hover:bg-slate-50/40 border-b border-slate-100"
   }, /*#__PURE__*/React.createElement("td", {
