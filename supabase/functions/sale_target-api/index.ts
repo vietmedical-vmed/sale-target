@@ -460,6 +460,32 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // Sửa PS trong hoá đơn theo PS địa bàn — chỉ admin. Dùng cho action ở modal
+    // Đối chiếu ngoài kế hoạch với ly_do='sai_ps'. Backend gọi RPC làm cả update
+    // hoa_don_bovattu.ten_ps + map + refresh trong 1 transaction.
+    if (action === "suaPsHoaDon") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const p = payload || {};
+      if (!p.thang || !p.maKh || !p.psMoi) {
+        return json({ ok: false, error: "thieu_du_lieu" }, 400);
+      }
+      const { data, error } = await db.rpc("sua_ps_hoa_don", {
+        p_thang:     String(p.thang),
+        p_ma_kh:     String(p.maKh),
+        p_bo_vat_tu: String(p.boVatTu || ""),
+        p_san_pham:  String(p.sanPham || ""),
+        p_ps_cu:     String(p.psCu || ""),
+        p_ps_moi:    String(p.psMoi),
+      });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("ps_khong_ton_tai")) return json({ ok: false, error: msg }, 404);
+        if (msg.includes("thieu_du_lieu"))    return json({ ok: false, error: msg }, 400);
+        return json({ ok: false, error: msg }, 500);
+      }
+      return json({ ok: true, stats: data, rev: await getRev(db) });
+    }
+
     if (action === "updateCells") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const isAdmin = sess.r === "admin";

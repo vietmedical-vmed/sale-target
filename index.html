@@ -4348,6 +4348,37 @@ function App() {
   // Lưu vào shared.dm_ps (chỉ admin). Sau khi lưu tải lại psDir để mọi màn dùng tên
   // rút gọn mới. Không tự chạy map — nhắc user chạy "Cập nhật thực hiện" nếu muốn
   // số của PS này khớp lại dòng kế hoạch.
+  // Sửa PS trong hoá đơn theo PS địa bàn (dòng OOP có ly_do='sai_ps'). Backend
+  // update hoa_don_bovattu.ten_ps + map + refresh trong 1 transaction — sau khi
+  // xong reload getData để oopRows và stats về đúng.
+  const [oopFixBusy, setOopFixBusy] = useState(false);
+  const suaPsHoaDon = useCallback(async r => {
+    if (!r || !r._psDiaBan) return;
+    if (!confirm(
+      `Đổi PS trong hoá đơn ${r.ps || '?'} → ${r._psDiaBan} cho:\n` +
+      `  Tháng ${r.mo} · ${fmtCust(r.cust) || r.custId} · ${r.grp || '?'}\n` +
+      `  ${r.mset || ''} · ${r.prod || ''}\n\n` +
+      `Sau đó map lại actual → số của tổ hợp này sẽ chuyển về dòng kế hoạch của ${r._psDiaBan}.`
+    )) return;
+    setOopFixBusy(true); setError('');
+    try {
+      const res = await api('suaPsHoaDon', {
+        thang: r.mo, maKh: r.custId, boVatTu: r.mset, sanPham: r.prod,
+        psCu: r.ps, psMoi: r._psDiaBan,
+      });
+      const s = res.stats || {};
+      await loadData(); // oopRows theo dòng plan mới
+      setNotice(
+        `Đã sửa ${s.updated_hoa_don || 0} dòng hoá đơn sang PS "${s.ten_ps_moi || r._psDiaBan}"; ` +
+        `map lại: khớp ${s.map?.matched_keys || 0}/${s.map?.total_keys || 0} khoá.`
+      );
+    } catch (err) {
+      setError('Sửa PS hoá đơn thất bại: ' + err.message);
+    } finally {
+      setOopFixBusy(false);
+    }
+  }, [loadData]);
+
   const [psBusy, setPsBusy] = useState(false);
   const savePs = useCallback(async row => {
     setPsBusy(true); setError('');
@@ -5354,7 +5385,9 @@ function App() {
         setTab('detail');
         setAddProductPrefill(ctx);
       },
-      onEditDmps: (init) => setDmpsForm(init)
+      onEditDmps: (init) => setDmpsForm(init),
+      onSuaPsHoaDon: suaPsHoaDon,
+      busy: oopFixBusy
     }),
     isAdmin && dmpsForm && React.createElement(DmpsForm, {
       init: dmpsForm,
@@ -5598,7 +5631,7 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
 // PS) hoặc màn Chi tiết (thêm SP với dữ liệu điền sẵn), hoặc mở form dm_ps.
 function OopDetailModal({
   filterReason, oopRows, isAdmin, onClose,
-  onGoDiaBan, onAddProduct, onEditDmps
+  onGoDiaBan, onAddProduct, onEditDmps, onSuaPsHoaDon, busy
 }) {
   const h = React.createElement;
   const [ly, setLy] = useState(filterReason === 'all' ? '' : (filterReason || ''));
@@ -5633,11 +5666,26 @@ function OopDetailModal({
       title: "Bổ sung PS này vào shared.dm_ps để hoá đơn dịch được tên sang mã ps rút gọn",
       className: "px-1.5 py-0.5 text-[10.5px] font-medium text-red-700 hover:bg-red-100 rounded"
     }, "Thêm vào dm_ps");
-    if (r._lyDo === 'chua_co_dia_ban' || r._lyDo === 'sai_ps') return h("button", {
+    if (r._lyDo === 'sai_ps') {
+      // 2 hành động cho sai_ps: sửa ngay (fix nhanh) hoặc mở màn địa bàn (đổi
+      // khai báo). "Sửa ngay" cập nhật ten_ps trong hoa_don_bovattu theo PS
+      // địa bàn rồi map lại — số về đúng dòng kế hoạch tương ứng.
+      return h(React.Fragment, null,
+        r._psDiaBan && h("button", {
+          onClick: () => onSuaPsHoaDon(r),
+          disabled: busy,
+          title: `Đổi PS trong hoá đơn ${r.ps} → ${r._psDiaBan} cho tổ hợp (tháng, KH, bộ vật tư, sản phẩm) này, rồi map lại actual`,
+          className: "px-1.5 py-0.5 text-[10.5px] font-medium text-blue-700 hover:bg-blue-100 rounded mr-1 disabled:opacity-50"
+        }, "Sửa hoá đơn → ", r._psDiaBan),
+        h("button", {
+          onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp }),
+          title: `Đổi bản khai báo địa bàn (hiện là ${r._psDiaBan || '?'})`,
+          className: "px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-100 rounded"
+        }, "Đổi địa bàn"));
+    }
+    if (r._lyDo === 'chua_co_dia_ban') return h("button", {
       onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp }),
-      title: r._lyDo === 'chua_co_dia_ban'
-        ? "Chuyển sang màn Cấu hình địa bàn để khai báo cho (KH × ngành hàng) này"
-        : `Chuyển sang màn Cấu hình địa bàn — địa bàn đang là ${r._psDiaBan || '?'}`,
+      title: "Chuyển sang màn Cấu hình địa bàn để khai báo cho (KH × ngành hàng) này",
       className: "px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-100 rounded"
     }, "Mở màn địa bàn");
     if (r._lyDo === 'thieu_dong_ke_hoach') return h("button", {
