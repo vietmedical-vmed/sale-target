@@ -3477,7 +3477,8 @@ const diaBanErrMsg = m => {
 // gán lệch miền cho cùng một PS. Backend cũng tự suy lại khi lưu, không tin client.
 function DiaBanView({
   rows, diaBan, customers, psOptions, mienByPs, psKnown, groupOptions, canEdit,
-  psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, onMove, busy
+  psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, onMove, busy,
+  prefill, onPrefillDone
 }) {
   const h = React.createElement;
   // PS lạ = có trong kế hoạch/khai báo nhưng KHÔNG có trong danh mục dm_ps.
@@ -3490,6 +3491,41 @@ function DiaBanView({
   const [closed, setClosed] = useState(() => new Set()); // KH đang gập
   const [move, setMove] = useState(null); // { id, ps, tuThang } — form "Chuyển PS"
   const [nRow, setNRow] = useState({ custKey: '', grp: '', ps: '', tuThang: MONTHS[0] });
+  // Refs để scroll form "Thêm địa bàn" hoặc dòng khai báo cần chú ý vào tầm nhìn.
+  const addFormRef = useRef(null);
+  const highlightRef = useRef(null);
+
+  // Prefill từ modal OOP (Đối chiếu ngoài kế hoạch):
+  //  purpose='add'    → điền form "Thêm địa bàn" (cust + grp), scroll xuống.
+  //  purpose='chuyen' → tìm KH đó trong bảng, mở nhóm KH đó, scroll + highlight
+  //                     dòng khai báo (KH × nhóm) để user bấm "Chuyển PS".
+  useEffect(() => {
+    if (!prefill) return;
+    const key = prefill.custId || prefill.cust || '';
+    if (prefill.purpose === 'chuyen') {
+      // Tìm ở bảng bằng mã KH (đơn nhất). Mở group KH đó nếu đang gập.
+      setSearch(prefill.custId || '');
+      const custKey = dbCustKey(prefill.custId, prefill.cust);
+      setClosed(prev => {
+        if (!prev.has(custKey)) return prev;
+        const next = new Set(prev); next.delete(custKey); return next;
+      });
+      // Scroll sau khi render (highlightRef gán bên dưới ở dòng match).
+      setTimeout(() => {
+        const el = highlightRef.current;
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    } else {
+      // 'add' hoặc mặc định
+      setNRow({ custKey: key, grp: prefill.grp || '', ps: '', tuThang: MONTHS[0] });
+      setTimeout(() => {
+        const el = addFormRef.current;
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+    // Báo App biết đã tiêu thụ prefill để không kích lại khi state khác đổi.
+    if (onPrefillDone) onPrefillDone();
+  }, [prefill]);
 
   // (Khách hàng × ngành hàng) -> PS đang THẬT SỰ có dòng kế hoạch, TÁCH THEO THÁNG
   // (khai báo có khoảng hiệu lực nên đối chiếu cũng phải theo tháng).
@@ -3885,7 +3921,7 @@ function DiaBanView({
               h("td", { className: td + " font-medium text-slate-800" }, m.ps))))))),
 
     // ---- Thêm địa bàn ----
-    canEdit && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3 px-3 py-3" },
+    canEdit && h("div", { ref: addFormRef, className: "bg-white rounded-lg border border-slate-200 mb-3 px-3 py-3" },
       h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5" },
         h("div", { className: "lg:col-span-2" },
           h("label", { className: lbl }, "Khách hàng"),
@@ -3957,8 +3993,17 @@ function DiaBanView({
             // Mỗi khách hàng = 1 dòng tiêu đề (gập/mở) + các dòng ngành hàng của KH đó.
             : shownGroups.map(g => {
               const open = !closed.has(g.key);
+              // Highlight khi prefill purpose='chuyen' trỏ về KH này — dùng ref để
+              // scroll vào tầm nhìn, class ring để nổi bật vài giây (CSS animation
+              // dùng key thay đổi để retrigger; ở đây đơn giản hoá bằng class tĩnh).
+              const focused = prefill && prefill.purpose === 'chuyen' &&
+                dbCustKey(prefill.custId, prefill.cust) === g.key;
               return h(React.Fragment, { key: 'g:' + g.key },
-                h("tr", { className: "bg-slate-50/80 border-t border-slate-200" },
+                h("tr", {
+                  ref: focused ? highlightRef : null,
+                  className: "bg-slate-50/80 border-t border-slate-200" +
+                    (focused ? " ring-2 ring-amber-400" : "")
+                },
                   h("td", { className: "px-2 py-1.5", colSpan: COLS },
                     h("button", {
                       onClick: () => toggleGroup(g.key),
@@ -5178,6 +5223,10 @@ function App() {
   // Modal "Danh mục PS" (dm_ps) — dành cho ly_do='ps_la'. null = đóng, {} = thêm mới,
   // { ten_ps } = sửa bản có sẵn.
   const [dmpsForm, setDmpsForm] = useState(null);
+  // Prefill cho DiaBanView khi jump từ modal OOP:
+  //   purpose='add'    — điền form Thêm địa bàn (chua_co_dia_ban)
+  //   purpose='chuyen' — tìm/highlight KH đó (sai_ps — chuyển PS ở bản khai báo hiện có)
+  const [diaBanPrefill, setDiaBanPrefill] = useState(null);
 
   // Mẫu số của thẻ "Số lượng account": số khách hàng ĐƯỢC PHÂN CHIA theo cấu hình
   // địa bàn (dm_dia_ban), lọc theo đúng bộ lọc đang áp dụng cho tử số (KH có kế hoạch).
@@ -5461,7 +5510,9 @@ function App() {
       onGoDiaBan: (ctx) => {
         setOopDetailReason(null);
         setTab('diaban');
-        // TODO: pass ctx (custId/grp) tới màn địa bàn để tự lọc — tạm chỉ chuyển tab.
+        // ctx.purpose do OopDetailModal set: 'add' cho chua_co_dia_ban,
+        // 'chuyen' cho sai_ps. DiaBanView tự đọc và điền form / tìm dòng.
+        setDiaBanPrefill(ctx);
       },
       onAddProduct: (ctx) => {
         setOopDetailReason(null);
@@ -5573,7 +5624,9 @@ function App() {
     onDelete: deleteDiaBan,
     onApply: applyDiaBan,
     onMove: moveDiaBan,
-    busy: diaBanBusy
+    busy: diaBanBusy,
+    prefill: diaBanPrefill,
+    onPrefillDone: () => setDiaBanPrefill(null)
   }) : tab === 'summary' ? /*#__PURE__*/React.createElement(SummaryView, {
     rows: summaryRows,
     psFilter: psFilter,
@@ -5762,14 +5815,14 @@ function OopDetailModal({
           className: "px-1.5 py-0.5 text-[10.5px] font-medium text-blue-700 hover:bg-blue-100 rounded mr-1 disabled:opacity-50"
         }, "Sửa hoá đơn → ", r._psDiaBan),
         h("button", {
-          onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp }),
-          title: `Đổi bản khai báo địa bàn (hiện là ${r._psDiaBan || '?'})`,
+          onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp, purpose: 'chuyen' }),
+          title: `Đổi bản khai báo địa bàn (hiện là ${r._psDiaBan || '?'}) — sẽ mở màn địa bàn, tìm KH này và highlight dòng khai báo tương ứng`,
           className: "px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-100 rounded"
         }, "Đổi địa bàn"));
     }
     if (r._lyDo === 'chua_co_dia_ban') return h("button", {
-      onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp }),
-      title: "Chuyển sang màn Cấu hình địa bàn để khai báo cho (KH × ngành hàng) này",
+      onClick: () => onGoDiaBan({ custId: r.custId, cust: r.cust, grp: r.grp, purpose: 'add' }),
+      title: "Chuyển sang màn Cấu hình địa bàn — form Thêm địa bàn sẽ điền sẵn KH và ngành hàng",
       className: "px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-100 rounded"
     }, "Mở màn địa bàn");
     if (r._lyDo === 'thieu_dong_ke_hoach') return h("button", {
