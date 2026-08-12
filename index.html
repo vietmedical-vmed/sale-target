@@ -4974,6 +4974,22 @@ function App() {
         });
       });
     }));
+    // Cộng thêm phần THỰC HIỆN NGOÀI KẾ HOẠCH (oopRows) để thẻ tiền khớp với TỔNG CỘNG
+    // ở 2 màn tổng hợp — dùng ĐÚNG bộ lọc & công thức như SummaryView.
+    const q = search.toLowerCase().trim();
+    for (const r of oopRows) {
+      if (MONTHS.indexOf(r.mo) < 0) continue;
+      if (!inSel(regionFilter, r.region)) continue;
+      if (!inSel(psFilter, r.ps)) continue;
+      if (!inSel(custFilter, r.cust)) continue;
+      if (!inSel(groupFilter, r.grp)) continue;
+      if (!matchSearch(r, q)) continue;
+      const pr = Number(r.price) || 0;
+      const past = (r.mo || '') < CURRENT_MONTH;
+      dt += (Number(r.rev) || 0) * pr;
+      const upd = past ? Number(r.act) || 0 : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
+      dtUpd += upd * pr;
+    }
     return {
       plan,
       dt,
@@ -4982,7 +4998,7 @@ function App() {
       customers: tree.length,
       productCount
     };
-  }, [tree]);
+  }, [tree, oopRows, regionFilter, psFilter, custFilter, groupFilter, search]);
 
   // Đối chiếu thực hiện: gom oopRows theo ly_do — cảnh báo tổng để người cấu hình
   // biết cần sửa gì. Lọc theo bộ lọc chung (miền/PS/nhóm SP/KH) để khớp với ngữ
@@ -5266,7 +5282,7 @@ function App() {
   }), /*#__PURE__*/React.createElement(StatCard, {
     label: "DThu KH update",
     value: moneyTy3(stats.dtUpd),
-    sublabel: "SL update × đơn giá",
+    sublabel: "SL update × đơn giá (gồm ngoài KH)",
     accent: "blue"
   }), /*#__PURE__*/React.createElement(StatCard, {
     label: "Chênh lệch DThu",
