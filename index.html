@@ -4349,9 +4349,34 @@ function App() {
   // rút gọn mới. Không tự chạy map — nhắc user chạy "Cập nhật thực hiện" nếu muốn
   // số của PS này khớp lại dòng kế hoạch.
   // Sửa PS trong hoá đơn theo PS địa bàn (dòng OOP có ly_do='sai_ps'). Backend
-  // update hoa_don_bovattu.ten_ps + map + refresh trong 1 transaction — sau khi
-  // xong reload getData để oopRows và stats về đúng.
+  // update hoa_don_bovattu.ten_ps + map + refresh trong 1 transaction.
+  // Sau khi xong: chỉ reload OOP list (nhẹ, không đụng ~20k dòng sale_target),
+  // đặt stale=true để user biết số kế hoạch đã đổi và tự Reload khi cần.
   const [oopFixBusy, setOopFixBusy] = useState(false);
+  const reloadOop = useCallback(async () => {
+    try {
+      const r = await api('getOop', canSwitchTeam(auth.role) ? { bu: viewBu } : {});
+      const fld = fieldsRef.current;
+      const oopArr = r.oopRows || []; const oopMeta = r.oopMeta || [];
+      const oopObjs = new Array(oopArr.length);
+      for (let i = 0; i < oopArr.length; i++) {
+        const o = { _oop: true };
+        for (let j = 0; j < fld.length; j++) {
+          const v = oopArr[i][j];
+          if (v !== '' && v !== null && v !== undefined) o[fld[j]] = v;
+        }
+        if (o.cust && o.cust !== OOP_CUST) { o.custRaw = o.cust; o.cust = custLabel(o.custId, o.cust); }
+        const m = oopMeta[i];
+        if (m) { if (m.ly_do) o._lyDo = m.ly_do; if (m.ps_dia_ban) o._psDiaBan = m.ps_dia_ban; }
+        oopObjs[i] = o;
+      }
+      setOopRows(oopObjs);
+      // sl_thuc_hien đã ghi lại ở sale_target -> rev đổi -> đánh dấu stale để user
+      // tự bấm Reload thay vì mình load ngầm cả bảng lớn.
+      if (typeof r.rev === 'number' && r.rev !== revRef.current) setStale(true);
+    } catch (e) {}
+  }, [auth.role, viewBu]);
+
   const suaPsHoaDon = useCallback(async r => {
     if (!r || !r._psDiaBan) return;
     if (!confirm(
@@ -4367,17 +4392,58 @@ function App() {
         psCu: r.ps, psMoi: r._psDiaBan,
       });
       const s = res.stats || {};
-      await loadData(); // oopRows theo dòng plan mới
+      await reloadOop();
       setNotice(
         `Đã sửa ${s.updated_hoa_don || 0} dòng hoá đơn sang PS "${s.ten_ps_moi || r._psDiaBan}"; ` +
-        `map lại: khớp ${s.map?.matched_keys || 0}/${s.map?.total_keys || 0} khoá.`
+        `map lại: khớp ${s.map?.matched_keys || 0}/${s.map?.total_keys || 0} khoá. ` +
+        `Bấm Reload trên header để tải lại số kế hoạch.`
       );
     } catch (err) {
       setError('Sửa PS hoá đơn thất bại: ' + err.message);
     } finally {
       setOopFixBusy(false);
     }
-  }, [loadData]);
+  }, [reloadOop]);
+
+  // Bulk: sửa TẤT CẢ dòng sai_ps theo PS địa bàn. Backend gom vào 1 lượt update
+  // + 1 lần map + refresh — nhanh hơn nhiều so với gọi single N lần (mỗi lần
+  // map zero toàn bộ tháng có trong hoá đơn rồi ghi lại).
+  const suaPsHoaDonBulk = useCallback(async rowsSaiPs => {
+    if (!rowsSaiPs.length) return;
+    // Gom theo PS cũ → PS mới để confirm cho gọn.
+    const grp = new Map();
+    for (const r of rowsSaiPs) {
+      if (!r._psDiaBan) continue;
+      const k = (r.ps || '?') + ' → ' + r._psDiaBan;
+      grp.set(k, (grp.get(k) || 0) + 1);
+    }
+    const brk = [...grp.entries()].sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `  ${v} dòng: ${k}`).join('\n');
+    if (!confirm(
+      `Sửa ${rowsSaiPs.length} dòng hoá đơn theo PS địa bàn:\n\n${brk}\n\n` +
+      `Sau đó map + refresh 1 lần. Số kế hoạch tương ứng sẽ chuyển sang PS địa bàn.`
+    )) return;
+    setOopFixBusy(true); setError('');
+    try {
+      const payload = rowsSaiPs.filter(r => r._psDiaBan).map(r => ({
+        thang: r.mo, maKh: r.custId, boVatTu: r.mset, sanPham: r.prod,
+        psCu: r.ps, psMoi: r._psDiaBan,
+      }));
+      const res = await api('suaPsHoaDonBulk', { rows: payload });
+      const s = res.stats || {};
+      await reloadOop();
+      const thieu = (s.ps_khong_ton_tai || []).filter(Boolean);
+      setNotice(
+        `Đã sửa ${s.updated_hoa_don || 0} dòng hoá đơn; khớp ${s.map?.matched_keys || 0}/${s.map?.total_keys || 0} khoá. ` +
+        (thieu.length ? `Bỏ qua ${thieu.length} PS chưa có trong dm_ps: ${thieu.join(', ')}. ` : '') +
+        `Bấm Reload trên header để tải lại số kế hoạch.`
+      );
+    } catch (err) {
+      setError('Sửa hàng loạt PS hoá đơn thất bại: ' + err.message);
+    } finally {
+      setOopFixBusy(false);
+    }
+  }, [reloadOop]);
 
   const [psBusy, setPsBusy] = useState(false);
   const savePs = useCallback(async row => {
@@ -5387,6 +5453,7 @@ function App() {
       },
       onEditDmps: (init) => setDmpsForm(init),
       onSuaPsHoaDon: suaPsHoaDon,
+      onSuaPsHoaDonBulk: suaPsHoaDonBulk,
       busy: oopFixBusy
     }),
     isAdmin && dmpsForm && React.createElement(DmpsForm, {
@@ -5631,7 +5698,7 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
 // PS) hoặc màn Chi tiết (thêm SP với dữ liệu điền sẵn), hoặc mở form dm_ps.
 function OopDetailModal({
   filterReason, oopRows, isAdmin, onClose,
-  onGoDiaBan, onAddProduct, onEditDmps, onSuaPsHoaDon, busy
+  onGoDiaBan, onAddProduct, onEditDmps, onSuaPsHoaDon, onSuaPsHoaDonBulk, busy
 }) {
   const h = React.createElement;
   const [ly, setLy] = useState(filterReason === 'all' ? '' : (filterReason || ''));
@@ -5787,9 +5854,16 @@ function OopDetailModal({
                   isAdmin && h("td", { className: cellCls + " whitespace-nowrap" }, actionFor(r)));
               })))),
 
-      h("div", { className: "px-4 py-2 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-3" },
+      h("div", { className: "px-4 py-2 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-3 flex-wrap" },
         h("span", null, "Hành động cross-tab chuyển tab tương ứng và điền sẵn form. Vì view khớp theo mã KH + tên chuẩn hoá, một số dòng có thể trùng nhau ở SL nhưng khác bộ vật tư."),
         h("div", { className: "flex-1" }),
+        // Bulk fix chỉ hợp lệ khi lọc theo sai_ps (một chiều rõ ràng, mỗi dòng có ps_dia_ban đích).
+        // Không dùng cho ly_do khác vì hành động cần bối cảnh khác nhau.
+        isAdmin && ly === 'sai_ps' && list.length > 0 && h("button", {
+          onClick: () => onSuaPsHoaDonBulk(list.filter(r => r._psDiaBan)),
+          disabled: busy,
+          className: "px-3 py-1 text-[12px] font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
+        }, "Sửa tất cả ", list.filter(r => r._psDiaBan).length, " dòng hoá đơn theo địa bàn"),
         h("button", {
           onClick: onClose,
           className: "px-3 py-1 text-[12px] text-slate-600 hover:bg-slate-100 rounded"

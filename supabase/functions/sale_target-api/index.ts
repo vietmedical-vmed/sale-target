@@ -460,6 +460,39 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // Chỉ tải dòng ngoài kế hoạch (không đụng sale_target ~20k dòng). Dùng sau
+    // khi sửa hoá đơn: view hoa_don_actual/v_actual_ngoai_ke_hoach tự cập nhật,
+    // chỉ cần lấy lại mảng OOP + meta.
+    if (action === "getOop") {
+      const oop = await fetchOutOfPlan(db, sess, payload).catch(() => ({ rows: [], meta: [] }));
+      return json({ ok: true, oopRows: oop.rows, oopMeta: oop.meta, rev: await getRev(db) });
+    }
+
+    // Sửa PS hàng loạt trong hoá đơn theo PS địa bàn — chỉ admin. Dùng cho nút
+    // "Sửa tất cả sai_ps" ở modal Đối chiếu ngoài kế hoạch: update tất cả tổ
+    // hợp trong 1 lượt, map + refresh 1 lần cuối (thay vì gọi single 87 lần).
+    if (action === "suaPsHoaDonBulk") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const rows = (payload && payload.rows) || [];
+      if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
+      const p_rows = rows.map((r) => ({
+        thang:      String(r.thang || ""),
+        ma_kh:      String(r.maKh || ""),
+        bo_vat_tu:  String(r.boVatTu || ""),
+        san_pham:   String(r.sanPham || ""),
+        ps_cu:      String(r.psCu || ""),
+        ps_moi:     String(r.psMoi || ""),
+      })).filter((r) => r.thang && r.ma_kh && r.ps_moi);
+      if (!p_rows.length) return json({ ok: false, error: "no_rows" }, 400);
+      const { data, error } = await db.rpc("sua_ps_hoa_don_bulk", { p_rows });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: msg }, 400);
+        return json({ ok: false, error: msg }, 500);
+      }
+      return json({ ok: true, stats: data, rev: await getRev(db) });
+    }
+
     // Sửa PS trong hoá đơn theo PS địa bàn — chỉ admin. Dùng cho action ở modal
     // Đối chiếu ngoài kế hoạch với ly_do='sai_ps'. Backend gọi RPC làm cả update
     // hoa_don_bovattu.ten_ps + map + refresh trong 1 transaction.
