@@ -3011,12 +3011,12 @@ function Modal({ open, onClose, title, icon, width = 560, children, footer }) {
 // Form thêm sản phẩm (dùng trong popup ở thẻ KH và ở bước 2 của popup thêm KH).
 // Chọn ĐƯỢC NHIỀU sản phẩm một lượt: mỗi dòng tick là 1 sản phẩm + 1 đơn giá riêng,
 // bấm 1 lần thêm hết (mỗi sản phẩm vẫn là 12 dòng T4→T3, SL = 0).
-function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, onSubmit }) {
+function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, onSubmit, prefill }) {
   const h = React.createElement;
   const opts = psOptions && psOptions.length ? psOptions : [];
-  const [ps, setPs] = useState(opts.length === 1 ? opts[0] : '');
-  const [grp, setGrp] = useState('');
-  const [mset, setMset] = useState('');
+  const [ps, setPs] = useState(opts.length === 1 ? opts[0] : (prefill && prefill.ps) || '');
+  const [grp, setGrp] = useState((prefill && prefill.grp) || '');
+  const [mset, setMset] = useState((prefill && prefill.mset) || '');
   // Thêm CẢ BỘ hay các VẬT TƯ RIÊNG LẺ trong bộ:
   //   - cả bộ    → san_pham ghi vào DB = đúng tên bộ vật tư, chỉ có 1 dòng để tick.
   //   - riêng lẻ → tick bao nhiêu vật tư trong bộ cũng được.
@@ -3074,6 +3074,21 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
 
   // Đổi PS / nhóm / bộ / kiểu chọn thì bỏ hết tick cũ (không còn hợp lệ).
   useEffect(() => { setSel(new Map()); setMsg(''); setErr(''); }, [ps, grp, mset, mode]);
+
+  // Prefill.prod (từ modal OOP → ly_do=thieu_dong_ke_hoach): sau khi items có,
+  // tự tick sản phẩm này để user chỉ cần nhập đơn giá và bấm Xác nhận.
+  // Chỉ chạy một lần cho mỗi prefill mới (theo ref) để không đè lên thao tác của user.
+  const prefillProdRef = useRef(null);
+  useEffect(() => {
+    const p = prefill && prefill.prod;
+    if (!p || !items.length) return;
+    if (prefillProdRef.current === p) return;
+    if (grp !== (prefill.grp || grp) || mset !== (prefill.mset || mset)) return;
+    if (items.includes(p) && !isDup(p)) {
+      prefillProdRef.current = p;
+      setSel(new Map([[p, fmtTr(priceOf && priceOf(grp, msetVal, p))]]));
+    }
+  }, [items, prefill, grp, mset]);
 
   const toggle = (name) => setSel(prev => {
     const n = new Map(prev);
@@ -3365,9 +3380,11 @@ function AddCustomerModal({ open, onClose, customers, psOptions, regionsByPs, di
             "Khách hàng này đã có trong kế hoạch — dùng nút “Thêm SP” ở thẻ của họ."))
       // Bước 2 dùng lại đúng form thêm SP của thẻ KH: thêm được liên tiếp nhiều SP,
       // mỗi lần bấm "Thêm sản phẩm" là ghi thật xuống DB.
+      // prefill (từ modal OOP → thieu_dong_ke_hoach): điền sẵn nhóm/bộ/SP để user
+      // chỉ cần nhập đơn giá và bấm Xác nhận.
       : h(ProductPickerForm, {
           catIdx, groupsByPs, psOptions: [ps], existing: null, priceOf,
-          onSubmit: themSanPham
+          onSubmit: themSanPham, prefill
         }));
 }
 
