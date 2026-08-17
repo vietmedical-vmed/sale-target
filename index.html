@@ -2858,14 +2858,12 @@ function SummaryGroupRow({
     className: "hover:bg-slate-50/40 border-b border-slate-100"
   }, /*#__PURE__*/React.createElement("td", {
     className: "px-4 py-1.5 text-[11.5px] text-slate-500 border-r border-slate-100"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "inline-flex items-center gap-1.5",
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "break-words",
     style: { paddingLeft: 96 + depth * 28 }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "truncate"
-  }, p.prod), p.mset ? /*#__PURE__*/React.createElement("span", {
+  }, p.prod, p.mset ? /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "· ", p.mset) : null)), /*#__PURE__*/React.createElement(StatCells, {
+  }, " · ", p.mset) : null)), /*#__PURE__*/React.createElement(StatCells, {
     d: p,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
