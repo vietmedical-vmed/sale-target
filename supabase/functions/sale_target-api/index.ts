@@ -81,7 +81,7 @@ const FIELDS = ["fy","mo","region","ps","cust","custId","grp","prod","mset",
 // Chỉ các cột này được phép sửa qua updateCells
 const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd","note","price"]);
 // Các cột nhận diện (bộ vật tư / sản phẩm) — CHỈ admin được sửa qua updateCells.
-const ADMIN_EDITABLE = new Set(["mset","prod"]);
+const ADMIN_EDITABLE = new Set(["mset","prod","rev","dt"]);
 
 // Team dữ liệu DEMO/TRAINING — số của nó không phải số kinh doanh thật nên KHÔNG
 // bao giờ được cộng chung với các team khác. Chỉ hiện khi nhìn đúng team đó:

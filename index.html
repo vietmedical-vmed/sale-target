@@ -967,6 +967,19 @@ function ProductRow({
     }));
     onCommit(updates);
   };
+  // admin sửa SL KH đầu năm → cập nhật rev + dt (doanh thu = SL × đơn giá)
+  const commitRevDauNam = (monthIdx, newVal) => {
+    const cell = monthly[monthIdx];
+    if (!cell || cell.rows.length === 0) return;
+    const updates = [];
+    cell.rows.forEach((r, j) => {
+      const qty = j === 0 ? newVal : 0;
+      const pr = Number(r.price) || 0;
+      updates.push({ row: r._row, key: 'rev', value: qty });
+      updates.push({ row: r._row, key: 'dt', value: qty * pr });
+    });
+    onCommit(updates);
+  };
   // Đơn giá: ghi CÙNG một giá trị vào tất cả các dòng của SP
   // (DThu = Σ SL × đơn_giá theo từng dòng → mọi dòng phải cùng đơn giá).
   const commitPrice = newVal => {
@@ -991,6 +1004,7 @@ function ProductRow({
   };
   const pend = key => allRows.some(r => pendingKeys.has(`${r._row}:${key}`));
   const pendUpd = cell => cell.rows.some(r => pendingKeys.has(`${r._row}:revUpd`));
+  const pendDauNam = cell => cell.rows.some(r => pendingKeys.has(`${r._row}:rev`));
   return /*#__PURE__*/React.createElement("tr", {
     className: "group hover:bg-slate-50/40"
   }, /*#__PURE__*/React.createElement("td", {
@@ -1078,9 +1092,11 @@ function ProductRow({
   }), (showBasePlan ? MONTHS.map((mo, i) => /*#__PURE__*/React.createElement(EditableCell, {
     key: 'b' + mo,
     value: monthly[i].rev,
-    locked: true,
+    locked: !isAdmin,
+    pending: isAdmin ? pendDauNam(monthly[i]) : false,
     width: 58,
-    bg: "bg-slate-50/40"
+    bg: isAdmin ? "bg-amber-50/50" : "bg-slate-50/40",
+    onCommit: isAdmin ? nv => commitRevDauNam(i, nv) : undefined
   })) : [/*#__PURE__*/React.createElement("td", {
     key: 'b-collapsed',
     className: "px-1 py-1 border-r border-b border-slate-100 bg-slate-50/40"
@@ -1382,7 +1398,7 @@ function ProductGroupSection({
     title: showBasePlan ? 'Bấm để thu gọn' : 'Bấm để mở rộng'
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1"
-  }, showBasePlan ? /*#__PURE__*/React.createElement(ChevronDown, { size: 11 }) : /*#__PURE__*/React.createElement(ChevronRight, { size: 11 }), showBasePlan ? "SL Kế hoạch đầu năm (cố định)" : "SL đầu năm")), /*#__PURE__*/React.createElement("th", {
+  }, showBasePlan ? /*#__PURE__*/React.createElement(ChevronDown, { size: 11 }) : /*#__PURE__*/React.createElement(ChevronRight, { size: 11 }), showBasePlan ? (isAdmin ? "SL Kế hoạch đầu năm ✏" : "SL Kế hoạch đầu năm (cố định)") : "SL đầu năm")), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-700 border-r border-b border-slate-200 bg-slate-100/70 align-bottom",
     style: {
