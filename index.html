@@ -5629,7 +5629,7 @@ function App() {
     mienByPs: mienByPs,
     psKnown: psKnown,
     groupOptions: allGroupNames,
-    canEdit: isAdmin, // gán địa bàn là quyết định quản lý -> chỉ admin, PS chỉ xem
+    canEdit: isAdmin || auth.role === 'manager',
     psFilter: psFilter,
     regionFilter: regionFilter,
     groupFilter: groupFilter,

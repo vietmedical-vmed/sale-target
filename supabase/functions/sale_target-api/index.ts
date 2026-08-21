@@ -689,7 +689,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "saveDiaBan") {
-      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const rows = payload.rows || [];
       if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
       // Miền của dòng sửa: nếu không suy được theo PS thì giữ nguyên giá trị đang lưu
@@ -747,7 +747,7 @@ Deno.serve(async (req) => {
     // Chuyển địa bàn sang PS khác TỪ MỘT THÁNG: đóng bản cũ + mở bản mới.
     // Đây là đường dùng khi đổi người phụ trách giữa năm — tháng cũ giữ PS cũ.
     if (action === "chuyenDiaBan") {
-      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const id = Number(payload.id);
       const psMoi = String(payload.ps || "").trim();
       const tuThang = String(payload.tuThang || "").trim();
@@ -770,7 +770,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "deleteDiaBan") {
-      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
       // Qua RPC (không phải .delete() trực tiếp) để việc kiểm khoảng trống nằm
@@ -785,7 +785,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "applyDiaBan") {
-      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
       // Không còn tham số tháng: mỗi bản khai báo chỉ ghi vào các tháng nó phủ.
