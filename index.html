@@ -3491,7 +3491,7 @@ const diaBanErrMsg = m => {
 // gán lệch miền cho cùng một PS. Backend cũng tự suy lại khi lưu, không tin client.
 function DiaBanView({
   rows, diaBan, customers, psOptions, mienByPs, psKnown, groupOptions, canEdit,
-  psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onApply, onMove, busy,
+  psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onDopChongLan, busy,
   prefill, onPrefillDone
 }) {
   const h = React.createElement;
@@ -3666,6 +3666,20 @@ function DiaBanView({
 
   // Bỏ khoảng trống + diffIds: cấu hình tự apply cả năm sau save, không còn khái
   // niệm "thiếu tháng" hay "áp dụng thủ công".
+  // Đếm tổ hợp chồng lấn (>1 PS distinct trong cùng bu × cust_key × nhóm) để
+  // hiện nút "Dọn chồng lấn". Tính trên TOÀN BỘ diaBan (không phụ thuộc filter).
+  const overlapCount = useMemo(() => {
+    const m = new Map();
+    diaBan.forEach(d => {
+      if (d.active === false) return;
+      const k = d.bu + '|' + dbCustKey(d.custId, d.cust) + '|' + d.grp;
+      if (!m.has(k)) m.set(k, new Set());
+      m.get(k).add(d.ps);
+    });
+    let n = 0;
+    m.forEach(s => { if (s.size > 1) n++; });
+    return n;
+  }, [diaBan]);
   const editCount = Object.keys(edits).length;
   const custCount = groups.length;
   const psLaList = useMemo(
@@ -3750,12 +3764,22 @@ function DiaBanView({
       h("span", { className: "text-[13px] font-semibold text-slate-700" }, "Cấu hình địa bàn"),
       h("span", { className: "text-[11px] text-slate-400" },
         fmtInt(list.length), " địa bàn · ", fmtInt(custCount), " khách hàng",
+        overlapCount > 0 && h("span", {
+          className: "text-amber-700 font-medium",
+          title: "Tổ hợp KH × ngành hàng có nhiều PS khai báo — apply cả năm không quyết được PS nào. Bấm 'Dọn chồng lấn' để tự dọn theo bản hiệu lực tháng hiện tại."
+        }, " · ", overlapCount, " tổ hợp chồng lấn"),
         psLaList.length > 0 && h("span", {
           className: "text-red-600 font-medium",
           title: "PS đang được khai báo/dùng nhưng không có trong danh mục PS: " + psLaList.join(', ')
         }, " · ", psLaList.length, " PS ngoài danh mục"),
         missing.length > 0 && h("span", { className: "text-slate-500" }, " · ", missing.length, " chưa khai báo")),
       h("div", { className: "flex-1" }),
+      canEdit && overlapCount > 0 && h("button", {
+        onClick: onDopChongLan,
+        disabled: busy,
+        title: `Dọn ${overlapCount} tổ hợp chồng lấn theo bản hiệu lực tại tháng ${CURRENT_MONTH}`,
+        className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-md disabled:opacity-50"
+      }, h(RefreshCw, { size: 14 }), " Dọn ", overlapCount, " chồng lấn"),
       shownGroups.length > 0 && h("button", {
         onClick: () => setClosed(allClosed ? new Set() : new Set(shownGroups.map(g => g.key))),
         className: "px-2.5 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
@@ -4168,6 +4192,35 @@ function App() {
     } catch (err) {
       setError('Lưu cấu hình địa bàn thất bại: ' + diaBanErrMsg(err.message));
       return false;
+    } finally {
+      setDiaBanBusy(false);
+    }
+  }, [loadDiaBan, loadData]);
+
+  // Dọn tổ hợp có nhiều PS chồng lấn theo bản đang hiệu lực tháng hiện tại.
+  // Tổ hợp có 1 PS hiệu lực tại T7 -> giữ PS đó, xoá bản khác, apply cả năm.
+  // Tổ hợp ≥2 PS hiệu lực -> bỏ qua, hiện danh sách cho user tự xử.
+  const dopChongLan = useCallback(async () => {
+    if (!confirm(
+      `Dọn tổ hợp KH × ngành hàng có nhiều PS chồng lấn theo bản đang hiệu lực tháng ${CURRENT_MONTH}:\n\n` +
+      `  • Nếu chỉ 1 PS đang hiệu lực tại tháng đó → giữ PS đó, XOÁ các bản khác, ` +
+      `và ghi PS này xuống dòng kế hoạch cả năm của tổ hợp.\n` +
+      `  • Nếu vẫn ≥2 PS hiệu lực → bỏ qua, liệt kê để bạn tự xử.\n\n` +
+      `Tiếp tục?`
+    )) return;
+    setDiaBanBusy(true); setError('');
+    try {
+      const r = await api('dopChongLan', { thang: CURRENT_MONTH });
+      const s = r.stats || {};
+      const ap = s.apply || {};
+      const amb = (s.ambiguous || []).length;
+      await Promise.all([loadDiaBan(), loadData()]);
+      setNotice(
+        `Dọn xong: giữ ${s.resolved || 0} tổ hợp, xoá ${s.deleted || 0} bản dư, ${ap.updated_rows || 0} dòng kế hoạch đổi PS.` +
+        (amb ? ` Còn ${amb} tổ hợp có ≥2 PS đang hiệu lực tại ${CURRENT_MONTH} — cần bạn quyết tay (xoá bản dư hoặc đổi PS).` : ' Hết chồng lấn.')
+      );
+    } catch (err) {
+      setError('Dọn chồng lấn thất bại: ' + err.message);
     } finally {
       setDiaBanBusy(false);
     }
@@ -5405,6 +5458,7 @@ function App() {
     onSave: saveDiaBan,
     onDelete: deleteDiaBan,
     // onApply/onMove đã bỏ (save = auto apply cả năm từ 2026-08-07)
+    onDopChongLan: dopChongLan,
     busy: diaBanBusy,
     prefill: diaBanPrefill,
     onPrefillDone: () => setDiaBanPrefill(null)

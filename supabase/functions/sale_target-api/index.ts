@@ -769,6 +769,23 @@ Deno.serve(async (req) => {
       return json({ ok: true, stats: data });
     }
 
+    // Dọn tổ hợp KH×ngành hàng có nhiều PS chồng lấn — theo bản đang hiệu lực
+    // của tháng do app truyền lên (thường = CURRENT_MONTH). Chỉ admin.
+    if (action === "dopChongLan") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const thang = String((payload && payload.thang) || "").trim();
+      if (!/^\d{4}-\d{2}$/.test(thang)) {
+        return json({ ok: false, error: "thang_khong_hop_le" }, 400);
+      }
+      const { data, error } = await db.rpc("dep_dia_ban_chong_lan", { p_thang: thang });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("thang_khong_hop_le")) return json({ ok: false, error: msg }, 400);
+        return json({ ok: false, error: msg }, 500);
+      }
+      return json({ ok: true, stats: data, rev: await getRev(db) });
+    }
+
     if (action === "deleteDiaBan") {
       if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
