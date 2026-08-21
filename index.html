@@ -5020,18 +5020,17 @@ function App() {
   // cảnh đang xem. KH được gom theo (mã KH hoặc tên) như planCustKeys.
   const oopByReason = useMemo(() => {
     const acc = new Map();
-    const cnt = new Map(); // ly_do -> {rows, dt, custs:Set, samples:[]}
+    const cnt = new Map(); // ly_do -> {rows, dt, custs:Set}
     for (const r of oopRows) {
       if (!inSel(regionFilter, r.region)) continue;
       if (!inSel(psFilter, r.ps)) continue;
       if (!inSel(groupFilter, r.grp)) continue;
       const ly = r._lyDo || 'unknown';
       let a = cnt.get(ly);
-      if (!a) { a = { rows: 0, dt: 0, custs: new Set(), samples: [] }; cnt.set(ly, a); }
+      if (!a) { a = { rows: 0, dt: 0, custs: new Set() }; cnt.set(ly, a); }
       a.rows++;
       a.dt += (Number(r.act) || 0) * (Number(r.price) || 0);
       a.custs.add(r.custId ? '#' + r.custId : '@' + (r.cust || ''));
-      if (a.samples.length < 5) a.samples.push(r);
     }
     for (const [ly, a] of cnt) acc.set(ly, { ...a, custCount: a.custs.size });
     return acc;
@@ -5333,7 +5332,12 @@ function App() {
       open: oopOpen,
       onToggle: () => setOopOpen(v => !v),
       onOpenDetail: (ly) => setOopDetailReason(ly || 'all'),
-      onGoDiaBan: () => setTab('diaban')
+      onGoDiaBan: () => setTab('diaban'),
+      // Quick-fix trực tiếp từ banner cho sai_ps — dùng chung bulk handler với modal.
+      onQuickFixSaiPs: () => {
+        const list = oopRowsFiltered.filter(r => r._lyDo === 'sai_ps' && r._psDiaBan);
+        if (list.length) suaPsHoaDonBulk(list);
+      }
     })
     ),
     // Modal chi tiết OOP + form dm_ps — treo ở root vì dùng fixed inset-0
@@ -5522,7 +5526,7 @@ function TabBtn({
 // theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động sửa. Không có UI
 // dm_ps nên ps_la chỉ hiển thị để nhận biết; các loại còn lại đều dẫn về màn Cấu
 // hình địa bàn (nơi có nút Áp dụng / Chuyển PS / Khai báo).
-function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail }) {
+function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail, onQuickFixSaiPs }) {
   const h = React.createElement;
   const rows = Array.from(byReason.entries())
     .filter(([_, a]) => a.rows > 0)
@@ -5580,20 +5584,17 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
             h("div", { className: "text-[11px] mt-0.5 opacity-90" }, lb.desc),
             action && h("div", { className: "text-[11px] mt-1 flex items-center gap-2" },
               h("span", { className: "opacity-70" }, "→ ", action),
+              // sai_ps có action gọn: "Sửa hoá đơn theo địa bàn" chạy bulk trực tiếp
+              // (địa bàn là chân lý, hoá đơn ghi sai). Vẫn có "Xem" mở modal soi kỹ.
+              ly === 'sai_ps' && onQuickFixSaiPs && h("button", {
+                onClick: () => onQuickFixSaiPs(),
+                className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
+              }, "Sửa ", fmtInt(a.rows), " dòng hoá đơn"),
               h("button", {
                 onClick: () => onOpenDetail(ly),
-                className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
-              }, "Xem ", fmtInt(a.rows), " dòng")),
-            a.samples.length > 0 && h("details", { className: "mt-1.5" },
-              h("summary", { className: "text-[10.5px] cursor-pointer opacity-80" }, "Mẫu 5 dòng"),
-              h("div", { className: "text-[10.5px] mt-1 space-y-0.5 opacity-90" },
-                a.samples.map((r, i) => h("div", { key: i, className: "truncate" },
-                  r.mo, ' · ', fmtCust(r.cust) || '—', ' · ', r.grp || '—',
-                  ly === 'sai_ps' && r._psDiaBan
-                    ? h("span", null, ' · PS: ', r.ps, ' → ', h("b", null, r._psDiaBan))
-                    : ly === 'ps_la' ? h("span", null, ' · PS: ', h("b", null, r.ps))
-                    : ly === 'sai_bo_vat_tu' ? h("span", null, ' · Bộ: ', r.mset)
-                    : h("span", null, ' · SP: ', r.prod))))));
+                className: (ly === 'sai_ps' ? '' : 'ml-auto ') +
+                  "px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
+              }, ly === 'sai_ps' ? "Xem" : "Xem " + fmtInt(a.rows) + " dòng")));
         }))));
 }
 
