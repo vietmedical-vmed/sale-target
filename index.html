@@ -3505,40 +3505,36 @@ function DiaBanView({
   const [search, setSearch] = useState('');
   const [showMissing, setShowMissing] = useState(false);
   const [closed, setClosed] = useState(() => new Set()); // KH đang gập
-  const [nRow, setNRow] = useState({ custKey: '', grp: '', ps: '' });
-  // Refs để scroll form "Thêm địa bàn" hoặc dòng khai báo cần chú ý vào tầm nhìn.
-  const addFormRef = useRef(null);
+  // Modal "Thêm địa bàn" — cho thêm NHIỀU dòng trong 1 lượt lưu. Nút "+ Thêm dòng"
+  // thêm ô mới; Xác nhận gửi toàn bộ danh sách vào onSave (backend auto-apply cả
+  // năm cho tất cả tổ hợp không chồng lấn).
+  const [addOpen, setAddOpen] = useState(false);
+  const emptyAddRow = { custKey: '', grp: '', ps: '' };
+  const [addRows, setAddRows] = useState([emptyAddRow]);
+  // Ref để scroll dòng khai báo cần chú ý (prefill purpose='chuyen') vào tầm nhìn.
   const highlightRef = useRef(null);
 
-  // Prefill từ modal OOP (Đối chiếu ngoài kế hoạch):
-  //  purpose='add'    → điền form "Thêm địa bàn" (cust + grp), scroll xuống.
-  //  purpose='chuyen' → tìm KH đó trong bảng, mở nhóm KH đó, scroll + highlight
-  //                     dòng khai báo (KH × nhóm) để user bấm "Chuyển PS".
+  // Prefill từ modal OOP:
+  //  purpose='add'    → mở modal Thêm địa bàn với 1 dòng điền sẵn (KH + grp).
+  //  purpose='chuyen' → tìm KH đó trong bảng, mở nhóm KH đó, scroll + highlight.
   useEffect(() => {
     if (!prefill) return;
-    const key = prefill.custId || prefill.cust || '';
     if (prefill.purpose === 'chuyen') {
-      // Tìm ở bảng bằng mã KH (đơn nhất). Mở group KH đó nếu đang gập.
       setSearch(prefill.custId || '');
       const custKey = dbCustKey(prefill.custId, prefill.cust);
       setClosed(prev => {
         if (!prev.has(custKey)) return prev;
         const next = new Set(prev); next.delete(custKey); return next;
       });
-      // Scroll sau khi render (highlightRef gán bên dưới ở dòng match).
       setTimeout(() => {
         const el = highlightRef.current;
         if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     } else {
-      // 'add' hoặc mặc định
-      setNRow({ custKey: key, grp: prefill.grp || '', ps: '', tuThang: MONTHS[0] });
-      setTimeout(() => {
-        const el = addFormRef.current;
-        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      // 'add' hoặc mặc định — mở modal Thêm địa bàn với 1 dòng điền sẵn
+      setAddRows([{ custKey: prefill.custId || prefill.cust || '', grp: prefill.grp || '', ps: '' }]);
+      setAddOpen(true);
     }
-    // Báo App biết đã tiêu thụ prefill để không kích lại khi state khác đổi.
     if (onPrefillDone) onPrefillDone();
   }, [prefill]);
 
@@ -3714,20 +3710,27 @@ function DiaBanView({
     if (await onSave(payload)) setEdits({});
   };
 
-  const newCust = useMemo(
-    () => customers.find(c => (c.custId || c.cust) === nRow.custKey),
-    [customers, nRow.custKey]
-  );
-  const newMien = (nRow.ps && mienByPs.get(nRow.ps)) || '';
-  // Cảnh báo TRƯỚC khi lưu: thêm bản bắt đầu từ giữa năm cho tổ hợp đang có kế
-  // hoạch ở các tháng trước đó = khoảng trống → backend sẽ chặn.
-  const addRow = async () => {
-    if (!newCust || !nRow.grp || !nRow.ps) return;
-    // Không gửi tuThang: backend mặc định '2026-04' và tự apply cả năm.
-    const ok = await onSave([{
-      custId: newCust.custId || '', cust: newCust.cust, grp: nRow.grp, ps: nRow.ps
-    }]);
-    if (ok) setNRow({ custKey: '', grp: '', ps: '' });
+  // Modal Thêm địa bàn — thao tác trên addRows (nhiều dòng cùng lúc).
+  const custById = useMemo(() => {
+    const m = new Map();
+    customers.forEach(c => m.set(c.custId || c.cust, c));
+    return m;
+  }, [customers]);
+  const setAddRowAt = (i, patch) => setAddRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+  const removeAddRow = i => setAddRows(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
+  const appendAddRow = () => setAddRows(prev => prev.concat([emptyAddRow]));
+  const readyRows = addRows.filter(r => r.custKey && r.grp && r.ps);
+  const openAdd = () => { setAddRows([emptyAddRow]); setAddOpen(true); };
+  const closeAdd = () => { setAddOpen(false); setAddRows([emptyAddRow]); };
+  const saveBatch = async () => {
+    if (!readyRows.length) return;
+    // Backend nhận (custId, cust, grp, ps) — không gửi tuThang (mặc định 2026-04).
+    const payload = readyRows.map(r => {
+      const c = custById.get(r.custKey);
+      return { custId: (c && c.custId) || '', cust: (c && c.cust) || r.custKey, grp: r.grp, ps: r.ps };
+    });
+    const ok = await onSave(payload);
+    if (ok) closeAdd();
   };
 
   const declareMissing = async () => {
@@ -3780,6 +3783,12 @@ function DiaBanView({
         title: `Dọn ${overlapCount} tổ hợp chồng lấn theo bản hiệu lực tại tháng ${CURRENT_MONTH}`,
         className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-md disabled:opacity-50"
       }, h(RefreshCw, { size: 14 }), " Dọn ", overlapCount, " chồng lấn"),
+      canEdit && h("button", {
+        onClick: openAdd,
+        disabled: busy,
+        title: "Mở popup Thêm địa bàn — có thể thêm nhiều dòng cùng lúc",
+        className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
+      }, h(Plus, { size: 14 }), " Thêm địa bàn"),
       shownGroups.length > 0 && h("button", {
         onClick: () => setClosed(allClosed ? new Set() : new Set(shownGroups.map(g => g.key))),
         className: "px-2.5 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
@@ -3831,46 +3840,81 @@ function DiaBanView({
               h("td", { className: td + " text-slate-600" }, m.grp),
               h("td", { className: td + " font-medium text-slate-800" }, m.ps))))))),
 
-    // ---- Thêm địa bàn ----
-    canEdit && h("div", { ref: addFormRef, className: "bg-white rounded-lg border border-slate-200 mb-3 px-3 py-3" },
-      h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5" },
-        h("div", { className: "lg:col-span-2" },
-          h("label", { className: lbl }, "Khách hàng"),
-          h(CustomerPicker, {
-            customers,
-            value: nRow.custKey,
-            onChange: v => setNRow(s => ({ ...s, custKey: v })),
-            className: sel
-          })),
-        h("div", null,
-          h("label", { className: lbl }, "Ngành hàng"),
-          h("select", {
-            value: nRow.grp,
-            onChange: e => setNRow(s => ({ ...s, grp: e.target.value })),
-            disabled: !newCust,
-            className: sel
-          }, h("option", { value: "" }, "— Chọn ngành hàng —"),
-            groupOptions.map(g => h("option", { key: g, value: g }, g)))),
-        h("div", null,
-          h("label", { className: lbl }, "PS phụ trách",
-            newMien && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · miền ", newMien)),
-          h("select", {
-            value: nRow.ps,
-            onChange: e => setNRow(s => ({ ...s, ps: e.target.value })),
-            disabled: !newCust,
-            className: sel
-          }, h("option", { value: "" }, "— Chọn PS —"),
-            psOptions.map(p => h("option", { key: p, value: p }, p)))),
-        ),
-      h("div", { className: "flex items-center gap-3 mt-3 flex-wrap" },
-        h("span", { className: "text-[12px] text-slate-500" },
-          "Khai báo áp dụng CẢ NĂM — sau khi lưu, dòng kế hoạch của (KH × ngành hàng) tự chuyển sang PS này."),
+    // ---- Modal Thêm địa bàn (nhiều dòng) — mở qua nút "+ Thêm địa bàn" ở toolbar
+    canEdit && addOpen && h("div", {
+      className: "fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4",
+      onClick: closeAdd
+    }, h("div", {
+      onClick: e => e.stopPropagation(),
+      className: "bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+    },
+      h("div", { className: "px-4 py-3 border-b border-slate-100 flex items-center gap-3" },
+        h(Plus, { size: 16, className: "text-emerald-600" }),
+        h("div", { className: "text-[14px] font-semibold text-slate-800" }, "Thêm địa bàn"),
+        h("span", { className: "text-[11.5px] text-slate-500" }, addRows.length, " dòng · sẽ áp cả năm sau khi lưu"),
+        h("div", { className: "flex-1" }),
+        h("button", { onClick: closeAdd, className: "p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" },
+          h(XIcon, { size: 16 }))),
+      h("div", { className: "px-4 py-3 space-y-2 overflow-auto flex-1" },
+        addRows.map((r, i) => {
+          const cust = custById.get(r.custKey);
+          const mien = (r.ps && mienByPs.get(r.ps)) || '';
+          return h("div", {
+            key: i,
+            className: "grid grid-cols-12 gap-2 items-end p-2 rounded-md border border-slate-100 bg-slate-50/40"
+          },
+            h("div", { className: "col-span-12 md:col-span-4" },
+              h("label", { className: lbl }, "Khách hàng"),
+              h(CustomerPicker, {
+                customers,
+                value: r.custKey,
+                onChange: v => setAddRowAt(i, { custKey: v }),
+                className: sel
+              })),
+            h("div", { className: "col-span-6 md:col-span-3" },
+              h("label", { className: lbl }, "Ngành hàng"),
+              h("select", {
+                value: r.grp,
+                onChange: e => setAddRowAt(i, { grp: e.target.value }),
+                disabled: !cust,
+                className: sel
+              }, h("option", { value: "" }, "— Chọn —"),
+                groupOptions.map(g => h("option", { key: g, value: g }, g)))),
+            h("div", { className: "col-span-6 md:col-span-4" },
+              h("label", { className: lbl }, "PS phụ trách",
+                mien && h("span", { className: "text-slate-400 normal-case tracking-normal" }, " · miền ", mien)),
+              h("select", {
+                value: r.ps,
+                onChange: e => setAddRowAt(i, { ps: e.target.value }),
+                disabled: !cust,
+                className: sel
+              }, h("option", { value: "" }, "— Chọn —"),
+                psOptions.map(p => h("option", { key: p, value: p }, p)))),
+            h("div", { className: "col-span-12 md:col-span-1 flex justify-end" },
+              addRows.length > 1 && h("button", {
+                onClick: () => removeAddRow(i),
+                title: "Bỏ dòng này",
+                className: "p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+              }, h(Trash2, { size: 14 }))));
+        }),
+        h("button", {
+          onClick: appendAddRow,
+          className: "w-full py-2 text-[12.5px] font-medium text-emerald-700 border-2 border-dashed border-emerald-200 hover:bg-emerald-50 rounded-md"
+        }, "+ Thêm dòng nữa")),
+      h("div", { className: "px-4 py-3 border-t border-slate-100 flex items-center gap-3" },
+        h("span", { className: "text-[11.5px] text-slate-500" },
+          readyRows.length, " / ", addRows.length, " dòng đầy đủ (KH · Ngành hàng · PS)"),
         h("div", { className: "flex-1" }),
         h("button", {
-          onClick: addRow,
-          disabled: busy || !newCust || !nRow.grp || !nRow.ps,
+          onClick: closeAdd,
+          className: "px-3 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
+        }, "Huỷ"),
+        h("button", {
+          onClick: saveBatch,
+          disabled: busy || !readyRows.length,
           className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
-        }, h(Plus, { size: 14 }), " Thêm & áp dụng"))),
+        }, busy ? h(Loader2, { size: 14, className: "animate-spin" }) : h(Check, { size: 14 }),
+          " Lưu ", readyRows.length, " địa bàn & áp dụng")))),
 
     // ---- Bảng địa bàn ----
     h("div", { className: "bg-white rounded-lg border border-slate-200 overflow-hidden" },
@@ -5337,6 +5381,23 @@ function App() {
       onQuickFixSaiPs: () => {
         const list = oopRowsFiltered.filter(r => r._lyDo === 'sai_ps' && r._psDiaBan);
         if (list.length) suaPsHoaDonBulk(list);
+      },
+      // Quick-add từ banner cho chua_co_dia_ban — mỗi tổ hợp (KH × nhóm × PS)
+      // trong hoá đơn thành một bản khai báo. Trùng thì gom 1 lần.
+      onQuickAddDiaBan: () => {
+        const seen = new Set();
+        const rows = [];
+        for (const r of oopRowsFiltered) {
+          if (r._lyDo !== 'chua_co_dia_ban') continue;
+          if (!r.grp || !r.ps) continue;
+          const k = (r.custId || r.cust || '') + '||' + r.grp + '||' + r.ps;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          rows.push({ custId: r.custId || '', cust: r.custRaw || r.cust, grp: r.grp, ps: r.ps });
+        }
+        if (!rows.length) return;
+        if (!confirm(`Khai báo ${rows.length} bản địa bàn theo hoá đơn (tổ hợp KH × ngành hàng × PS chưa có địa bàn).\n\nSau khi lưu, kế hoạch tự apply cả năm cho các tổ hợp không chồng lấn.`)) return;
+        saveDiaBan(rows);
       }
     })
     ),
@@ -5526,7 +5587,7 @@ function TabBtn({
 // theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động sửa. Không có UI
 // dm_ps nên ps_la chỉ hiển thị để nhận biết; các loại còn lại đều dẫn về màn Cấu
 // hình địa bàn (nơi có nút Áp dụng / Chuyển PS / Khai báo).
-function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail, onQuickFixSaiPs }) {
+function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail, onQuickFixSaiPs, onQuickAddDiaBan }) {
   const h = React.createElement;
   const rows = Array.from(byReason.entries())
     .filter(([_, a]) => a.rows > 0)
@@ -5584,17 +5645,21 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
             h("div", { className: "text-[11px] mt-0.5 opacity-90" }, lb.desc),
             action && h("div", { className: "text-[11px] mt-1 flex items-center gap-2" },
               h("span", { className: "opacity-70" }, "→ ", action),
-              // sai_ps có action gọn: "Sửa hoá đơn theo địa bàn" chạy bulk trực tiếp
-              // (địa bàn là chân lý, hoá đơn ghi sai). Vẫn có "Xem" mở modal soi kỹ.
+              // sai_ps / chua_co_dia_ban có action gọn: bulk trực tiếp, không mở
+              // modal. Vẫn giữ nút "Xem" cho user muốn soi kỹ.
               ly === 'sai_ps' && onQuickFixSaiPs && h("button", {
                 onClick: () => onQuickFixSaiPs(),
                 className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
               }, "Sửa ", fmtInt(a.rows), " dòng hoá đơn"),
+              ly === 'chua_co_dia_ban' && onQuickAddDiaBan && h("button", {
+                onClick: () => onQuickAddDiaBan(),
+                className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
+              }, "Khai báo theo hoá đơn"),
               h("button", {
                 onClick: () => onOpenDetail(ly),
-                className: (ly === 'sai_ps' ? '' : 'ml-auto ') +
+                className: (ly === 'sai_ps' || ly === 'chua_co_dia_ban' ? '' : 'ml-auto ') +
                   "px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
-              }, ly === 'sai_ps' ? "Xem" : "Xem " + fmtInt(a.rows) + " dòng")));
+              }, ly === 'sai_ps' || ly === 'chua_co_dia_ban' ? "Xem" : "Xem " + fmtInt(a.rows) + " dòng")));
         }))));
 }
 
