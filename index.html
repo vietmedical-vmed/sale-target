@@ -4444,6 +4444,38 @@ function App() {
     }
   }, [loadData]);
 
+  const bulkAddProducts = useCallback(async (oopList) => {
+    const seen = new Set();
+    const uniq = [];
+    for (const r of oopList) {
+      if (r._lyDo !== 'thieu_dong_ke_hoach') continue;
+      const k = `${r.custId||''}||${r.cust||''}||${r.grp||''}||${r.mset||''}||${r.prod||''}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      uniq.push(r);
+    }
+    if (!uniq.length) return;
+    const n = uniq.length;
+    if (!confirm(`Thêm ${n} sản phẩm thiếu vào kế hoạch?\n\nMỗi SP tạo 12 dòng (T4→T3), SL = 0.\nĐơn giá lấy từ hoá đơn thực hiện.`)) return;
+    setOopFixBusy(true);
+    let ok = 0, fail = 0;
+    for (const r of uniq) {
+      const raw = custRawRef.current.get(r.custId || r.cust);
+      const sel = {
+        ps: r._psDiaBan || r.ps,
+        grp: r.grp, mset: r.mset || '', prod: r.prod,
+        price: Number(r.price) || null,
+        custId: r.custId || '', cust: raw || r.cust, region: r.region || ''
+      };
+      try {
+        if (await addProduct(sel)) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setOopFixBusy(false);
+    if (fail) setError(`Thêm SP thiếu: ${ok}/${n} thành công, ${fail} lỗi`);
+    if (ok) await reloadOop();
+  }, [addProduct]);
+
   // Warn on leaving with unsaved drafts
   const draftCount = Object.keys(drafts).length;
   useEffect(() => {
@@ -5398,6 +5430,9 @@ function App() {
         if (!rows.length) return;
         if (!confirm(`Khai báo ${rows.length} bản địa bàn theo hoá đơn (tổ hợp KH × ngành hàng × PS chưa có địa bàn).\n\nSau khi lưu, kế hoạch tự apply cả năm cho các tổ hợp không chồng lấn.`)) return;
         saveDiaBan(rows);
+      },
+      onQuickAddThieu: () => {
+        bulkAddProducts(oopRowsFiltered.filter(r => r._lyDo === 'thieu_dong_ke_hoach'));
       }
     })
     ),
@@ -5419,6 +5454,7 @@ function App() {
         setTab('detail');
         setAddProductPrefill(ctx);
       },
+      onBulkAddProducts: bulkAddProducts,
       onEditDmps: (init) => setDmpsForm(init),
       onSuaPsHoaDon: suaPsHoaDon,
       onSuaPsHoaDonBulk: suaPsHoaDonBulk,
@@ -5587,7 +5623,7 @@ function TabBtn({
 // theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động sửa. Không có UI
 // dm_ps nên ps_la chỉ hiển thị để nhận biết; các loại còn lại đều dẫn về màn Cấu
 // hình địa bàn (nơi có nút Áp dụng / Chuyển PS / Khai báo).
-function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail, onQuickFixSaiPs, onQuickAddDiaBan }) {
+function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDetail, onQuickFixSaiPs, onQuickAddDiaBan, onQuickAddThieu }) {
   const h = React.createElement;
   const rows = Array.from(byReason.entries())
     .filter(([_, a]) => a.rows > 0)
@@ -5655,11 +5691,15 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
                 onClick: () => onQuickAddDiaBan(),
                 className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
               }, "Khai báo theo hoá đơn"),
+              ly === 'thieu_dong_ke_hoach' && onQuickAddThieu && h("button", {
+                onClick: () => onQuickAddThieu(),
+                className: "ml-auto px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
+              }, "Thêm SP thiếu vào KH"),
               h("button", {
                 onClick: () => onOpenDetail(ly),
-                className: (ly === 'sai_ps' || ly === 'chua_co_dia_ban' ? '' : 'ml-auto ') +
+                className: (ly === 'sai_ps' || ly === 'chua_co_dia_ban' || ly === 'thieu_dong_ke_hoach' ? '' : 'ml-auto ') +
                   "px-2 py-0.5 text-[11px] font-medium bg-white/70 hover:bg-white rounded border border-current/30"
-              }, ly === 'sai_ps' || ly === 'chua_co_dia_ban' ? "Xem" : "Xem " + fmtInt(a.rows) + " dòng")));
+              }, ly === 'sai_ps' || ly === 'chua_co_dia_ban' || ly === 'thieu_dong_ke_hoach' ? "Xem" : "Xem " + fmtInt(a.rows) + " dòng")));
         }))));
 }
 
@@ -5669,7 +5709,7 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
 // PS) hoặc màn Chi tiết (thêm SP với dữ liệu điền sẵn), hoặc mở form dm_ps.
 function OopDetailModal({
   filterReason, oopRows, isAdmin, onClose,
-  onGoDiaBan, onAddProduct, onEditDmps, onSuaPsHoaDon, onSuaPsHoaDonBulk, busy
+  onGoDiaBan, onAddProduct, onBulkAddProducts, onEditDmps, onSuaPsHoaDon, onSuaPsHoaDonBulk, busy
 }) {
   const h = React.createElement;
   const [ly, setLy] = useState(filterReason === 'all' ? '' : (filterReason || ''));
@@ -5691,6 +5731,16 @@ function OopDetailModal({
     oopRows.forEach(r => m.set(r._lyDo || 'unknown', (m.get(r._lyDo || 'unknown') || 0) + 1));
     return m;
   }, [oopRows]);
+  const thieuRows = useMemo(() => list.filter(r => r._lyDo === 'thieu_dong_ke_hoach'), [list]);
+  const thieuByCust = useMemo(() => {
+    const m = new Map();
+    for (const r of thieuRows) {
+      const ck = r.custId || r.cust || '';
+      if (!m.has(ck)) m.set(ck, []);
+      m.get(ck).push(r);
+    }
+    return m;
+  }, [thieuRows]);
   // Trần hiện: 500 dòng — đủ để soi hầu hết case, còn lại lọc tiếp bằng lý do/tìm.
   const MAX = 500;
   const shown = list.slice(0, MAX);
@@ -5726,15 +5776,26 @@ function OopDetailModal({
       title: "Chuyển sang màn Cấu hình địa bàn — form Thêm địa bàn sẽ điền sẵn KH và ngành hàng",
       className: "px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-100 rounded"
     }, "Mở màn địa bàn");
-    if (r._lyDo === 'thieu_dong_ke_hoach') return h("button", {
-      onClick: () => onAddProduct({
-        custId: r.custId, cust: r.cust, grp: r.grp,
-        // Chỉ điền PS nếu địa bàn có bản khai báo — nếu không thì để rỗng cho user chọn.
-        ps: r._psDiaBan || r.ps, mset: r.mset, prod: r.prod
-      }),
-      title: "Chuyển sang màn Chi tiết và mở form Thêm sản phẩm với dữ liệu điền sẵn",
-      className: "px-1.5 py-0.5 text-[10.5px] font-medium text-blue-700 hover:bg-blue-100 rounded"
-    }, "Thêm SP vào KH");
+    if (r._lyDo === 'thieu_dong_ke_hoach') {
+      const ck = r.custId || r.cust || '';
+      const custGroup = thieuByCust.get(ck) || [];
+      const uniqCount = new Set(custGroup.map(x => `${x.grp}||${x.mset}||${x.prod}`)).size;
+      return h(React.Fragment, null,
+        h("button", {
+          onClick: () => onAddProduct({
+            custId: r.custId, cust: r.cust, grp: r.grp,
+            ps: r._psDiaBan || r.ps, mset: r.mset, prod: r.prod
+          }),
+          title: "Chuyển sang màn Chi tiết và mở form Thêm sản phẩm với dữ liệu điền sẵn",
+          className: "px-1.5 py-0.5 text-[10.5px] font-medium text-blue-700 hover:bg-blue-100 rounded mr-1"
+        }, "Thêm SP"),
+        uniqCount > 1 && onBulkAddProducts && h("button", {
+          onClick: () => onBulkAddProducts(custGroup),
+          disabled: busy,
+          title: `Thêm tất cả ${uniqCount} SP thiếu của KH "${r.cust}" vào kế hoạch (mỗi SP = 12 dòng, đơn giá lấy từ hoá đơn)`,
+          className: "px-1.5 py-0.5 text-[10.5px] font-medium text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
+        }, "Thêm cả ", uniqCount, " SP của KH"));
+    }
     if (r._lyDo === 'sai_bo_vat_tu') return h("span", {
       title: "Kế hoạch có SP này nhưng khác bộ vật tư. Vào màn Chi tiết, tìm KH này, sửa cột Bộ vật tư (chỉ admin).",
       className: "text-[10.5px] text-slate-400"
@@ -5835,6 +5896,11 @@ function OopDetailModal({
           disabled: busy,
           className: "px-3 py-1 text-[12px] font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
         }, "Sửa tất cả ", list.filter(r => r._psDiaBan).length, " dòng hoá đơn theo địa bàn"),
+        isAdmin && (ly === 'thieu_dong_ke_hoach' || !ly) && thieuRows.length > 0 && onBulkAddProducts && h("button", {
+          onClick: () => onBulkAddProducts(thieuRows),
+          disabled: busy,
+          className: "px-3 py-1 text-[12px] font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded disabled:opacity-50"
+        }, "Thêm tất cả ", new Set(thieuRows.map(r => `${r.custId||r.cust}||${r.grp}||${r.mset}||${r.prod}`)).size, " SP thiếu vào KH"),
         h("button", {
           onClick: onClose,
           className: "px-3 py-1 text-[12px] text-slate-600 hover:bg-slate-100 rounded"
