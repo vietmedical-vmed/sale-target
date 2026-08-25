@@ -4037,7 +4037,7 @@ function App() {
   // Bản mới của web app đã deploy nhưng user đang có bản nháp chưa lưu → không
   // reload ngay, chờ user lưu/huỷ rồi mới reload để không mất bản nháp.
   const [pendingReload, setPendingReload] = useState(false);
-  const [maskMoney, setMaskMoney] = useState(true);
+  const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
   // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
@@ -5326,14 +5326,6 @@ function App() {
   }), " Đã lưu xuống Sheets") : 'Chưa có thay đổi'), /*#__PURE__*/React.createElement("div", {
     className: "w-px h-6 bg-slate-200 mx-1"
   }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setMaskMoney(m => !m),
-    title: maskMoney ? 'Hiện doanh thu' : 'Ẩn doanh thu',
-    className: `flex items-center gap-1.5 px-3 py-1.5 text-[13px] rounded-md ${maskMoney ? 'bg-slate-800 text-white hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-100'}`
-  }, maskMoney ? /*#__PURE__*/React.createElement(EyeOff, {
-    size: 14
-  }) : /*#__PURE__*/React.createElement(Eye, {
-    size: 14
-  }), " ", maskMoney ? 'Hiện DT' : 'Ẩn DT'), /*#__PURE__*/React.createElement("button", {
     onClick: loadData,
     className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-700 hover:bg-slate-100 rounded-md"
   }, /*#__PURE__*/React.createElement(RefreshCw, {
