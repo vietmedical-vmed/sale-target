@@ -17,6 +17,7 @@ tailwind.config = { theme: { extend: { colors: {
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0; background: #f0f2f5; }
   #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #f0f2f5; z-index: 100; }
@@ -140,13 +141,13 @@ const ROLE_LABELS = {
 };
 // Cấu hình hiển thị theo team (bu). Thêm team mới chỉ cần thêm 1 dòng ở đây.
 const TEAMS = {
-  chcs: { label: 'CHCS', name: 'CHCS', gradient: '#1877f2' },
-  cttm: { label: 'CTTM', name: 'CTTM', gradient: '#1877f2' },
-  thnk: { label: 'THNK', name: 'THNK', gradient: '#1877f2' },
-  test: { label: 'TEST', name: 'TEST', gradient: '#1877f2' },
+  chcs: { label: 'CH&CS', name: 'CHCS', gradient: '#2a78d6' },
+  cttm: { label: 'CTTM & CTUT', name: 'CTTM', gradient: '#1baf7a' },
+  thnk: { label: 'THNS & CSVT', name: 'THNK', gradient: '#eda100' },
+  test: { label: 'TEST', name: 'TEST', gradient: '#898781' },
   // ctch: { label: 'CTCH', name: 'CTCH', gradient: '#42b72a' }, // bật lại khi có dữ liệu thật
 };
-const TEAM_ALL = { label: 'ALL', name: 'Tất cả team', gradient: '#65676b' };
+const TEAM_ALL = { label: 'Tất cả', name: 'Tất cả team', gradient: 'linear-gradient(135deg,#2a78d6,#1baf7a,#eda100)' };
 const canSwitchTeam = role => role === 'admin' || role === 'manager';
 
 // ============ HELPERS ============
@@ -393,6 +394,203 @@ function TeamSwitcher({ value, onChange }) {
     onClick: () => { onChange(o.key); setOpen(false); },
     className: `px-3 py-1.5 text-[13px] cursor-pointer ${o.key === value ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-700 hover:bg-slate-50'}`
   }, o.name))));
+}
+
+// ============ TEAM SUMMARY BAR (thay TeamSwitcher — hiện stat tất cả team, click chọn) ============
+function TeamSummaryBar({ rows, value, onChange }) {
+  const h = React.createElement;
+  const realTeams = Object.keys(TEAMS).filter(k => k !== 'test');
+  const teamStats = useMemo(() => {
+    const m = {};
+    realTeams.forEach(k => { m[k] = { dtUpd: 0, dtYtd: 0, khYtdDt: 0 }; });
+    m[''] = { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
+    for (const r of rows) {
+      const bu = r.bu || '';
+      const idx = MONTHS.indexOf(r.mo);
+      if (idx < 0) continue;
+      const pr = Number(r.price) || 0;
+      const rev = Number(r.rev) || 0;
+      const act = Number(r.act) || 0;
+      const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
+      const useAct = MONTHS[idx] < CURRENT_MONTH || (MONTHS[idx] === CURRENT_MONTH && (act !== 0));
+      const inYtd = MONTHS[idx] <= CURRENT_MONTH;
+      const upd = (useAct ? act : rawUpd) * pr;
+      const actDt = act * pr;
+      const khDt = rawUpd * pr;
+      if (m[bu]) {
+        m[bu].dtUpd += upd;
+        if (inYtd) { m[bu].dtYtd += actDt; m[bu].khYtdDt += khDt; }
+      }
+      m[''].dtUpd += upd;
+      if (inYtd) { m[''].dtYtd += actDt; m[''].khYtdDt += khDt; }
+    }
+    return m;
+  }, [rows]);
+  const items = [{ key: '', label: TEAM_ALL.label, gradient: TEAM_ALL.gradient }, ...realTeams.map(k => ({ key: k, label: TEAMS[k].label, gradient: TEAMS[k].gradient }))];
+  return h('div', { className: 'grid gap-2 mb-3', style: { gridTemplateColumns: `repeat(${items.length}, 1fr)` } },
+    items.map(t => {
+      const s = teamStats[t.key] || { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
+      const pct = s.khYtdDt > 0 ? Math.round(s.dtYtd / s.khYtdDt * 100) : 0;
+      const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 80 ? 'text-amber-600' : 'text-slate-400';
+      const active = value === t.key;
+      return h('button', {
+        key: t.key,
+        type: 'button',
+        onClick: () => onChange(t.key),
+        className: `rounded-lg px-3 py-2.5 text-left transition-all ${active ? 'ring-2 ring-emerald-500 bg-emerald-50' : 'bg-white border border-slate-200 hover:border-slate-300'}`
+      },
+        h('div', { className: 'flex items-center gap-1.5 mb-1.5' },
+          h('div', { className: 'w-2 h-2 rounded-full shrink-0', style: { background: t.gradient } }),
+          h('span', { className: `text-[11px] font-semibold tracking-wide ${active ? 'text-emerald-700' : 'text-slate-600'}` }, t.label)),
+        h('div', { className: 'leading-tight mb-0.5' },
+          h('span', { className: 'text-[18px] font-bold tabular-nums text-slate-800' }, moneyTy3(s.dtUpd)),
+          h('span', { className: 'text-[11px] text-slate-400 ml-1' }, 'KH Update')),
+        h('div', { className: 'flex items-baseline gap-1 mb-1.5' },
+          h('span', { className: `text-[15px] font-bold tabular-nums ${pctColor}` }, s.khYtdDt > 0 ? pct + '%' : '—'),
+          h('span', { className: 'text-[10px] text-slate-400' }, 'TH YTD')),
+        h('div', { className: 'h-1 bg-slate-100 rounded-full overflow-hidden' },
+          h('div', { className: 'h-full rounded-full', style: { width: Math.min(pct, 100) + '%', background: t.gradient } }))
+      );
+    })
+  );
+}
+
+// ============ ACCOUNT BAR (progress bar + button xem KH chưa có KH) ============
+function AccountBar({ customers, assigned, onShowMissing }) {
+  const h = React.createElement;
+  const pct = assigned > 0 ? Math.round(customers / assigned * 100) : 0;
+  const missing = Math.max(0, assigned - customers);
+  const barColor = pct >= 100 ? '#10b981' : '#f59e0b';
+  return h('div', { className: 'bg-white border border-slate-200 rounded-xl p-3.5' },
+    h('div', { className: 'text-[11px] text-slate-400 mb-2 tracking-wide' }, 'Accounts'),
+    h('div', { className: 'flex items-center justify-between mb-1.5' },
+      h('span', { className: 'text-[13px] font-semibold text-slate-800' }, fmtInt(customers) + ' / ' + fmtInt(assigned) + ' KH'),
+      h('span', { className: 'text-[14px] font-bold tabular-nums', style: { color: barColor } }, pct + '%')),
+    h('div', { className: 'h-3.5 bg-slate-100 rounded overflow-hidden mb-1.5' },
+      h('div', { className: 'h-full rounded', style: { width: Math.min(pct, 100) + '%', background: barColor } })),
+    h('div', { className: 'flex items-center justify-between' },
+      h('span', { className: 'text-[11px] text-slate-400' }, 'Đã có kế hoạch ', h('b', { className: 'font-medium text-slate-500' }, fmtInt(customers)), ' / Được phân địa bàn ', h('b', { className: 'font-medium text-slate-500' }, fmtInt(assigned))),
+      missing > 0 && onShowMissing && h('button', {
+        type: 'button',
+        onClick: onShowMissing,
+        className: 'flex items-center gap-1 text-[11px] font-medium text-blue-600 border border-blue-200 rounded-md px-2 py-0.5 hover:bg-blue-50 transition-colors'
+      }, h(AlertCircle, { size: 13 }), missing + ' account chưa có KH'))
+  );
+}
+
+// ============ % TH YTD BAR (progress bar với vạch 100%) ============
+function ThYtdBar({ dtYtd, khYtdDt }) {
+  const h = React.createElement;
+  const thPct = khYtdDt > 0 ? Math.round(dtYtd / khYtdDt * 100) : 0;
+  const barColor = thPct >= 100 ? '#10b981' : thPct >= 80 ? '#f59e0b' : '#ef4444';
+  const barWidth = Math.min(thPct, 150);
+  const markPos = thPct > 100 ? Math.round(100 / thPct * 100) : 100;
+  return h('div', { className: 'bg-white border border-slate-200 rounded-xl p-3.5' },
+    h('div', { className: 'text-[11px] text-slate-400 mb-2 tracking-wide' }, '% Thực hiện YTD'),
+    h('div', { className: 'flex items-center justify-between mb-1.5' },
+      h('span', { className: 'text-[13px] font-semibold text-slate-800' }, moneyTy3(dtYtd), ' / ', moneyTy3(khYtdDt)),
+      h('span', { className: 'text-[14px] font-bold tabular-nums', style: { color: barColor } }, khYtdDt > 0 ? thPct + '%' : '—')),
+    h('div', { className: 'relative h-3.5 bg-slate-100 rounded overflow-hidden mb-1.5' },
+      h('div', { className: 'h-full rounded', style: { width: Math.min(barWidth, 100) + '%', background: barColor } }),
+      khYtdDt > 0 && h('div', { className: 'absolute top-0 bottom-0 w-0.5 bg-slate-800 opacity-40', style: { left: markPos + '%' } }),
+      khYtdDt > 0 && h('div', { className: 'absolute text-[9px] text-slate-500 font-medium', style: { left: markPos + '%', top: '-14px', transform: 'translateX(-50%)' } }, '100%')),
+    h('div', { className: 'text-[11px] text-slate-400' }, 'DThu thực hiện / DThu KH update (YTD)')
+  );
+}
+
+// ============ WATERFALL CHART (Đầu năm → Update → Chênh lệch) ============
+function WaterfallChart({ dt, dtUpd }) {
+  const h = React.createElement;
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const chenh = dtUpd - dt;
+  const chenhPos = chenh >= 0;
+  const dauNamTy = dt / 1e9;
+  const updTy = dtUpd / 1e9;
+  const chenhTy = chenh / 1e9;
+  useEffect(() => {
+    if (!canvasRef.current || typeof Chart === 'undefined') return;
+    if (chartRef.current) chartRef.current.destroy();
+    const maxVal = Math.max(dauNamTy, updTy) * 1.25;
+    const colBlue = '#2a78d6';
+    const colGreen = '#10b981';
+    const colRed = '#e34948';
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'bar',
+      data: {
+        labels: ['Đầu năm', 'Update', 'Chênh lệch'],
+        datasets: [{
+          label: 'base',
+          data: [0, 0, chenhPos ? dauNamTy : updTy],
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+          barPercentage: 0.5
+        }, {
+          label: 'val',
+          data: [dauNamTy, updTy, Math.abs(chenhTy)],
+          backgroundColor: [colBlue, colBlue, chenhPos ? colGreen : colRed],
+          borderWidth: 0,
+          borderRadius: 3,
+          barPercentage: 0.5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { stacked: true, grid: { display: false }, border: { color: '#e1e0d9' }, ticks: { color: '#898781', font: { size: 11 } } },
+          y: { stacked: true, min: 0, max: Math.ceil(maxVal / 10) * 10 || 10, grid: { color: '#e1e0d9', lineWidth: 0.5 }, border: { display: false }, ticks: { color: '#898781', font: { size: 11 }, stepSize: Math.ceil(maxVal / 40) * 10 || 10 } }
+        },
+        animation: {
+          duration: 500,
+          onComplete: function() {
+            const ctx = this.ctx;
+            const meta = this.getDatasetMeta(1);
+            ctx.save();
+            ctx.font = '600 12px -apple-system,BlinkMacSystemFont,sans-serif';
+            ctx.textAlign = 'center';
+            const labels = [dauNamTy.toFixed(1), updTy.toFixed(1), (chenhPos ? '+' : '') + chenhTy.toFixed(1)];
+            meta.data.forEach((bar, i) => {
+              ctx.fillStyle = i === 2 ? (chenhPos ? colGreen : colRed) : '#1e293b';
+              ctx.fillText(labels[i], bar.x, bar.y - 6);
+            });
+            ctx.restore();
+          }
+        }
+      },
+      plugins: [{
+        id: 'wfConn',
+        afterDatasetsDraw(chart) {
+          const ctx = chart.ctx;
+          const meta = chart.getDatasetMeta(1);
+          const baseMeta = chart.getDatasetMeta(0);
+          if (meta.data.length < 3) return;
+          ctx.save();
+          ctx.strokeStyle = '#898781';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          const b0 = meta.data[0], b1 = meta.data[1], b2 = meta.data[2];
+          ctx.beginPath();
+          ctx.moveTo(b0.x + b0.width / 2 + 2, b0.y);
+          ctx.lineTo(b1.x - b1.width / 2 - 2, b1.y);
+          ctx.stroke();
+          const connY = chenhPos ? baseMeta.data[2].y : b2.y;
+          ctx.beginPath();
+          ctx.moveTo(b1.x + b1.width / 2 + 2, connY);
+          ctx.lineTo(b2.x - b2.width / 2 - 2, connY);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }]
+    });
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, [dauNamTy, updTy, chenhTy]);
+  return h('div', { className: 'bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col' },
+    h('div', { className: 'text-[11px] text-slate-400 mb-2 tracking-wide' }, 'Phân tích doanh thu kế hoạch (tỷ VNĐ)'),
+    h('div', { className: 'flex-1 min-h-0', style: { position: 'relative' } },
+      h('canvas', { ref: canvasRef }))
+  );
 }
 
 // ============ MULTI-SELECT (dropdown chọn nhiều mục, đồng bộ thiết kế) ============
@@ -1572,17 +1770,9 @@ function CustomerCard({
     className: "flex-1 min-w-0"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-[14px] font-semibold text-slate-900 truncate"
-  }, customer), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-500 mt-0.5"
-  }, groups.length, " nhóm SP · ", stats.productCount, " sản phẩm", psList && psList.length ? ` · ${psList.length} PS: ${psList.join(', ')}` : '')), /*#__PURE__*/React.createElement("div", {
+  }, customer)), /*#__PURE__*/React.createElement("div", {
     className: "hidden md:flex items-center gap-5 flex-shrink-0"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-right"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] uppercase tracking-wide text-slate-400"
-  }, "SL kế hoạch"), /*#__PURE__*/React.createElement("div", {
-    className: "text-[13px] font-semibold tabular-nums text-slate-700"
-  }, fmtInt(stats.plan))), /*#__PURE__*/React.createElement("div", {
     className: "text-right"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] uppercase tracking-wide text-slate-400"
@@ -1600,13 +1790,7 @@ function CustomerCard({
     className: "text-[10px] uppercase tracking-wide text-slate-400"
   }, "Chênh lệch"), /*#__PURE__*/React.createElement("div", {
     className: `text-[13px] font-semibold tabular-nums ${stats.chenh > 0 ? 'text-emerald-700' : stats.chenh < 0 ? 'text-red-600' : 'text-slate-400'}`
-  }, stats.chenh === 0 ? '—' : MASK_MONEY ? '•••' : (stats.chenh > 0 ? '+' : '') + fmtTy3(stats.chenh))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement(Sparkline, {
-    values: stats.monthlyDt
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 leading-tight"
-  }, "DThu", /*#__PURE__*/React.createElement("br", null), "12 tháng"))))),
+  }, stats.chenh === 0 ? '—' : MASK_MONEY ? '•••' : (stats.chenh > 0 ? '+' : '') + fmtTy3(stats.chenh)))))),
   // Nút thêm sản phẩm cho CHÍNH khách hàng này (không phải mở panel chọn lại KH).
   (canEdit && catIdx || isAdmin) && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 pr-3 pl-1"
@@ -1883,19 +2067,14 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
         ? (Number(r.revUpd) || 0) : (Number(r.rev) || 0);
       // Tổng Quota: qOld+qMain+qAdd (chỉ nằm ở 1 dòng đại diện, các dòng khác = 0 nên cộng dồn = tổng)
       const dQuota = (Number(r.qOld) || 0) + (Number(r.qMain) || 0) + (Number(r.qAdd) || 0);
+      const isOop = !!r._oop && !custInPlan(planCusts, r);
       const bump = (o) => {
         o.moKh[i] += planUpd;
         o.moAct[i] += act;
         o.quota += dQuota;
-        if (isPast) { o.thYtd += act; o.khYtd += planUpd; }
+        if (isPast) { o.thYtd += act; if (!isOop) o.khYtd += planUpd; }
       };
       bump(cell);
-      // Cấp Khách hàng dưới Miền. Dòng ngoài kế hoạch gom vào 1 nhóm "Ngoài kế hoạch",
-      // KH thật của dòng thực hiện nằm ở cấp con ngay dưới nhóm đó.
-      // oop = dòng ngoài kế hoạch → không có quota nên không tính "khả dụng còn lại"
-      // Chỉ KH LẠ (không có dòng kế hoạch nào) mới vào nhóm "Ngoài kế hoạch";
-      // KH đã có kế hoạch thì dòng thực hiện nhập thẳng vào chính KH đó.
-      const isOop = !!r._oop && !custInPlan(planCusts, r);
       const cKey = isOop ? OOP_CUST : (r.cust || '—');
       if (!cell.custMap.has(cKey)) cell.custMap.set(cKey, { cust: cKey, custId: isOop ? '' : r.custId, oop: isOop, subMap: new Map(), ...blank() });
       const cc = cell.custMap.get(cKey);
@@ -2430,7 +2609,7 @@ function SummaryView({
       const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const dMoKh = planUpd * price;       // DThu KH update của tháng này
       const dMoAct = actQty * price;       // DThu thực hiện của tháng này
-      const dKhYtdDt = inYtd ? dMoKh : 0;  // DThu KH update luỹ kế YTD
+      const dKhYtdDt = isOop ? 0 : (inYtd ? dMoKh : 0);  // DThu KH update luỹ kế YTD (bỏ OOP khỏi mẫu)
       const bump = o => {
         o.dt += dDt;
         o.dtUpd += dDtUpd;
@@ -4010,6 +4189,9 @@ function App() {
   });
   // Team đang xem trên UI. Chỉ admin/manager mới đổi được; user thường luôn = bu của họ.
   const [viewBu, setViewBu] = useState('');
+  // loadScope = phạm vi gọi API: 'test' khi xem TEST, '' khi xem team thật hoặc tất cả.
+  // Chuyển giữa các team thật (CHCS/CTTM/THNK/Tất cả) = instant (client-side), không reload.
+  const loadScope = viewBu === 'test' ? 'test' : '';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [rows, setRows] = useState([]);
@@ -4039,6 +4221,7 @@ function App() {
   const [pendingReload, setPendingReload] = useState(false);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(() => new Set(Object.keys(TEAMS).filter(k => k !== 'test')));
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
   // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
   const [exportFn, setExportFn] = useState(null);
@@ -4085,8 +4268,8 @@ function App() {
     setLoading(true);
     setError('');
     try {
-      // admin/manager: gửi kèm team đang chọn xem (rỗng = tất cả team)
-      const r = await api('getData', canSwitchTeam(auth.role) ? { bu: viewBu } : {});
+      // admin/manager: gửi kèm loadScope ('' = tất cả team thật, 'test' = chỉ test)
+      const r = await api('getData', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
       const fields = r.fields || [];
       setFields(fields);
       const arr = r.rows || [];
@@ -4153,7 +4336,7 @@ function App() {
       setError('Không tải được dữ liệu: ' + err.message);
     }
     setLoading(false);
-  }, [auth.role, viewBu]);
+  }, [auth.role, loadScope]);
   useEffect(() => {
     if (authed) loadData();
   }, [authed, loadData]);
@@ -4189,23 +4372,23 @@ function App() {
   useEffect(() => {
     if (!authed) return;
     let huy = false;
-    api('getPs', canSwitchTeam(auth.role) ? { bu: viewBu } : {})
+    api('getPs', canSwitchTeam(auth.role) ? { bu: loadScope } : {})
       .then(r => { if (!huy) setPsDir(r.ps || []); })
       .catch(() => { if (!huy) setPsDir([]); });
     return () => { huy = true; };
-  }, [authed, auth.role, viewBu]);
+  }, [authed, auth.role, loadScope]);
 
   // Cấu hình địa bàn (dm_dia_ban): dùng ở màn "Cấu hình địa bàn" và ở panel thêm KH
   // (tự điền PS/Miền). Lọc theo team đang xem như getData. Lỗi ở đây KHÔNG được
   // chặn app: edge function chưa deploy bản mới thì chỉ là danh sách rỗng.
   const loadDiaBan = useCallback(async () => {
     try {
-      const r = await api('getDiaBan', canSwitchTeam(auth.role) ? { bu: viewBu } : {});
+      const r = await api('getDiaBan', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
       setDiaBan(r.diaBan || []);
     } catch (e) {
       setDiaBan([]);
     }
-  }, [auth.role, viewBu]);
+  }, [auth.role, loadScope]);
   useEffect(() => {
     if (authed) loadDiaBan();
   }, [authed, loadDiaBan]);
@@ -4296,7 +4479,7 @@ function App() {
   const [oopFixBusy, setOopFixBusy] = useState(false);
   const reloadOop = useCallback(async () => {
     try {
-      const r = await api('getOop', canSwitchTeam(auth.role) ? { bu: viewBu } : {});
+      const r = await api('getOop', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
       const fld = fieldsRef.current;
       const oopArr = r.oopRows || []; const oopMeta = r.oopMeta || [];
       const oopObjs = new Array(oopArr.length);
@@ -4316,7 +4499,7 @@ function App() {
       // tự bấm Reload thay vì mình load ngầm cả bảng lớn.
       if (typeof r.rev === 'number' && r.rev !== revRef.current) setStale(true);
     } catch (e) {}
-  }, [auth.role, viewBu]);
+  }, [auth.role, loadScope]);
 
   const suaPsHoaDon = useCallback(async r => {
     if (!r || !r._psDiaBan) return;
@@ -4431,7 +4614,7 @@ function App() {
     setPsBusy(true); setError('');
     try {
       await api('savePs', row);
-      const r = await api('getPs', canSwitchTeam(auth.role) ? { bu: viewBu } : {});
+      const r = await api('getPs', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
       setPsDir(r.ps || []);
       setNotice(`Đã lưu "${row.tenPs}" vào dm_ps (tên rút gọn: ${row.ps}). Chạy "Cập nhật thực hiện" để số của PS này khớp lại dòng kế hoạch.`);
       return true;
@@ -4439,7 +4622,7 @@ function App() {
       setError('Lưu dm_ps thất bại: ' + err.message);
       return false;
     } finally { setPsBusy(false); }
-  }, [auth.role, viewBu]);
+  }, [auth.role, loadScope]);
 
   // Ref cho dữ liệu addProduct cần đọc lúc gọi — để hàm addProduct giữ nguyên identity
   // (không tạo lại mỗi khi rows đổi, tránh render lại toàn bộ thẻ KH).
@@ -4751,33 +4934,38 @@ function App() {
       return out;
     });
   }, [rows, drafts, draftCount]);
+  // Client-side team filter: chuyển team thật = instant, không reload.
+  const teamRows = useMemo(() => {
+    if (!viewBu || viewBu === 'test') return effectiveRows;
+    return effectiveRows.filter(r => r.bu === viewBu);
+  }, [effectiveRows, viewBu]);
   // Dữ liệu cho 2 MÀN TỔNG HỢP: kế hoạch + dòng ngoài kế hoạch (để tổng đủ số).
-  // Màn chi tiết, export, sửa/xoá vẫn dùng effectiveRows -> không thấy các dòng này.
+  // Màn chi tiết, export, sửa/xoá vẫn dùng teamRows -> không thấy các dòng này.
   const summaryRows = useMemo(
-    () => (oopRows.length ? effectiveRows.concat(oopRows) : effectiveRows),
-    [effectiveRows, oopRows]
+    () => (oopRows.length ? teamRows.concat(oopRows.filter(r => !viewBu || viewBu === 'test' || r.bu === viewBu)) : teamRows),
+    [teamRows, oopRows, viewBu]
   );
   const draftKeys = useMemo(() => new Set(Object.keys(drafts)), [drafts]);
-  const regionList = useMemo(() => Array.from(new Set(rows.map(r => r.region).filter(Boolean))).sort(), [rows]);
+  const regionList = useMemo(() => Array.from(new Set(teamRows.map(r => r.region).filter(Boolean))).sort(), [teamRows]);
   const psList = useMemo(() => {
     const s = new Set();
-    rows.forEach(r => {
+    teamRows.forEach(r => {
       if (inSel(regionFilter, r.region) && r.ps) s.add(r.ps);
     });
     return Array.from(s).sort();
-  }, [rows, regionFilter]);
+  }, [teamRows, regionFilter]);
   const allGroups = useMemo(() => {
     const s = new Set();
-    rows.forEach(r => {
+    teamRows.forEach(r => {
       if (!inSel(regionFilter, r.region)) return;
       if (!inSel(psFilter, r.ps)) return;
       if (r.grp) s.add(r.grp);
     });
     return Array.from(s).sort();
-  }, [rows, psFilter, regionFilter]);
+  }, [teamRows, psFilter, regionFilter]);
   const custList = useMemo(() => {
     const m = new Map();
-    rows.forEach(r => {
+    teamRows.forEach(r => {
       if (!inSel(regionFilter, r.region)) return;
       if (!inSel(psFilter, r.ps)) return;
       if (r.cust && !m.has(r.cust)) m.set(r.cust, r.custId);
@@ -4936,7 +5124,7 @@ function App() {
   const tree = useMemo(() => {
     const q = search.toLowerCase().trim();
     const byCust = new Map();
-    for (const r of effectiveRows) {
+    for (const r of teamRows) {
       if (!inSel(regionFilter, r.region)) continue;
       if (!inSel(psFilter, r.ps)) continue;
       if (!inSel(custFilter, r.cust)) continue;
@@ -4948,10 +5136,12 @@ function App() {
         custId: r.custId,
         region: r.region,
         psSet: new Set(),
+        buSet: new Set(),
         gMap: new Map()
       });
       const c = byCust.get(cKey);
       if (r.ps) c.psSet.add(r.ps);
+      if (r.bu) c.buSet.add(r.bu);
       const grpName = r.grp || 'Khác';
       // Tách theo (nhóm SP, PS): 1 nhóm SP mà 2 PS cùng phụ trách → 2 dòng độc lập, không gộp.
       const gKey = grpName + '||' + (r.ps || '');
@@ -5044,6 +5234,7 @@ function App() {
       custId: c.custId,
       region: c.region,
       psList: Array.from(c.psSet),
+      buList: Array.from(c.buSet),
       _dt: custDt(c),
       _dtUpd: custDtUpd(c),
       _thYtd: custThYtd(c),
@@ -5072,7 +5263,7 @@ function App() {
       if (ha !== hb) return ha - hb;
       return ha === 0 ? b._dtUpd - a._dtUpd : b._thYtd - a._thYtd;
     });
-  }, [effectiveRows, search, psFilter, regionFilter, custFilter, groupFilter]);
+  }, [teamRows, search, psFilter, regionFilter, custFilter, groupFilter]);
   // Đo sau khi đã đăng nhập + tải xong (trước đó App return sớm, chưa có thanh
   // tiêu đề/bộ lọc trong DOM) và đo lại khi danh sách KH đổi từ rỗng sang có
   // (thẻ KH đầu tiên mới xuất hiện thì mới đo được chiều cao của nó).
@@ -5081,8 +5272,8 @@ function App() {
     let plan = 0,
       dt = 0,
       dtUpd = 0,
-      dtYtd = 0,    // DThu thực hiện luỹ kế YTD
-      khYtdDt = 0,  // DThu KH update luỹ kế YTD (mẫu số của % TH YTD)
+      dtYtd = 0,    // DThu thực hiện luỹ kế YTD (chỉ trong KH)
+      khYtdDt = 0,  // DThu KH update luỹ kế YTD (mẫu số của % TH YTD, chỉ trong KH)
       productCount = 0;
     tree.forEach(c => c.groups.forEach(g => {
       productCount += g.products.length;
@@ -5106,7 +5297,8 @@ function App() {
     // Cộng thêm phần THỰC HIỆN NGOÀI KẾ HOẠCH (oopRows) để thẻ tiền khớp với TỔNG CỘNG
     // ở 2 màn tổng hợp — dùng ĐÚNG bộ lọc & công thức như SummaryView.
     const q = search.toLowerCase().trim();
-    for (const r of oopRows) {
+    const oopFiltered = viewBu && viewBu !== 'test' ? oopRows.filter(r => r.bu === viewBu) : oopRows;
+    for (const r of oopFiltered) {
       if (MONTHS.indexOf(r.mo) < 0) continue;
       if (!inSel(regionFilter, r.region)) continue;
       if (!inSel(psFilter, r.ps)) continue;
@@ -5121,7 +5313,7 @@ function App() {
       const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
       dt += rev * pr;
       dtUpd += (past ? act : rawUpd) * pr;
-      if (inYtd) { dtYtd += act * pr; khYtdDt += rawUpd * pr; }
+      if (inYtd) { dtYtd += act * pr; }
     }
     return {
       plan,
@@ -5133,7 +5325,7 @@ function App() {
       customers: tree.length,
       productCount
     };
-  }, [tree, oopRows, regionFilter, psFilter, custFilter, groupFilter, search]);
+  }, [tree, oopRows, viewBu, regionFilter, psFilter, custFilter, groupFilter, search]);
 
   // Đối chiếu thực hiện: gom oopRows theo ly_do — cảnh báo tổng để người cấu hình
   // biết cần sửa gì. Lọc theo bộ lọc chung (miền/PS/nhóm SP/KH) để khớp với ngữ
@@ -5237,7 +5429,7 @@ function App() {
       const s = String(v).replace(/"/g, '""');
       return /[",\n]/.test(s) ? `"${s}"` : s;
     };
-    const lines = effectiveRows.filter(r => inSel(regionFilter, r.region) && inSel(psFilter, r.ps) && inSel(custFilter, r.cust)).map(r => cols.map(f => esc(r[f])).join(','));
+    const lines = teamRows.filter(r => inSel(regionFilter, r.region) && inSel(psFilter, r.ps) && inSel(custFilter, r.cust)).map(r => cols.map(f => esc(r[f])).join(','));
     const csv = '\ufeff' + [header.join(','), ...lines].join('\n');
     const blob = new Blob([csv], {
       type: 'text/csv;charset=utf-8;'
@@ -5283,28 +5475,22 @@ function App() {
   }, /*#__PURE__*/React.createElement("header", {
     className: "bg-white border-b border-slate-200 sticky top-0 z-30"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "px-6 pt-1 flex justify-end"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400 italic"
-  }, "Designed and developed by Do Hoang Giang")), /*#__PURE__*/React.createElement("div", {
-    className: "px-6 pb-3 flex items-center justify-between gap-4 flex-wrap"
+    className: "px-6 py-3 flex items-center justify-between gap-4 flex-wrap"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[13px] tracking-wide",
-    style: { background: (viewBu ? (TEAMS[viewBu] || TEAM_ALL) : TEAM_ALL).gradient }
-  }, (viewBu ? (TEAMS[viewBu] || TEAM_ALL) : TEAM_ALL).label), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    className: "w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-[14px] font-bold shrink-0"
+  }, ((auth.ho_ten || auth.username || '??').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase())), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
     className: "text-[17px] font-bold leading-tight tracking-tight"
-  }, "KẾ HOẠCH KINH DOANH", canSwitchTeam(auth.role) ? /*#__PURE__*/React.createElement(TeamSwitcher, {
-    value: viewBu,
-    onChange: setViewBu
-  }) : null), /*#__PURE__*/React.createElement("p", {
+  }, "KẾ HOẠCH KINH DOANH"), /*#__PURE__*/React.createElement("p", {
     className: "text-[12px] text-slate-500 leading-tight"
-  }, (auth.ho_ten || auth.username), " - ", fmtInt(totalCustCount), " khách hàng"))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 flex-wrap"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex-1"
-  }), draftCount > 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, auth.ho_ten || auth.username))), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col items-end gap-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-400 italic"
+  }, "Designed and developed by ", /*#__PURE__*/React.createElement("span", { className: "font-semibold" }, "Do Hoang Giang")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, draftCount > 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: discardDrafts,
     disabled: saving,
     className: "px-3 py-1.5 text-[13px] text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50"
@@ -5317,30 +5503,21 @@ function App() {
     className: "animate-spin"
   }), " Đang lưu…") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Check, {
     size: 14
-  }), " Xác nhận điều chỉnh (", draftCount, ")"))) : /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1.5 text-[12px] px-2.5 py-1 text-slate-400"
-  }, savedFlash ? /*#__PURE__*/React.createElement("span", {
-    className: "text-emerald-600 flex items-center gap-1"
+  }), " Xác nhận điều chỉnh (", draftCount, ")"))) : savedFlash ? /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] text-emerald-600 flex items-center gap-1"
   }, /*#__PURE__*/React.createElement(Check, {
     size: 12
-  }), " Đã lưu xuống Sheets") : 'Chưa có thay đổi'), /*#__PURE__*/React.createElement("div", {
-    className: "w-px h-6 bg-slate-200 mx-1"
-  }), /*#__PURE__*/React.createElement("button", {
+  }), " Đã lưu") : null, /*#__PURE__*/React.createElement("button", {
     onClick: loadData,
-    className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-700 hover:bg-slate-100 rounded-md"
+    className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md"
   }, /*#__PURE__*/React.createElement(RefreshCw, {
     size: 14
   }), " Reload"), /*#__PURE__*/React.createElement("button", {
-    onClick: exportCsv,
-    className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-700 hover:bg-slate-100 rounded-md"
-  }, /*#__PURE__*/React.createElement(Download, {
-    size: 14
-  }), " Export"), /*#__PURE__*/React.createElement("button", {
     onClick: logout,
-    className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md"
+    className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md"
   }, /*#__PURE__*/React.createElement(LogOut, {
     size: 14
-  }), " Đăng xuất"))), /*#__PURE__*/React.createElement("div", {
+  }), " Đăng xuất")))), /*#__PURE__*/React.createElement("div", {
     className: "px-6 flex items-center gap-1 border-t border-slate-100"
   }, /*#__PURE__*/React.createElement(TabBtn, {
     active: tab === 'detail',
@@ -5397,43 +5574,25 @@ function App() {
     className: "ml-auto px-2.5 py-1 text-[12px] font-medium bg-sky-500 hover:bg-sky-600 text-white rounded-md"
   }, "Tải lại ngay"))), /*#__PURE__*/React.createElement("div", {
     className: "px-6 pt-4"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4"
-  }, /*#__PURE__*/React.createElement(StatCard, {
-    label: "Số lượng account",
-    value: fmtInt(stats.customers) + '/' + fmtInt(accountsAssigned),
-    sublabel: "KH có kế hoạch / được phân địa bàn",
-    accent: "emerald"
-  }), /*#__PURE__*/React.createElement(StatCard, {
-    label: "DThu KH đầu năm",
-    value: moneyTy3(stats.dt),
-    sublabel: "SL đầu năm × đơn giá",
-    accent: "teal"
-  }), /*#__PURE__*/React.createElement(StatCard, {
-    label: "DThu KH update",
-    value: moneyTy3(stats.dtUpd),
-    sublabel: "SL update × đơn giá (gồm ngoài KH)",
-    accent: "blue"
-  }), /*#__PURE__*/React.createElement(StatCard, {
-    label: "Chênh lệch DThu",
-    value: MASK_MONEY ? '•••' : (stats.chenh > 0 ? '+' : '') + fmtTy3(stats.chenh),
-    sublabel: "update − đầu năm",
-    accent: stats.chenh > 0 ? 'emerald' : stats.chenh < 0 ? 'red' : 'slate'
-  }), /*#__PURE__*/React.createElement(StatCard, {
-    label: "DThu TH YTD",
-    value: moneyTy3(stats.dtYtd),
-    sublabel: "SL thực hiện × đơn giá",
-    accent: "amber"
-  }), /*#__PURE__*/React.createElement(StatCard, {
-    label: "% TH YTD",
-    value: stats.khYtdDt > 0 ? Math.round(stats.dtYtd / stats.khYtdDt * 100) + '%' : '—',
-    sublabel: "KH Update YTD",
-    accent: stats.khYtdDt > 0 ? (stats.dtYtd / stats.khYtdDt >= 1 ? 'emerald' : stats.dtYtd / stats.khYtdDt >= 0.8 ? 'amber' : 'red') : 'slate'
-  }), /*#__PURE__*/React.createElement(StatCard, {
-    label: "Chưa lưu",
-    value: String(draftCount),
-    sublabel: draftCount > 0 ? 'nhấn Xác nhận để lưu' : 'đã đồng bộ',
-    accent: "amber"
+  }, canSwitchTeam(auth.role) && /*#__PURE__*/React.createElement(TeamSummaryBar, {
+    rows: effectiveRows,
+    value: viewBu,
+    onChange: setViewBu
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-1 md:grid-cols-2 gap-3 mb-4"
+  }, /*#__PURE__*/React.createElement("div", { className: "flex flex-col gap-3" },
+    /*#__PURE__*/React.createElement(AccountBar, {
+      customers: stats.customers,
+      assigned: accountsAssigned,
+      onShowMissing: () => { /* TODO: hiện modal/filter KH chưa có KH */ }
+    }),
+    /*#__PURE__*/React.createElement(ThYtdBar, {
+      dtYtd: stats.dtYtd,
+      khYtdDt: stats.khYtdDt
+    })
+  ), /*#__PURE__*/React.createElement(WaterfallChart, {
+    dt: stats.dt,
+    dtUpd: stats.dtUpd
   })),
     // Đối chiếu ngoài kế hoạch — chỉ admin thấy (mọi role khác không có action gì
     // để sửa được, chỉ tăng nhiễu). Backend đã lọc dữ liệu theo phạm vi quyền nên
@@ -5589,7 +5748,7 @@ function App() {
     onAddProduct: addProduct,
     prefill: addProductPrefill
   }), tab === 'diaban' ? /*#__PURE__*/React.createElement(DiaBanView, {
-    rows: effectiveRows,
+    rows: teamRows,
     diaBan: diaBan,
     customers: custSource,
     psOptions: allPsList,
@@ -5636,23 +5795,68 @@ function App() {
     onDismiss: () => setNewCusts(prev => prev.filter(x => (x.custId || x.cust) !== (c.custId || c.cust)))
   })), tree.length === 0 ? pendingCusts.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg border border-slate-200 px-4 py-12 text-center text-slate-400 text-sm"
-  }, rows.length === 0 ? 'Sheet trống' : 'Không có khách hàng nào khớp với bộ lọc') : tree.map((c, i) => /*#__PURE__*/React.createElement(CustomerCard, {
-    key: (c.custId || c.customer) + i,
-    ...c,
-    pendingKeys: draftKeys,
-    onCommit: commit,
-    canEdit: canEdit,
-    isAdmin: isAdmin,
-    onDeleteProduct: deleteProduct,
-    defaultOpen: false,
-    showBasePlan: showBasePlan,
-    onToggleBasePlan: () => setShowBasePlan(v => !v),
-    catIdx: catalog.length > 0 ? catIdx : null,
-    groupsByPs: groupsByPs,
-    priceOf: priceOf,
-    onAddProduct: addProduct,
-    onDeleteCustomer: deleteCustomer
-  })))));
+  }, rows.length === 0 ? 'Sheet trống' : 'Không có khách hàng nào khớp với bộ lọc') : (() => {
+    const renderCards = list => list.map((c, i) => /*#__PURE__*/React.createElement(CustomerCard, {
+      key: (c.custId || c.customer) + i,
+      ...c,
+      pendingKeys: draftKeys,
+      onCommit: commit,
+      canEdit: canEdit,
+      isAdmin: isAdmin,
+      onDeleteProduct: deleteProduct,
+      defaultOpen: false,
+      showBasePlan: showBasePlan,
+      onToggleBasePlan: () => setShowBasePlan(v => !v),
+      catIdx: catalog.length > 0 ? catIdx : null,
+      groupsByPs: groupsByPs,
+      priceOf: priceOf,
+      onAddProduct: addProduct,
+      onDeleteCustomer: deleteCustomer
+    }));
+    if (!viewBu && canSwitchTeam(auth.role)) {
+      const realTeams = Object.keys(TEAMS).filter(k => k !== 'test');
+      return realTeams.map(tk => {
+        const custs = tree.filter(c => c.buList && c.buList.includes(tk));
+        if (custs.length === 0) return null;
+        const t = TEAMS[tk];
+        let secDt = 0, secDtYtd = 0, secKhYtd = 0;
+        custs.forEach(c => { secDt += c._dtUpd || 0; secDtYtd += c._thYtd || 0; });
+        const isOpen = teamOpen.has(tk);
+        const toggleTeam = () => setTeamOpen(prev => {
+          const s = new Set(prev);
+          s.has(tk) ? s.delete(tk) : s.add(tk);
+          return s;
+        });
+        return /*#__PURE__*/React.createElement("div", { key: tk, className: "mb-3" },
+          /*#__PURE__*/React.createElement("button", {
+            type: "button",
+            onClick: toggleTeam,
+            className: "w-full flex items-center gap-2.5 px-4 py-2.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          },
+            /*#__PURE__*/React.createElement("div", {
+              className: "w-3 h-3 rounded-full shrink-0",
+              style: { background: t.gradient }
+            }),
+            /*#__PURE__*/React.createElement("span", {
+              className: "text-[14px] font-bold text-slate-800"
+            }, t.label),
+            /*#__PURE__*/React.createElement("span", {
+              className: "text-[12px] text-slate-500 tabular-nums"
+            }, custs.length, " KH · ", moneyTy3(secDt)),
+            /*#__PURE__*/React.createElement("div", { className: "flex-1" }),
+            /*#__PURE__*/React.createElement(isOpen ? ChevronDown : ChevronRight, {
+              size: 16,
+              className: "text-slate-400"
+            })
+          ),
+          isOpen && /*#__PURE__*/React.createElement("div", { className: "mt-1.5 ml-2 border-l-2 border-slate-100 pl-3" },
+            renderCards(custs)
+          )
+        );
+      });
+    }
+    return renderCards(tree);
+  })())));
 }
 function TabBtn({
   active,

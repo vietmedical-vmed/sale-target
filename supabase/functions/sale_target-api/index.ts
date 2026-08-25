@@ -73,11 +73,11 @@ const COL = {
   mMain: "thang_thau_chinh", dMain: "thoi_gian_thau_chinh", qMain: "quota_thau_chinh",
   mAdd: "thang_thau_bo_sung", qAdd: "quota_bo_sung", rev: "sl_ke_hoach_dau_nam",
   revUpd: "sl_ke_hoach_update", price: "don_gia", note: "giai_trinh",
-  act: "sl_thuc_hien", dt: "doanh_thu_kh_dau_nam",
+  act: "sl_thuc_hien", dt: "doanh_thu_kh_dau_nam", bu: "bu",
 };
 // Thứ tự field khi trả getData (app đọc theo fields[])
 const FIELDS = ["fy","mo","region","ps","cust","custId","grp","prod","mset",
-  "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","note","act","dt"];
+  "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","note","act","dt","bu"];
 // Chỉ các cột này được phép sửa qua updateCells
 const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd","note","price"]);
 // Các cột nhận diện (bộ vật tư / sản phẩm) — CHỈ admin được sửa qua updateCells.
@@ -279,7 +279,7 @@ async function fetchOutOfPlan(db, sess, payload) {
       cust: r.khach_hang || OOP_CUST, custId: r.ma_khach_hang,
       grp: r.nhom_san_pham, prod: r.san_pham,
       mset: r.bo_vat_tu, act: r.sl_thuc_hien,
-      price: r.don_gia,
+      price: r.don_gia, bu: r.bu,
     };
     return FIELDS.map((f) => (o[f] === null || o[f] === undefined ? "" : o[f]));
   });
