@@ -397,17 +397,17 @@ function TeamSwitcher({ value, onChange }) {
 }
 
 // ============ TEAM SUMMARY BAR (thay TeamSwitcher — hiện stat tất cả team, click chọn) ============
-function TeamSummaryBar({ rows, value, onChange }) {
+function TeamSummaryBar({ rows, oopRows, value, onChange }) {
   const h = React.createElement;
   const realTeams = Object.keys(TEAMS).filter(k => k !== 'test');
   const teamStats = useMemo(() => {
     const m = {};
     realTeams.forEach(k => { m[k] = { dtUpd: 0, dtYtd: 0, khYtdDt: 0 }; });
     m[''] = { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
-    for (const r of rows) {
+    const process = (r, isOop) => {
       const bu = r.bu || '';
       const idx = MONTHS.indexOf(r.mo);
-      if (idx < 0) continue;
+      if (idx < 0) return;
       const pr = Number(r.price) || 0;
       const rev = Number(r.rev) || 0;
       const act = Number(r.act) || 0;
@@ -419,13 +419,15 @@ function TeamSummaryBar({ rows, value, onChange }) {
       const khDt = rawUpd * pr;
       if (m[bu]) {
         m[bu].dtUpd += upd;
-        if (inYtd) { m[bu].dtYtd += actDt; m[bu].khYtdDt += khDt; }
+        if (inYtd) { m[bu].dtYtd += actDt; if (!isOop) m[bu].khYtdDt += khDt; }
       }
       m[''].dtUpd += upd;
-      if (inYtd) { m[''].dtYtd += actDt; m[''].khYtdDt += khDt; }
-    }
+      if (inYtd) { m[''].dtYtd += actDt; if (!isOop) m[''].khYtdDt += khDt; }
+    };
+    for (const r of rows) process(r, false);
+    for (const r of oopRows) process(r, true);
     return m;
-  }, [rows]);
+  }, [rows, oopRows]);
   const items = [{ key: '', label: TEAM_ALL.label, gradient: TEAM_ALL.gradient }, ...realTeams.map(k => ({ key: k, label: TEAMS[k].label, gradient: TEAMS[k].gradient }))];
   return h('div', { className: 'grid gap-2 mb-3', style: { gridTemplateColumns: `repeat(${items.length}, 1fr)` } },
     items.map(t => {
@@ -5576,6 +5578,7 @@ function App() {
     className: "px-6 pt-4"
   }, canSwitchTeam(auth.role) && /*#__PURE__*/React.createElement(TeamSummaryBar, {
     rows: effectiveRows,
+    oopRows: oopRows,
     value: viewBu,
     onChange: setViewBu
   }), /*#__PURE__*/React.createElement("div", {
