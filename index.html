@@ -400,7 +400,6 @@ function TeamSwitcher({ value, onChange }) {
 // ============ TEAM SUMMARY BAR (thay TeamSwitcher — hiện stat tất cả team, click chọn) ============
 function TeamSummaryBar({ rows, oopRows, value, onChange }) {
   const h = React.createElement;
-  const [expanded, setExpanded] = useState(false);
   const realTeams = Object.keys(TEAMS).filter(k => k !== 'test');
   const teamStats = useMemo(() => {
     const m = {};
@@ -430,59 +429,32 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
     for (const r of oopRows) process(r, true);
     return m;
   }, [rows, oopRows]);
-  const allItem = { key: '', label: TEAM_ALL.label, gradient: TEAM_ALL.gradient };
-  const teamItems = realTeams.map(k => ({ key: k, label: TEAMS[k].label, gradient: TEAMS[k].gradient }));
-  const renderCard = (t) => {
-    const s = teamStats[t.key] || { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
-    const pct = s.dtUpd > 0 ? Math.round(s.dtYtd / s.dtUpd * 100) : 0;
-    const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 80 ? 'text-amber-600' : 'text-slate-400';
-    const active = value === t.key;
-    return h('button', {
-      key: t.key,
-      type: 'button',
-      onClick: () => onChange(t.key),
-      className: `rounded-lg px-3 py-2.5 text-left transition-all ${active ? 'ring-2 ring-emerald-500 bg-emerald-50' : 'bg-white border border-slate-200 hover:border-slate-300'}`
-    },
-      h('div', { className: 'flex items-center gap-1.5 mb-1.5' },
-        h('div', { className: 'w-2 h-2 rounded-full shrink-0', style: { background: t.gradient } }),
-        h('span', { className: `text-[11px] font-semibold tracking-wide ${active ? 'text-emerald-700' : 'text-slate-600'}` }, t.label)),
-      h('div', { className: 'leading-tight mb-0.5' },
-        h('span', { className: 'text-[18px] font-bold tabular-nums text-slate-800' }, moneyTy3(s.dtUpd)),
-        h('span', { className: 'text-[11px] text-slate-400 ml-1' }, 'KH Update')),
-      h('div', { className: 'flex items-baseline gap-1 mb-1.5' },
-        h('span', { className: `text-[15px] font-bold tabular-nums ${pctColor}` }, s.dtUpd > 0 ? pct + '%' : '—'),
-        h('span', { className: 'text-[10px] text-slate-400' }, 'TH FY26')),
-      h('div', { className: 'h-1 bg-slate-100 rounded-full overflow-hidden' },
-        h('div', { className: 'h-full rounded-full', style: { width: Math.min(pct, 100) + '%', background: t.gradient } }))
-    );
-  };
-  return h('div', { className: 'mb-3' },
-    h('div', { className: 'grid gap-2', style: { gridTemplateColumns: expanded ? `repeat(${1 + teamItems.length}, 1fr)` : '1fr' } },
-      renderCard(allItem),
-      expanded && teamItems.map(renderCard)),
-    !expanded && h('div', { className: 'grid gap-2 mt-2', style: { gridTemplateColumns: `repeat(${teamItems.length}, 1fr)` } },
-      teamItems.map(t => {
-        const s = teamStats[t.key] || { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
-        const active = value === t.key;
-        return h('button', {
-          key: t.key,
-          type: 'button',
-          onClick: () => { onChange(t.key); setExpanded(true); },
-          className: `rounded-lg px-2.5 py-2 text-left transition-all ${active ? 'ring-2 ring-emerald-500 bg-emerald-50' : 'bg-white border border-slate-200 hover:border-slate-300'}`
-        },
-          h('div', { className: 'flex items-center gap-1.5' },
-            h('div', { className: 'w-2 h-2 rounded-full shrink-0', style: { background: t.gradient } }),
-            h('span', { className: `text-[11px] font-semibold ${active ? 'text-emerald-700' : 'text-slate-600'}` }, t.label),
-            h('span', { className: 'text-[11px] text-slate-400 ml-auto tabular-nums' }, moneyTy3(s.dtUpd)))
-        );
-      })),
-    h('div', { className: 'flex justify-center mt-1' },
-      h('button', {
+  const items = [{ key: '', label: TEAM_ALL.label, gradient: TEAM_ALL.gradient }, ...realTeams.map(k => ({ key: k, label: TEAMS[k].label, gradient: TEAMS[k].gradient }))];
+  return h('div', { className: 'grid gap-2 mb-3', style: { gridTemplateColumns: `repeat(${items.length}, 1fr)` } },
+    items.map(t => {
+      const s = teamStats[t.key] || { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
+      const pct = s.dtUpd > 0 ? Math.round(s.dtYtd / s.dtUpd * 100) : 0;
+      const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 80 ? 'text-amber-600' : 'text-slate-400';
+      const active = value === t.key;
+      return h('button', {
+        key: t.key,
         type: 'button',
-        onClick: () => { if (expanded && value) onChange(''); setExpanded(!expanded); },
-        className: 'text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1 px-2 py-0.5'
-      }, expanded ? 'Thu gọn' : 'Chi tiết',
-        h(expanded ? ChevronUp : ChevronDown, { size: 12 })))
+        onClick: () => onChange(t.key),
+        className: `rounded-lg px-3 py-2.5 text-left transition-all ${active ? 'ring-2 ring-emerald-500 bg-emerald-50' : 'bg-white border border-slate-200 hover:border-slate-300'}`
+      },
+        h('div', { className: 'flex items-center gap-1.5 mb-1.5' },
+          h('div', { className: 'w-2 h-2 rounded-full shrink-0', style: { background: t.gradient } }),
+          h('span', { className: `text-[11px] font-semibold tracking-wide ${active ? 'text-emerald-700' : 'text-slate-600'}` }, t.label)),
+        h('div', { className: 'leading-tight mb-0.5' },
+          h('span', { className: 'text-[18px] font-bold tabular-nums text-slate-800' }, moneyTy3(s.dtUpd)),
+          h('span', { className: 'text-[11px] text-slate-400 ml-1' }, 'KH Update')),
+        h('div', { className: 'flex items-baseline gap-1 mb-1.5' },
+          h('span', { className: `text-[15px] font-bold tabular-nums ${pctColor}` }, s.dtUpd > 0 ? pct + '%' : '—'),
+          h('span', { className: 'text-[10px] text-slate-400' }, 'TH FY26')),
+        h('div', { className: 'h-1 bg-slate-100 rounded-full overflow-hidden' },
+          h('div', { className: 'h-full rounded-full', style: { width: Math.min(pct, 100) + '%', background: t.gradient } }))
+      );
+    })
   );
 }
 
@@ -4254,7 +4226,7 @@ function App() {
   const [pendingReload, setPendingReload] = useState(false);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(() => new Set(Object.keys(TEAMS).filter(k => k !== 'test')));
+  const [teamOpen, setTeamOpen] = useState(() => new Set());
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
   // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
   const [exportFn, setExportFn] = useState(null);
