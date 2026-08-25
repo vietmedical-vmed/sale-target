@@ -4386,6 +4386,46 @@ function App() {
     }
   }, [reloadOop]);
 
+  const [fixBvtTarget, setFixBvtTarget] = useState(null);
+  const handleFixBoVatTu = useCallback(oopRow => {
+    const matches = rows.filter(r =>
+      (r.custId || r.cust) === (oopRow.custId || oopRow.cust) &&
+      r.prod === oopRow.prod &&
+      r.mset !== oopRow.mset
+    );
+    setFixBvtTarget({ oopRow, planMatches: matches });
+  }, [rows]);
+  const applyFixBoVatTu = useCallback(async (planMatches, msetVal, prodVal) => {
+    if (!planMatches.length) return;
+    setOopFixBusy(true); setError('');
+    try {
+      const batch = [];
+      for (const r of planMatches) {
+        if (msetVal) batch.push({ row: r._row, key: 'mset', value: msetVal });
+        if (prodVal) batch.push({ row: r._row, key: 'prod', value: prodVal });
+      }
+      if (!batch.length) return;
+      await api('updateCells', { updates: batch });
+      const patchByRow = new Map();
+      batch.forEach(u => {
+        let p = patchByRow.get(u.row);
+        if (!p) { p = {}; patchByRow.set(u.row, p); }
+        p[u.key] = u.value;
+      });
+      setRows(prev => prev.map(r => {
+        const p = patchByRow.get(r._row);
+        return p ? { ...r, ...p } : r;
+      }));
+      setFixBvtTarget(null);
+      await reloadOop();
+      setNotice(`Đã cập nhật ${planMatches.length} dòng kế hoạch: bộ VT → "${msetVal || '(giữ nguyên)'}"${prodVal ? `, SP → "${prodVal}"` : ''}.`);
+    } catch (err) {
+      setError('Sửa bộ vật tư thất bại: ' + err.message);
+    } finally {
+      setOopFixBusy(false);
+    }
+  }, [reloadOop]);
+
   const [psBusy, setPsBusy] = useState(false);
   const savePs = useCallback(async row => {
     setPsBusy(true); setError('');
@@ -5462,6 +5502,15 @@ function App() {
       onEditDmps: (init) => setDmpsForm(init),
       onSuaPsHoaDon: suaPsHoaDon,
       onSuaPsHoaDonBulk: suaPsHoaDonBulk,
+      onFixBoVatTu: handleFixBoVatTu,
+      planRows: rows,
+      busy: oopFixBusy
+    }),
+    fixBvtTarget && React.createElement(FixBoVatTuModal, {
+      row: fixBvtTarget.oopRow,
+      planMatches: fixBvtTarget.planMatches,
+      onApply: applyFixBoVatTu,
+      onClose: () => setFixBvtTarget(null),
       busy: oopFixBusy
     }),
     isAdmin && dmpsForm && React.createElement(DmpsForm, {
@@ -5672,7 +5721,7 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
           const lb = LY_DO_LABEL[ly] || { short: ly, color: 'slate', desc: ly };
           const action = ly === 'chua_co_dia_ban' ? 'Khai báo địa bàn cho các KH này'
                        : ly === 'sai_ps'           ? 'Đồng bộ PS ở màn Cấu hình địa bàn'
-                       : ly === 'sai_bo_vat_tu'    ? 'Sửa bộ vật tư ở dòng kế hoạch tương ứng'
+                       : ly === 'sai_bo_vat_tu'    ? 'Bấm "Xem" rồi chọn "Sửa bộ VT" trên từng dòng'
                        : ly === 'thieu_dong_ke_hoach' ? 'Thêm SP vào kế hoạch cho các KH này'
                        : ly === 'ps_la'            ? 'Bổ sung/sửa tên PS trong shared.dm_ps'
                        : null;
@@ -5711,9 +5760,58 @@ function OopReasonBanner({ total, byReason, open, onToggle, onGoDiaBan, onOpenDe
 // bộ lọc chung, cho phép lọc tiếp theo lý do + tìm KH/nhóm SP. Mỗi dòng có nút hành
 // động tương ứng với ly_do — cross-tab jump về màn Cấu hình địa bàn (khai báo/chuyển
 // PS) hoặc màn Chi tiết (thêm SP với dữ liệu điền sẵn), hoặc mở form dm_ps.
+function FixBoVatTuModal({ row, planMatches, onApply, onClose, busy }) {
+  const h = React.createElement;
+  const [msetVal, setMsetVal] = useState(row.mset || '');
+  const [prodVal, setProdVal] = useState(row.prod || '');
+  const inp = "w-full px-2.5 py-2 text-[13px] border border-slate-200 rounded-md bg-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+  const lbl = "block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1";
+  return h("div", {
+    className: "fixed inset-0 bg-slate-900/40 z-[60] flex items-center justify-center p-4",
+    onClick: onClose
+  }, h("div", {
+    onClick: e => e.stopPropagation(),
+    className: "bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-lg"
+  },
+    h("div", { className: "px-4 py-3 border-b border-slate-100 flex items-center gap-3" },
+      h("div", { className: "text-[14px] font-semibold text-slate-800" }, "Sửa bộ vật tư / sản phẩm"),
+      h("div", { className: "flex-1" }),
+      h("button", { onClick: onClose, className: "p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" },
+        h(XIcon, { size: 16 }))),
+    h("div", { className: "p-4 space-y-3" },
+      h("div", { className: "text-[12px] text-slate-600 space-y-1" },
+        h("div", null, h("span", { className: "font-medium" }, "KH: "), row.cust),
+        h("div", null, h("span", { className: "font-medium" }, "SP hoá đơn: "), row.prod || '—'),
+        h("div", null, h("span", { className: "font-medium" }, "Bộ VT hoá đơn: "), row.mset || '—')),
+      planMatches.length > 0 && h("div", { className: "border border-orange-200 bg-orange-50 rounded-md p-2.5" },
+        h("div", { className: "text-[10.5px] uppercase tracking-wide text-orange-600 font-semibold mb-1" },
+          "Dòng kế hoạch hiện tại (", planMatches.length, " dòng)"),
+        h("div", { className: "text-[12px] text-orange-800 space-y-0.5" },
+          Array.from(new Set(planMatches.map(r => r.mset || '(trống)'))).map(m =>
+            h("div", { key: m }, "Bộ VT: ", h("span", { className: "font-medium" }, m))))),
+      h("div", { className: "border-t border-slate-100 pt-3" },
+        h("div", { className: "text-[11px] text-slate-500 mb-2" },
+          "Đổi bộ vật tư / sản phẩm của dòng kế hoạch cho khớp hoá đơn:"),
+        h("div", { className: "grid grid-cols-2 gap-3" },
+          h("div", null, h("label", { className: lbl }, "Bộ vật tư"),
+            h("input", { value: msetVal, onChange: e => setMsetVal(e.target.value), className: inp })),
+          h("div", null, h("label", { className: lbl }, "Sản phẩm"),
+            h("input", { value: prodVal, onChange: e => setProdVal(e.target.value), className: inp }))))),
+    h("div", { className: "px-4 py-3 border-t border-slate-100 flex items-center gap-2" },
+      h("div", { className: "text-[11px] text-slate-400 flex-1" },
+        planMatches.length, " dòng kế hoạch sẽ được cập nhật"),
+      h("button", { onClick: onClose,
+        className: "px-3 py-1.5 text-[12.5px] text-slate-600 hover:bg-slate-100 rounded" }, "Huỷ"),
+      h("button", {
+        onClick: () => onApply(planMatches, msetVal.trim(), prodVal.trim()),
+        disabled: busy || (!msetVal.trim() && !prodVal.trim()) || planMatches.length === 0,
+        className: "px-4 py-1.5 text-[12.5px] font-semibold bg-orange-600 hover:bg-orange-700 text-white rounded disabled:opacity-50"
+      }, busy ? "Đang lưu…" : "Cập nhật " + planMatches.length + " dòng"))));
+}
+
 function OopDetailModal({
   filterReason, oopRows, isAdmin, onClose,
-  onGoDiaBan, onAddProduct, onBulkAddProducts, onEditDmps, onSuaPsHoaDon, onSuaPsHoaDonBulk, busy
+  onGoDiaBan, onAddProduct, onBulkAddProducts, onEditDmps, onSuaPsHoaDon, onSuaPsHoaDonBulk, onFixBoVatTu, planRows, busy
 }) {
   const h = React.createElement;
   const [ly, setLy] = useState(filterReason === 'all' ? '' : (filterReason || ''));
@@ -5800,10 +5898,12 @@ function OopDetailModal({
           className: "px-1.5 py-0.5 text-[10.5px] font-medium text-amber-700 hover:bg-amber-100 rounded disabled:opacity-50"
         }, "Thêm cả ", uniqCount, " SP của KH"));
     }
-    if (r._lyDo === 'sai_bo_vat_tu') return h("span", {
-      title: "Kế hoạch có SP này nhưng khác bộ vật tư. Vào màn Chi tiết, tìm KH này, sửa cột Bộ vật tư (chỉ admin).",
-      className: "text-[10.5px] text-slate-400"
-    }, "Sửa ở màn Chi tiết");
+    if (r._lyDo === 'sai_bo_vat_tu') return h("button", {
+      onClick: () => onFixBoVatTu && onFixBoVatTu(r),
+      disabled: busy || !onFixBoVatTu,
+      title: "Mở popup sửa bộ vật tư / sản phẩm trong kế hoạch cho khớp hoá đơn",
+      className: "px-1.5 py-0.5 text-[10.5px] font-medium text-orange-700 hover:bg-orange-100 rounded disabled:opacity-50"
+    }, "Sửa bộ VT");
     return null;
   };
 
