@@ -5707,7 +5707,7 @@ function App() {
       onClose: () => setShowMissing(false),
       title: missingAccounts.length + ' account chưa có kế hoạch',
       icon: React.createElement(AlertCircle, { size: 16, className: 'text-amber-500' }),
-      width: 520
+      width: 720
     }, React.createElement('div', { className: 'max-h-[60vh] overflow-y-auto' },
       missingAccounts.length === 0
         ? React.createElement('div', { className: 'px-4 py-8 text-center text-slate-400 text-[13px]' }, 'Tất cả account đã có kế hoạch')
