@@ -5385,6 +5385,7 @@ function App() {
     const q = deaccent(search.trim());
     const set = new Set();
     for (const d of diaBan) {
+      if (viewBu && viewBu !== 'test' && d.bu && d.bu !== viewBu) continue;
       const ps = d.ps;
       const mien = mienByPs.get(ps) || d.mien || '';
       if (!inSel(regionFilter, mien)) continue;
@@ -5397,7 +5398,7 @@ function App() {
       set.add(dbCustKey(d.custId, d.cust));
     }
     return set.size;
-  }, [diaBan, mienByPs, regionFilter, psFilter, groupFilter, custFilter, search]);
+  }, [diaBan, mienByPs, viewBu, regionFilter, psFilter, groupFilter, custFilter, search]);
 
   // nhãn cột giống Google Sheet, theo field key
   const FIELD_LABEL = {
