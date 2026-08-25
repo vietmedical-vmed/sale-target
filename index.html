@@ -5379,6 +5379,7 @@ function App() {
   //   purpose='add'    — điền form Thêm địa bàn (chua_co_dia_ban)
   //   purpose='chuyen' — tìm/highlight KH đó (sai_ps — chuyển PS ở bản khai báo hiện có)
   const [diaBanPrefill, setDiaBanPrefill] = useState(null);
+  const [showMissing, setShowMissing] = useState(false);
 
   // Mẫu số của thẻ "Số lượng account": số khách hàng ĐƯỢC PHÂN CHIA theo cấu hình
   // địa bàn (dm_dia_ban), lọc theo đúng bộ lọc đang áp dụng cho tử số (KH có kế hoạch).
@@ -5400,6 +5401,35 @@ function App() {
     }
     return set.size;
   }, [diaBan, mienByPs, viewBu, regionFilter, psFilter, groupFilter, custFilter, search]);
+
+  const missingAccounts = useMemo(() => {
+    const planKeys = new Set(tree.map(c => dbCustKey(c.custId, c.customer)));
+    const q = deaccent(search.trim());
+    const map = new Map();
+    for (const d of diaBan) {
+      if (viewBu && viewBu !== 'test' && d.bu && d.bu !== viewBu) continue;
+      const ps = d.ps;
+      const mien = mienByPs.get(ps) || d.mien || '';
+      if (!inSel(regionFilter, mien)) continue;
+      if (!inSel(psFilter, ps)) continue;
+      if (!inSel(groupFilter, d.grp)) continue;
+      if (!inSel(custFilter, custLabel(d.custId, d.cust))) continue;
+      if (q && !(deaccent(d.cust).includes(q) || deaccent(custLabel(d.custId, d.cust)).includes(q) ||
+                 deaccent(d.custId).includes(q) ||
+                 deaccent(ps).includes(q) || deaccent(d.grp).includes(q))) continue;
+      const k = dbCustKey(d.custId, d.cust);
+      if (planKeys.has(k)) continue;
+      if (!map.has(k)) map.set(k, { custId: d.custId, cust: d.cust, ps: new Set(), grp: new Set() });
+      const e = map.get(k);
+      if (d.ps) e.ps.add(d.ps);
+      if (d.grp) e.grp.add(d.grp);
+    }
+    return Array.from(map.values()).map(e => ({
+      custId: e.custId, cust: e.cust,
+      ps: Array.from(e.ps).sort().join(', '),
+      grp: Array.from(e.grp).sort().join(', ')
+    })).sort((a, b) => (a.cust || '').localeCompare(b.cust || ''));
+  }, [tree, diaBan, mienByPs, viewBu, regionFilter, psFilter, groupFilter, custFilter, search]);
 
   // nhãn cột giống Google Sheet, theo field key
   const FIELD_LABEL = {
@@ -5592,7 +5622,7 @@ function App() {
     /*#__PURE__*/React.createElement(AccountBar, {
       customers: stats.customers,
       assigned: accountsAssigned,
-      onShowMissing: () => { /* TODO: hiện modal/filter KH chưa có KH */ }
+      onShowMissing: () => setShowMissing(true)
     }),
     /*#__PURE__*/React.createElement(ThYtdBar, {
       dtYtd: stats.dtYtd,
@@ -5672,6 +5702,28 @@ function App() {
       onClose: () => setFixBvtTarget(null),
       busy: oopFixBusy
     }),
+    React.createElement(Modal, {
+      open: showMissing,
+      onClose: () => setShowMissing(false),
+      title: missingAccounts.length + ' account chưa có kế hoạch',
+      icon: React.createElement(AlertCircle, { size: 16, className: 'text-amber-500' }),
+      width: 520
+    }, React.createElement('div', { className: 'max-h-[60vh] overflow-y-auto' },
+      missingAccounts.length === 0
+        ? React.createElement('div', { className: 'px-4 py-8 text-center text-slate-400 text-[13px]' }, 'Tất cả account đã có kế hoạch')
+        : React.createElement('table', { className: 'w-full text-[12px]' },
+          React.createElement('thead', null,
+            React.createElement('tr', { className: 'bg-slate-50 text-left text-[11px] text-slate-500 uppercase tracking-wide' },
+              React.createElement('th', { className: 'px-4 py-2 font-semibold' }, 'Khách hàng'),
+              React.createElement('th', { className: 'px-4 py-2 font-semibold' }, 'PS'),
+              React.createElement('th', { className: 'px-4 py-2 font-semibold' }, 'Nhóm SP'))),
+          React.createElement('tbody', null,
+            missingAccounts.map((a, i) =>
+              React.createElement('tr', { key: i, className: i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50' },
+                React.createElement('td', { className: 'px-4 py-1.5 text-slate-800' },
+                  custLabel(a.custId, a.cust)),
+                React.createElement('td', { className: 'px-4 py-1.5 text-slate-600' }, a.ps),
+                React.createElement('td', { className: 'px-4 py-1.5 text-slate-600' }, a.grp))))))),
     isAdmin && dmpsForm && React.createElement(DmpsForm, {
       init: dmpsForm,
       psDir: psDir,
