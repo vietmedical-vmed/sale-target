@@ -432,7 +432,7 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
   return h('div', { className: 'grid gap-2 mb-3', style: { gridTemplateColumns: `repeat(${items.length}, 1fr)` } },
     items.map(t => {
       const s = teamStats[t.key] || { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
-      const pct = s.khYtdDt > 0 ? Math.round(s.dtYtd / s.khYtdDt * 100) : 0;
+      const pct = s.dtUpd > 0 ? Math.round(s.dtYtd / s.dtUpd * 100) : 0;
       const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 80 ? 'text-amber-600' : 'text-slate-400';
       const active = value === t.key;
       return h('button', {
@@ -448,8 +448,8 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
           h('span', { className: 'text-[18px] font-bold tabular-nums text-slate-800' }, moneyTy3(s.dtUpd)),
           h('span', { className: 'text-[11px] text-slate-400 ml-1' }, 'KH Update')),
         h('div', { className: 'flex items-baseline gap-1 mb-1.5' },
-          h('span', { className: `text-[15px] font-bold tabular-nums ${pctColor}` }, s.khYtdDt > 0 ? pct + '%' : '—'),
-          h('span', { className: 'text-[10px] text-slate-400' }, 'TH YTD')),
+          h('span', { className: `text-[15px] font-bold tabular-nums ${pctColor}` }, s.dtUpd > 0 ? pct + '%' : '—'),
+          h('span', { className: 'text-[10px] text-slate-400' }, 'TH FY26')),
         h('div', { className: 'h-1 bg-slate-100 rounded-full overflow-hidden' },
           h('div', { className: 'h-full rounded-full', style: { width: Math.min(pct, 100) + '%', background: t.gradient } }))
       );
