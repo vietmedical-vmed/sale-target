@@ -1111,14 +1111,14 @@ function ProductRow({
       dtUpd = 0;
     monthly.forEach((c, i) => {
       revBase += c.rev;
-      const past = MONTHS[i] < CURRENT_MONTH; // tháng đã đóng → DThu update lấy theo thực hiện
-      const useAct = past || (MONTHS[i] === CURRENT_MONTH && c.hasAct);
       if (isYtdMonth(MONTHS[i])) ytd += c.act;
       else khLeft += c.hasUpd ? c.revUpd : c.rev;
       c.rows.forEach(r => {
         const pr = Number(r.price) || 0;
+        const act = Number(r.act) || 0;
+        const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
         dtBase += (Number(r.rev) || 0) * pr;
-        const upd = useAct ? Number(r.act) || 0 : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
+        const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
         dtUpd += upd * pr;
       });
     });
@@ -1420,11 +1420,12 @@ function ProductGroupSection({
     products.forEach(p => {
       p.monthly.forEach((c, i) => {
         plan += c.rev;
-        const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && c.hasAct);
         c.rows.forEach(r => {
           const pr = Number(r.price) || 0;
+          const act = Number(r.act) || 0;
+          const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
           dt += (Number(r.rev) || 0) * pr;
-          const upd = useAct ? Number(r.act) || 0 : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
+          const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
           dtUpd += upd * pr;
         });
       });
@@ -1723,13 +1724,14 @@ function CustomerCard({
       g.products.forEach(p => {
         p.monthly.forEach((c, i) => {
           plan += c.rev;
-          const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && c.hasAct);
           c.rows.forEach(r => {
             const pr = Number(r.price) || 0;
+            const act = Number(r.act) || 0;
+            const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             const d = (Number(r.rev) || 0) * pr;
             dt += d;
             monthlyDt[i] += d;
-            const upd = useAct ? Number(r.act) || 0 : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
+            const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
             dtUpd += upd * pr;
           });
         });
@@ -2595,7 +2597,7 @@ function SummaryView({
       const c = ps.custMap.get(cKey);
       const price = Number(r.price) || 0; // đơn giá TỪNG DÒNG
       const mi = MONTHS.indexOf(r.mo);             // vị trí tháng (−1 nếu ngoài 12 tháng)
-      const isPast = (r.mo || '') < CURRENT_MONTH; // tháng đã đóng → DThu update lấy theo thực hiện
+      const isPast = (r.mo || '') < CURRENT_MONTH || ((r.mo || '') === CURRENT_MONTH && (Number(r.act) || 0) !== 0);
       const inYtd = isYtdMonth(r.mo);              // luỹ kế YTD gồm cả tháng hiện tại
       const actQty = Number(r.act) || 0;
       const updQty = isPast ? actQty : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
@@ -5209,10 +5211,11 @@ function App() {
       let v = 0;
       c.gMap.forEach(g => g.pMap.forEach(p => {
         p.monthly.forEach((cell, i) => {
-          const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && cell.hasAct);
           cell.rows.forEach(r => {
             const pr = Number(r.price) || 0;
-            const upd = useAct ? (Number(r.act) || 0)
+            const act = Number(r.act) || 0;
+            const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
+            const upd = useAct ? act
               : (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0);
             v += upd * pr;
           });
@@ -5282,13 +5285,13 @@ function App() {
       g.products.forEach(p => {
         p.monthly.forEach((cell, i) => {
           plan += cell.rev;
-          const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && cell.hasAct);
           const inYtd = MONTHS[i] <= CURRENT_MONTH;
           cell.rows.forEach(r => {
             const pr = Number(r.price) || 0;
             const rev = Number(r.rev) || 0;
             const act = Number(r.act) || 0;
             const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
+            const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             dt += rev * pr;
             dtUpd += (useAct ? act : rawUpd) * pr;
             if (inYtd) { dtYtd += act * pr; khYtdDt += rawUpd * pr; }
@@ -5308,10 +5311,10 @@ function App() {
       if (!inSel(groupFilter, r.grp)) continue;
       if (!matchSearch(r, q)) continue;
       const pr = Number(r.price) || 0;
-      const past = (r.mo || '') < CURRENT_MONTH;
+      const act = Number(r.act) || 0;
+      const past = (r.mo || '') < CURRENT_MONTH || ((r.mo || '') === CURRENT_MONTH && act !== 0);
       const inYtd = isYtdMonth(r.mo);
       const rev = Number(r.rev) || 0;
-      const act = Number(r.act) || 0;
       const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
       dt += rev * pr;
       dtUpd += (past ? act : rawUpd) * pr;
