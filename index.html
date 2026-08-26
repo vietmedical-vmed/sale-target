@@ -459,10 +459,9 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
 }
 
 // ============ ACCOUNT BAR (progress bar + button xem KH chưa có KH) ============
-function AccountBar({ customers, assigned, onShowMissing }) {
+function AccountBar({ customers, assigned, missing, onShowMissing }) {
   const h = React.createElement;
   const pct = assigned > 0 ? Math.round(customers / assigned * 100) : 0;
-  const missing = Math.max(0, assigned - customers);
   const barColor = pct >= 100 ? '#10b981' : '#f59e0b';
   return h('div', { className: 'bg-white border border-slate-200 rounded-xl p-3.5' },
     h('div', { className: 'text-[11px] text-slate-400 mb-2 tracking-wide' }, 'Accounts'),
@@ -5622,6 +5621,7 @@ function App() {
     /*#__PURE__*/React.createElement(AccountBar, {
       customers: stats.customers,
       assigned: accountsAssigned,
+      missing: missingAccounts.length,
       onShowMissing: () => setShowMissing(true)
     }),
     /*#__PURE__*/React.createElement(ThYtdBar, {
