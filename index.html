@@ -5510,16 +5510,16 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-[14px] font-bold shrink-0"
-  }, ((auth.ho_ten || auth.username || '??').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase())), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
-    className: "text-[17px] font-bold leading-tight tracking-tight"
-  }, "KẾ HOẠCH KINH DOANH"), /*#__PURE__*/React.createElement("p", {
-    className: "text-[12px] text-slate-500 leading-tight"
-  }, auth.ho_ten || auth.username))), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col items-end gap-1.5"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400 italic"
-  }, "Designed and developed by ", /*#__PURE__*/React.createElement("span", { className: "font-semibold" }, "Do Hoang Giang")), /*#__PURE__*/React.createElement("div", {
+    className: "w-11 h-11 rounded-full bg-blue-500 text-white grid place-items-center font-bold text-sm shrink-0"
+  }, ((auth.ho_ten || auth.username || '??').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase())), /*#__PURE__*/React.createElement("div", { className: "leading-tight" }, /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-slate-900 text-base md:text-lg"
+  }, "KẾ HOẠCH KINH DOANH"), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mt-0.5"
+  }, /*#__PURE__*/React.createElement("span", { className: "text-xs text-slate-500" }, auth.ho_ten || auth.username)))), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col items-end gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400 italic text-right"
+  }, "Designed and developed by ", /*#__PURE__*/React.createElement("span", { className: "font-semibold text-slate-500 not-italic" }, "Do Hoang Giang")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, draftCount > 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: discardDrafts,
