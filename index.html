@@ -668,6 +668,7 @@ function LoginGate({
   const [pw, setPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
@@ -769,16 +770,11 @@ function LoginGate({
     style: {
       fontSize: 18,
       fontWeight: 700,
-      margin: 0
+      margin: '0 0 20px',
+      textAlign: 'center',
+      textTransform: 'uppercase'
     }
-  }, "KẾ HOẠCH KINH DOANH"), /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13,
-      color: '#65676b',
-      marginTop: 4,
-      marginBottom: 20
-    }
-  }, isChange ? "Đổi mật khẩu" : "Đăng nhập để truy cập"), /*#__PURE__*/React.createElement("input", {
+  }, isChange ? "ĐỔI MẬT KHẨU" : "KẾ HOẠCH KINH DOANH"), /*#__PURE__*/React.createElement("input", {
     autoFocus: true,
     value: username,
     onChange: e => setUsername(e.target.value),
@@ -808,7 +804,9 @@ function LoginGate({
       boxSizing: 'border-box',
       marginBottom: isChange ? 10 : 0
     }
-  }), isChange && /*#__PURE__*/React.createElement("input", {
+  }), !isChange && /*#__PURE__*/React.createElement("label", {
+    style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: '#65676b', cursor: 'pointer' }
+  }, /*#__PURE__*/React.createElement("input", { type: "checkbox", checked: remember, onChange: e => setRemember(e.target.checked) }), "Ghi nhớ đăng nhập trên thiết bị này"), isChange && /*#__PURE__*/React.createElement("input", {
     type: "password",
     value: newPw,
     onChange: e => setNewPw(e.target.value),
@@ -891,7 +889,8 @@ function LoginGate({
       cursor: 'pointer',
       padding: 0
     }
-  }, isChange ? 'Quay lại đăng nhập' : 'Đổi mật khẩu'))));
+  }, isChange ? 'Quay lại đăng nhập' : 'Đổi mật khẩu'))),
+    /*#__PURE__*/React.createElement("div", { style: { marginTop: 24, textAlign: 'center', fontSize: 11, color: '#8a8d91' } }, "Designed and developed by Do Hoang Giang"));
 }
 
 // ============ EDITABLE CELL ============
