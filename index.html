@@ -47,6 +47,41 @@ tailwind.config = { theme: { extend: { colors: {
   .scroll-shadow::-webkit-scrollbar { height: 8px; width: 8px; }
   .scroll-shadow::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
+  /* Màn chi tiết: khung cuộn ngoài bao tất cả thẻ KH, header bảng + scrollbar dính */
+  .detail-box { overflow: auto; }
+  .detail-box::-webkit-scrollbar { width: 8px; height: 0; }
+  .detail-box::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
+  .detail-box::-webkit-scrollbar-track { background: transparent; }
+  .fake-scrollbar-wrap {
+    position: sticky; left: 0; z-index: 22;
+    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px));
+    overflow-x: auto; overflow-y: hidden;
+    background: #f0f2f5; border-bottom: 1px solid #e5e7eb;
+  }
+  .fake-scrollbar-wrap::-webkit-scrollbar { height: 8px; }
+  .fake-scrollbar-wrap::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
+  .fake-scrollbar-wrap::-webkit-scrollbar-track { background: transparent; }
+  .detail-box .sticky-cust {
+    top: 0; z-index: 25;
+  }
+  .detail-box .sticky-grp {
+    top: var(--detail-cust-h, 0px); z-index: 23;
+  }
+  .detail-box thead {
+    position: sticky;
+    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px) + var(--detail-sb-h, 0px));
+    z-index: 20;
+  }
+  .detail-box thead tr { background: #fff; }
+  .detail-box thead th[rowspan] {
+    text-align: center !important;
+    vertical-align: top !important;
+    white-space: pre-line;
+  }
+  .detail-box .meta-sticky-l {
+    box-sizing: border-box;
+  }
+  .detail-box .cust-wrap { min-width: min-content; }
 </style>
 </head>
 <body>
@@ -1493,7 +1528,7 @@ function ProductGroupSection({
   }, "Chênh lệch"), /*#__PURE__*/React.createElement("div", {
     className: `text-[12px] font-semibold tabular-nums ${gs.chenh > 0 ? 'text-emerald-700' : gs.chenh < 0 ? 'text-red-600' : 'text-slate-400'}`
   }, gs.chenh === 0 ? '—' : MASK_MONEY ? '•••' : (gs.chenh > 0 ? '+' : '') + fmtTy3(gs.chenh))))), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "px-4 py-2 bg-blue-50/40 border-b border-blue-100 flex flex-wrap items-center gap-x-6 gap-y-2"
+    className: "meta-sticky-l px-4 py-2 bg-blue-50/40 border-b border-blue-100 flex flex-wrap items-center gap-x-6 gap-y-2"
   }, /*#__PURE__*/React.createElement(GroupMonthField, {
     label: "Tháng thầu chính",
     value: readGroupField('mMain'),
@@ -1507,7 +1542,7 @@ function ProductGroupSection({
     locked: !canEdit,
     onCommit: v => commitGroupField('mAdd', v)
   })), /*#__PURE__*/React.createElement("div", {
-    className: "px-4 py-2 bg-amber-50/40 border-b border-amber-100 flex items-start gap-2"
+    className: "meta-sticky-l px-4 py-2 bg-amber-50/40 border-b border-amber-100 flex items-start gap-2"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[10.5px] font-semibold text-amber-800 uppercase tracking-wide pt-1.5 flex-shrink-0"
   }, "Giải trình"), /*#__PURE__*/React.createElement("textarea", {
@@ -1524,7 +1559,7 @@ function ProductGroupSection({
   }), notePending && /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-amber-600 pt-2 flex-shrink-0"
   }, "chưa lưu")), /*#__PURE__*/React.createElement("div", {
-    className: "overflow-x-auto scroll-shadow"
+    className: "scroll-shadow"
   }, /*#__PURE__*/React.createElement("table", {
     className: "border-collapse",
     style: {
@@ -1538,56 +1573,56 @@ function ProductGroupSection({
     style: {
       width: 180
     }
-  }, "Bộ vật tư"), /*#__PURE__*/React.createElement("th", {
+  }, "Bộ\nvật\ntư"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500 border-r border-b border-slate-200 sticky bg-white z-[2] align-bottom",
     style: {
       width: 220,
       left: 180
     }
-  }, "Sản phẩm"), /*#__PURE__*/React.createElement("th", {
+  }, "Sản\nphẩm"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-1.5 py-1.5 text-right text-[10px] font-semibold uppercase text-blue-700 border-r border-b border-slate-200 bg-blue-50/40 align-bottom",
     style: {
       width: 72
     }
-  }, "Quota 1/4 ✏"), /*#__PURE__*/React.createElement("th", {
+  }, "Quota\n1/4 ✏"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-1.5 py-1.5 text-right text-[10px] font-semibold uppercase text-blue-700 border-r border-b border-slate-200 bg-blue-50/40 align-bottom",
     style: {
       width: 80
     }
-  }, "Quota thầu chính ✏"), /*#__PURE__*/React.createElement("th", {
+  }, "Quota\nthầu\nchính ✏"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-1.5 py-1.5 text-right text-[10px] font-semibold uppercase text-blue-700 border-r border-b border-slate-200 bg-blue-50/40 align-bottom",
     style: {
       width: 72
     }
-  }, "Quota BS ✏"), /*#__PURE__*/React.createElement("th", {
+  }, "Quota\nBS ✏"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500 border-r border-b border-slate-200 align-bottom",
     style: {
       width: 90
     }
-  }, "Tổng Quota"), /*#__PURE__*/React.createElement("th", {
+  }, "Tổng\nQuota"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-orange-700 border-r border-b border-slate-200 bg-orange-50/40 align-bottom",
     style: {
       width: 90
     }
-  }, "Thực hiện YTD"), /*#__PURE__*/React.createElement("th", {
+  }, "Thực\nhiện\nYTD"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500 border-r border-b border-slate-200 align-bottom",
     style: {
       width: 110
     }
-  }, "Quota khả dụng còn lại"), /*#__PURE__*/React.createElement("th", {
+  }, "Quota\nkhả\ndụng\ncòn\nlại"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-amber-700 border-r border-b border-slate-200 bg-amber-50/40 align-bottom",
     style: {
       width: 85
     }
-  }, "Đơn giá ✏"), /*#__PURE__*/React.createElement("th", {
+  }, "Đơn\ngiá ✏"), /*#__PURE__*/React.createElement("th", {
     colSpan: showBasePlan ? 12 : 1,
     onClick: () => onToggleBasePlan && onToggleBasePlan(),
     className: "px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-600 border-r border-b border-slate-200 bg-slate-100/70 cursor-pointer select-none hover:bg-slate-200/70",
@@ -1600,7 +1635,7 @@ function ProductGroupSection({
     style: {
       width: 100
     }
-  }, "DThu KH đầu năm"), /*#__PURE__*/React.createElement("th", {
+  }, "DThu\nKH\nđầu\nnăm"), /*#__PURE__*/React.createElement("th", {
     colSpan: 12,
     className: "px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-blue-700 border-r border-b border-slate-200 bg-blue-50/50"
   }, "SL update (quá khứ = thực hiện · từ tháng này = điều chỉnh ✏)"), /*#__PURE__*/React.createElement("th", {
@@ -1609,13 +1644,13 @@ function ProductGroupSection({
     style: {
       width: 100
     }
-  }, "DThu KH Update"), /*#__PURE__*/React.createElement("th", {
+  }, "DThu\nKH\nUpdate"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-red-700 border-b border-slate-200 bg-red-50/30 align-bottom",
     style: {
       width: 110
     }
-  }, "Chênh lệch DT KH")), /*#__PURE__*/React.createElement("tr", {
+  }, "Chênh\nlệch\nDT\nKH")), /*#__PURE__*/React.createElement("tr", {
     className: "bg-white"
   }, (showBasePlan ? MONTH_LABELS.map((m, i) => /*#__PURE__*/React.createElement("th", {
     key: 'bh' + m,
@@ -1745,7 +1780,7 @@ function CustomerCard({
     // overflow-CLIP chứ không phải overflow-hidden: hidden biến thẻ thành khung
     // cuộn riêng và làm chết position:sticky của các thanh bên trong, còn clip
     // vẫn cắt bo góc mà không tạo khung cuộn (đã đo bằng thử nghiệm).
-    className: "bg-white rounded-lg border border-slate-200 mb-3 overflow-clip shadow-sm"
+    className: "bg-white rounded-lg border border-slate-200 mb-3 shadow-sm cust-wrap"
   }, /*#__PURE__*/React.createElement("div", {
     // Thanh tiêu đề + số tổng hợp của KH: dính lại trong suốt quá trình cuộn
     // các sản phẩm của chính KH này (giới hạn bởi chiều cao thẻ).
@@ -1907,6 +1942,86 @@ function useStickyBars(active, hasCards) {
       window.removeEventListener('resize', measure);
     };
   }, [active, hasCards]);
+}
+
+function DetailScrollBox({ children }) {
+  const boxRef = useRef(null);
+  const sbRef = useRef(null);
+  const coverRef = useRef(null);
+  const coverLRef = useRef(null);
+  useEffect(() => {
+    const box = boxRef.current;
+    const sb = sbRef.current;
+    const cover = coverRef.current;
+    const coverL = coverLRef.current;
+    if (!box || !sb) return;
+    const spacer = sb.firstElementChild;
+    let syncing = false;
+    let measureId = 0;
+    let stickyIndent = 0;
+    let rightPad = 0;
+    let leftPad = 0;
+    const measure = () => {
+      const hasOverflow = box.scrollWidth > box.clientWidth;
+      sb.style.display = hasOverflow ? '' : 'none';
+      sb.style.width = box.clientWidth + 'px';
+      if (spacer) spacer.style.width = box.scrollWidth + 'px';
+      const sbH = hasOverflow ? Math.ceil(sb.getBoundingClientRect().height) : 0;
+      const custEl = box.querySelector('.sticky-cust');
+      const custH = custEl ? Math.ceil(custEl.getBoundingClientRect().height) : 0;
+      const grpEl = box.querySelector('.sticky-grp');
+      const grpH = grpEl ? Math.ceil(grpEl.getBoundingClientRect().height) : 0;
+      const cs = getComputedStyle(box);
+      rightPad = parseInt(cs.paddingRight) || 0;
+      leftPad = parseInt(cs.paddingLeft) || 0;
+      if (custEl) {
+        custEl.style.transform = ''; custEl.style.width = ''; custEl.style.maxWidth = '';
+        const boxL = box.getBoundingClientRect().left;
+        stickyIndent = custEl.getBoundingClientRect().left - boxL + box.scrollLeft;
+      }
+      const vw = box.clientWidth - stickyIndent - rightPad;
+      box.style.setProperty('--detail-sb-h', sbH + 'px');
+      box.style.setProperty('--detail-cust-h', custH + 'px');
+      box.style.setProperty('--detail-grp-h', grpH + 'px');
+      box.style.setProperty('--detail-vw', vw + 'px');
+      if (cover) { cover.style.display = hasOverflow ? '' : 'none'; cover.style.width = rightPad + 'px'; cover.style.height = box.clientHeight + 'px'; }
+      if (coverL) { coverL.style.display = hasOverflow ? '' : 'none'; coverL.style.width = stickyIndent + 'px'; coverL.style.height = box.clientHeight + 'px'; }
+      pinHoriz();
+    };
+    const scheduleMeasure = () => { clearTimeout(measureId); measureId = setTimeout(measure, 60); };
+    const pinHoriz = () => {
+      const sl = box.scrollLeft;
+      const tx = 'translateX(' + sl + 'px)';
+      const w = (box.clientWidth - stickyIndent - rightPad) + 'px';
+      box.querySelectorAll('.sticky-cust, .sticky-grp, .meta-sticky-l').forEach(el => { el.style.transform = tx; el.style.width = w; el.style.maxWidth = w; });
+      const tw = (box.clientWidth - leftPad - rightPad) + 'px';
+      box.querySelectorAll('.sticky-team').forEach(el => { el.style.transform = tx; el.style.width = tw; el.style.maxWidth = tw; });
+      if (cover) cover.style.transform = 'translate(' + (sl + box.clientWidth - rightPad) + 'px,' + box.scrollTop + 'px)';
+      if (coverL) coverL.style.transform = 'translate(' + sl + 'px,' + box.scrollTop + 'px)';
+    };
+    const syncBox = () => {
+      pinHoriz();
+      if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; setTimeout(() => { syncing = false; }, 30);
+    };
+    const syncSb = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; setTimeout(() => { syncing = false; }, 30); };
+    measure();
+    box.addEventListener('scroll', syncBox);
+    sb.addEventListener('scroll', syncSb);
+    const ro = new ResizeObserver(scheduleMeasure);
+    ro.observe(box);
+    const mo = new MutationObserver(scheduleMeasure);
+    mo.observe(box, { childList: true, subtree: true });
+    window.addEventListener('resize', measure);
+    return () => { clearTimeout(measureId); box.removeEventListener('scroll', syncBox); sb.removeEventListener('scroll', syncSb); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+  return React.createElement("div", {
+    className: "detail-box px-6 pb-8",
+    ref: boxRef,
+    style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
+  }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
+  React.createElement("div", { ref: coverLRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
+  React.createElement("div", { className: "fake-scrollbar-wrap", ref: sbRef },
+    React.createElement("div", { style: { height: 1 } })), children);
 }
 
 // Bảng phân cấp (2 màn tổng hợp): ghim hàng nhóm lại theo cấp khi cuộn trong
@@ -3670,12 +3785,17 @@ const diaBanErrMsg = m => {
 function DiaBanView({
   rows, diaBan, customers, psOptions, mienByPs, psKnown, groupOptions, canEdit,
   psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onDopChongLan, busy,
-  prefill, onPrefillDone
+  prefill, onPrefillDone, viewBu, onToolbar
 }) {
   const h = React.createElement;
   // PS lạ = có trong kế hoạch/khai báo nhưng KHÔNG có trong danh mục dm_ps.
   // psKnown rỗng (chưa tải được danh mục) → không kiểm tra, tránh báo động nhầm.
   const psLa = ps => psKnown && psKnown.size > 0 && !psKnown.has(String(ps || '').trim().toLowerCase());
+  // Lọc diaBan theo team đang xem (viewBu). Không lọc khi xem tất cả hoặc test.
+  const filteredDiaBan = useMemo(
+    () => viewBu && viewBu !== 'test' ? diaBan.filter(d => d.bu === viewBu) : diaBan,
+    [diaBan, viewBu]
+  );
   // Từ 2026-08-07: bỏ chia theo tháng. Cấu hình áp cho cả năm, save = auto apply.
   // Các state theo tháng (viewMo/move) đã gỡ; nRow không còn tu_thang (backend
   // tự set '2026-04' khi insert).
@@ -3683,6 +3803,7 @@ function DiaBanView({
   const [search, setSearch] = useState('');
   const [showMissing, setShowMissing] = useState(false);
   const [closed, setClosed] = useState(() => new Set()); // KH đang gập
+  const [closedRegions, setClosedRegions] = useState(() => new Set()); // miền đang gập
   // Modal "Thêm địa bàn" — cho thêm NHIỀU dòng trong 1 lượt lưu. Nút "+ Thêm dòng"
   // thêm ô mới; Xác nhận gửi toàn bộ danh sách vào onSave (backend auto-apply cả
   // năm cho tất cả tổ hợp không chồng lấn).
@@ -3743,14 +3864,14 @@ function DiaBanView({
   // khoảng trống và để biết tổ hợp đã khai báo hay chưa.
   const cfgByPair = useMemo(() => {
     const m = new Map();
-    diaBan.forEach(d => {
+    filteredDiaBan.forEach(d => {
       const k = dbCustKey(d.custId, d.cust) + '||' + d.grp;
       let a = m.get(k);
       if (!a) { a = []; m.set(k, a); }
       a.push(d);
     });
     return m;
-  }, [diaBan]);
+  }, [filteredDiaBan]);
 
   // Có kế hoạch nhưng CHƯA khai báo địa bàn. Suy khai báo theo TỪNG KHOẢNG THÁNG
   // LIÊN TIẾP của mỗi PS trong kế hoạch → khai báo lại đúng lịch sử, không tạo
@@ -3776,7 +3897,7 @@ function DiaBanView({
   const list = useMemo(() => {
     const q = deaccent(search.trim());
     const out = [];
-    for (const d of diaBan) {
+    for (const d of filteredDiaBan) {
       const ps = edits[d.id] || d.ps;
       const mien = mienByPs.get(ps) || d.mien || '';
       if (!inSel(regionFilter, mien)) continue;
@@ -3789,7 +3910,6 @@ function DiaBanView({
       const plan = planIdx.get(dbCustKey(d.custId, d.cust) + '||' + d.grp);
       let status = 'noplan', planPs = [];
       if (plan) {
-        // Gom tất cả PS trong kế hoạch của tổ hợp — apply cả năm nên xét cả năm.
         const inAll = new Set();
         plan.psByMonth.forEach(s => s.forEach(p => inAll.add(p)));
         if (inAll.size === 0) status = 'noplan';
@@ -3803,7 +3923,7 @@ function DiaBanView({
       out.push({ ...d, ps, mien, status, planPs });
     }
     return out;
-  }, [diaBan, edits, mienByPs, planIdx, search, psFilter, regionFilter, groupFilter, custFilter]);
+  }, [filteredDiaBan, edits, mienByPs, planIdx, search, psFilter, regionFilter, groupFilter, custFilter]);
 
   // Gom theo KHÁCH HÀNG: 1 KH thường có nhiều ngành hàng (và có thể khác PS mỗi
   // ngành) → xem theo nhóm dễ soát hơn bảng phẳng lặp tên KH ở mọi dòng.
@@ -3824,19 +3944,47 @@ function DiaBanView({
     return arr;
   }, [list]);
 
-  // Trần hiển thị tính theo dòng nhưng CẮT Ở RANH GIỚI KHÁCH HÀNG (không hiện nửa KH).
-  const shownGroups = useMemo(() => {
-    const out = [];
-    let n = 0;
+  // Gom khách hàng theo MIỀN: mỗi miền = 1 thẻ cha, bên trong là bảng chi tiết.
+  // KH có ngành hàng ở nhiều miền → xuất hiện ở cả 2 thẻ (chỉ hiện dòng thuộc miền đó).
+  const regionGroups = useMemo(() => {
+    const m = new Map();
     for (const g of groups) {
-      if (n >= MAX_DIA_BAN_ROWS) break;
-      out.push(g);
-      n += g.rows.length;
+      const byRgn = new Map();
+      for (const d of g.rows) {
+        const rgn = d.mien || '(Không rõ miền)';
+        if (!byRgn.has(rgn)) byRgn.set(rgn, []);
+        byRgn.get(rgn).push(d);
+      }
+      for (const [rgn, rgnRows] of byRgn) {
+        if (!m.has(rgn)) m.set(rgn, []);
+        const splitKey = byRgn.size > 1 ? g.key + '||' + rgn : g.key;
+        m.get(rgn).push({
+          key: splitKey, custId: g.custId, cust: g.cust,
+          rows: rgnRows, diff: rgnRows.filter(r => r.status === 'diff').length, gaps: g.gaps
+        });
+      }
     }
-    return out;
+    return Array.from(m.entries())
+      .map(([rgn, custs]) => ({ region: rgn, groups: custs }))
+      .sort((a, b) => a.region.localeCompare(b.region, 'vi'));
   }, [groups]);
-  const shownRows = shownGroups.reduce((s, g) => s + g.rows.length, 0);
-  const allClosed = closed.size >= shownGroups.length && shownGroups.length > 0;
+
+  // Trần hiển thị tính theo dòng nhưng CẮT Ở RANH GIỚI KHÁCH HÀNG (không hiện nửa KH).
+  const shownRegionData = useMemo(() => {
+    let total = 0;
+    return regionGroups.map(rg => {
+      const shown = [];
+      for (const g of rg.groups) {
+        if (total >= MAX_DIA_BAN_ROWS) break;
+        shown.push(g);
+        total += g.rows.length;
+      }
+      return { ...rg, shownGroups: shown };
+    });
+  }, [regionGroups]);
+  const shownRows = shownRegionData.reduce((s, rg) => rg.shownGroups.reduce((ss, g) => ss + g.rows.length, s), 0);
+  const allShownGroupKeys = shownRegionData.flatMap(rg => rg.shownGroups.map(g => g.key));
+  const allClosed = closed.size >= allShownGroupKeys.length && allShownGroupKeys.length > 0;
 
   // Bỏ khoảng trống + diffIds: cấu hình tự apply cả năm sau save, không còn khái
   // niệm "thiếu tháng" hay "áp dụng thủ công".
@@ -3844,7 +3992,7 @@ function DiaBanView({
   // hiện nút "Dọn chồng lấn". Tính trên TOÀN BỘ diaBan (không phụ thuộc filter).
   const overlapCount = useMemo(() => {
     const m = new Map();
-    diaBan.forEach(d => {
+    filteredDiaBan.forEach(d => {
       if (d.active === false) return;
       const k = d.bu + '|' + dbCustKey(d.custId, d.cust) + '|' + d.grp;
       if (!m.has(k)) m.set(k, new Set());
@@ -3853,7 +4001,7 @@ function DiaBanView({
     let n = 0;
     m.forEach(s => { if (s.size > 1) n++; });
     return n;
-  }, [diaBan]);
+  }, [filteredDiaBan]);
   const editCount = Object.keys(edits).length;
   const custCount = groups.length;
   const psLaList = useMemo(
@@ -3877,7 +4025,7 @@ function DiaBanView({
     return next;
   });
 
-  const byId = useMemo(() => new Map(diaBan.map(d => [d.id, d])), [diaBan]);
+  const byId = useMemo(() => new Map(filteredDiaBan.map(d => [d.id, d])), [filteredDiaBan]);
   const saveEdits = async () => {
     // KHÔNG gửi mien (backend suy theo PS) và KHÔNG gửi khoảng hiệu lực (giữ nguyên).
     const payload = Object.entries(edits).map(([id, ps]) => {
@@ -3937,38 +4085,26 @@ function DiaBanView({
     diff: ['bg-amber-50 text-amber-700', 'Lệch kế hoạch'],
     noplan: ['bg-slate-100 text-slate-500', 'Chưa có kế hoạch']
   };
-  const COLS = canEdit ? 5 : 4; // Ngành hàng · Miền · PS · Đối chiếu (+ thao tác)
+  const COLS = canEdit ? 4 : 3; // Ngành hàng · PS · Đối chiếu (+ thao tác)
 
-  return h("div", { className: "px-6 pb-8" },
-    // ---- Thanh công cụ ----
-    h("div", { className: "bg-white rounded-lg border border-slate-200 px-3 py-2.5 mb-3 flex items-center gap-2.5 flex-wrap" },
-      h("span", { className: "text-[13px] font-semibold text-slate-700" }, "Cấu hình địa bàn"),
-      h("span", { className: "text-[11px] text-slate-400" },
-        fmtInt(list.length), " địa bàn · ", fmtInt(custCount), " khách hàng",
-        overlapCount > 0 && h("span", {
-          className: "text-amber-700 font-medium",
-          title: "Tổ hợp KH × ngành hàng có nhiều PS khai báo — apply cả năm không quyết được PS nào. Bấm 'Dọn chồng lấn' để tự dọn theo bản hiệu lực tháng hiện tại."
-        }, " · ", overlapCount, " tổ hợp chồng lấn"),
-        psLaList.length > 0 && h("span", {
-          className: "text-red-600 font-medium",
-          title: "PS đang được khai báo/dùng nhưng không có trong danh mục PS: " + psLaList.join(', ')
-        }, " · ", psLaList.length, " PS ngoài danh mục"),
-        missing.length > 0 && h("span", { className: "text-slate-500" }, " · ", missing.length, " chưa khai báo")),
-      h("div", { className: "flex-1" }),
+  // Đăng ký toolbar buttons lên thanh lọc chung của App.
+  useEffect(() => {
+    if (!onToolbar) return;
+    onToolbar(() => h(React.Fragment, null,
       canEdit && overlapCount > 0 && h("button", {
         onClick: onDopChongLan,
         disabled: busy,
-        title: `Dọn ${overlapCount} tổ hợp chồng lấn theo bản hiệu lực tại tháng ${CURRENT_MONTH}`,
+        title: 'Dọn tổ hợp chồng lấn theo bản hiệu lực tại tháng ' + CURRENT_MONTH,
         className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-md disabled:opacity-50"
       }, h(RefreshCw, { size: 14 }), " Dọn ", overlapCount, " chồng lấn"),
       canEdit && h("button", {
         onClick: openAdd,
         disabled: busy,
-        title: "Mở popup Thêm địa bàn — có thể thêm nhiều dòng cùng lúc",
+        title: "Mở popup Thêm địa bàn",
         className: "flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
       }, h(Plus, { size: 14 }), " Thêm địa bàn"),
-      shownGroups.length > 0 && h("button", {
-        onClick: () => setClosed(allClosed ? new Set() : new Set(shownGroups.map(g => g.key))),
+      allShownGroupKeys.length > 0 && h("button", {
+        onClick: () => setClosed(allClosed ? new Set() : new Set(allShownGroupKeys)),
         className: "px-2.5 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
       }, allClosed ? 'Mở tất cả' : 'Gập tất cả'),
       h("div", { className: "relative" },
@@ -3990,7 +4126,12 @@ function DiaBanView({
           disabled: busy,
           className: "flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
         }, busy ? h(Loader2, { size: 14, className: "animate-spin" }) : h(Check, { size: 14 }),
-          " Lưu & áp dụng (", editCount, ")"))),
+          " Lưu & áp dụng (", editCount, ")"))
+    ));
+    return () => { if (onToolbar) onToolbar(null); };
+  }, [canEdit, overlapCount, busy, allShownGroupKeys, allClosed, search, editCount]);
+
+  return h("div", { className: "px-6 pb-8" },
 
     // ---- Chưa khai báo (có kế hoạch nhưng thiếu trong danh mục) ----
     missing.length > 0 && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3" },
@@ -4094,86 +4235,93 @@ function DiaBanView({
         }, busy ? h(Loader2, { size: 14, className: "animate-spin" }) : h(Check, { size: 14 }),
           " Lưu ", readyRows.length, " địa bàn & áp dụng")))),
 
-    // ---- Bảng địa bàn ----
-    h("div", { className: "bg-white rounded-lg border border-slate-200 overflow-hidden" },
-      h("div", { className: "overflow-auto scroll-shadow" },
-        h("table", { className: "w-full" },
-          h("thead", { className: "bg-slate-50 sticky top-0 z-10" },
-            h("tr", null,
-              h("th", { className: th }, "Khách hàng / Ngành hàng"),
-              h("th", { className: th }, "Miền"),
-              h("th", { className: th }, "PS phụ trách"),
-              h("th", { className: th }, "Đối chiếu kế hoạch"),
-              canEdit && h("th", { className: th }))),
-          h("tbody", null, shownGroups.length === 0
-            ? h("tr", null, h("td", {
-                colSpan: COLS,
-                className: "px-4 py-12 text-center text-slate-400 text-sm"
-              }, diaBan.length === 0 ? 'Chưa có địa bàn nào được khai báo'
-                : 'Không có địa bàn nào khớp bộ lọc'))
-            // Mỗi khách hàng = 1 dòng tiêu đề (gập/mở) + các dòng ngành hàng của KH đó.
-            : shownGroups.map(g => {
-              const open = !closed.has(g.key);
-              // Highlight khi prefill purpose='chuyen' trỏ về KH này — dùng ref để
-              // scroll vào tầm nhìn, class ring để nổi bật vài giây (CSS animation
-              // dùng key thay đổi để retrigger; ở đây đơn giản hoá bằng class tĩnh).
-              const focused = prefill && prefill.purpose === 'chuyen' &&
-                dbCustKey(prefill.custId, prefill.cust) === g.key;
-              return h(React.Fragment, { key: 'g:' + g.key },
-                h("tr", {
-                  ref: focused ? highlightRef : null,
-                  className: "bg-slate-50/80 border-t border-slate-200" +
-                    (focused ? " ring-2 ring-amber-400" : "")
-                },
-                  h("td", { className: "px-2 py-1.5", colSpan: COLS },
-                    h("button", {
-                      onClick: () => toggleGroup(g.key),
-                      className: "flex items-center gap-2 text-left w-full"
-                    }, open ? h(ChevronDown, { size: 14, className: "text-emerald-600 shrink-0" })
-                      : h(ChevronRight, { size: 14, className: "text-emerald-600 shrink-0" }),
-                      h("span", { className: "font-mono text-[11px] text-slate-400 shrink-0" }, g.custId || '—'),
-                      h("span", { className: "text-[13px] font-semibold text-slate-800 truncate" }, custLabel(g.custId, g.cust)),
-                      h("span", { className: "text-[11px] text-slate-400 shrink-0" }, g.rows.length, " ngành hàng")))),
-                open && g.rows.map(d => {
-                  const dirty = !!edits[d.id];
-                  const [cls, text] = BADGE[d.status];
-                  return h("tr", { key: d.id, className: dirty ? "bg-amber-50/60" : "hover:bg-slate-50/60" },
-                    h("td", { className: td + " text-slate-700 pl-8" }, d.grp),
-                    h("td", {
-                      className: td + " text-slate-500",
-                      title: "Miền lấy theo PS phụ trách, không sửa trực tiếp"
-                    }, d.mien || '—'),
-                    h("td", { className: td, style: { minWidth: 150 } },
-                      canEdit
-                        ? h("select", {
-                            value: d.ps,
-                            onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
-                            title: "Sửa PS — sau khi Lưu, kế hoạch cả năm tự chuyển sang PS mới.",
-                            className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
-                          }, psOptions.map(p => h("option", { key: p, value: p }, p)),
-                            !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
-                        : d.ps,
-                      psLa(d.ps) && h("span", {
-                        title: "PS này không có trong danh mục PS (dm_ps) — hoá đơn của họ được dịch tên theo dm_ps nên sẽ KHÔNG khớp dòng kế hoạch, số rơi hết sang \"ngoài kế hoạch\". Sửa tên trong dm_ps hoặc chọn đúng PS trong danh mục.",
-                        className: "ml-1 px-1 rounded bg-red-100 text-red-700 text-[10px] font-bold cursor-help"
-                      }, "!")),
-                    h("td", { className: td },
-                      h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
-                      d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
-                        "kế hoạch: ", d.planPs.join(', '),
-                        h("span", { className: "opacity-70" }, " · nhiều PS chồng lấn → không tự apply"))),
-                    canEdit && h("td", { className: td + " whitespace-nowrap text-right" },
-                      h("button", {
-                        onClick: () => doDelete(d),
-                        disabled: busy,
-                        className: "p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                      }, h(Trash2, { size: 13 }))));
-                }));
-            })))),
-      list.length > shownRows && h("div", {
-        className: "px-3 py-2 text-[12px] text-slate-500 bg-slate-50 border-t border-slate-100"
-      }, "Đang hiện ", fmtInt(shownRows), "/", fmtInt(list.length), " dòng (", shownGroups.length, "/",
-        fmtInt(groups.length), " khách hàng) — dùng bộ lọc hoặc ô tìm kiếm để thu hẹp.")));
+    // ---- Bảng địa bàn theo miền ----
+    shownRegionData.length === 0 || shownRegionData.every(rg => rg.shownGroups.length === 0)
+      ? h("div", { className: "bg-white rounded-lg border border-slate-200 px-4 py-12 text-center text-slate-400 text-sm" },
+          filteredDiaBan.length === 0 ? 'Chưa có địa bàn nào được khai báo' : 'Không có địa bàn nào khớp bộ lọc')
+      : shownRegionData.filter(rg => rg.shownGroups.length > 0).map(rg => {
+          const rgnOpen = !closedRegions.has(rg.region);
+          const rgnCustCount = rg.shownGroups.length;
+          const rgnRowCount = rg.shownGroups.reduce((s, g) => s + g.rows.length, 0);
+          return h("div", { key: 'rgn:' + rg.region, className: "bg-white rounded-lg border border-slate-200 overflow-hidden mb-3" },
+            h("div", {
+              className: "px-3 py-2.5 flex items-center gap-2 cursor-pointer select-none border-b border-slate-100",
+              onClick: () => setClosedRegions(prev => {
+                const next = new Set(prev);
+                if (next.has(rg.region)) next.delete(rg.region); else next.add(rg.region);
+                return next;
+              })
+            },
+              rgnOpen ? h(ChevronDown, { size: 16, className: "text-emerald-600 shrink-0" })
+                      : h(ChevronRight, { size: 16, className: "text-emerald-600 shrink-0" }),
+              h("span", { className: "text-[14px] font-bold text-slate-800" }, rg.region),
+              h("span", { className: "text-[11px] text-slate-400 ml-1" },
+                fmtInt(rgnRowCount), " địa bàn · ", fmtInt(rgnCustCount), " khách hàng")),
+            rgnOpen && h("div", { className: "overflow-auto scroll-shadow" },
+              h("table", { className: "w-full" },
+                h("thead", { className: "bg-slate-50 sticky top-0 z-10" },
+                  h("tr", null,
+                    h("th", { className: th }, "Khách hàng / Ngành hàng"),
+                    h("th", { className: th }, "PS phụ trách"),
+                    h("th", { className: th }, "Đối chiếu kế hoạch"),
+                    canEdit && h("th", { className: th }))),
+                h("tbody", null, rg.shownGroups.map(g => {
+                  const gOpen = !closed.has(g.key);
+                  const custKey = prefill && dbCustKey(prefill.custId, prefill.cust);
+                  const focused = prefill && prefill.purpose === 'chuyen' &&
+                    (g.key === custKey || g.key.startsWith(custKey + '||'));
+                  return h(React.Fragment, { key: 'g:' + g.key },
+                    h("tr", {
+                      ref: focused ? highlightRef : null,
+                      className: "bg-slate-50/80 border-t border-slate-200" +
+                        (focused ? " ring-2 ring-amber-400" : "")
+                    },
+                      h("td", { className: "px-2 py-1.5", colSpan: COLS },
+                        h("button", {
+                          onClick: () => toggleGroup(g.key),
+                          className: "flex items-center gap-2 text-left w-full"
+                        }, gOpen ? h(ChevronDown, { size: 14, className: "text-emerald-600 shrink-0" })
+                          : h(ChevronRight, { size: 14, className: "text-emerald-600 shrink-0" }),
+                          h("span", { className: "font-mono text-[11px] text-slate-400 shrink-0" }, g.custId || '—'),
+                          h("span", { className: "text-[13px] font-semibold text-slate-800 truncate" }, custLabel(g.custId, g.cust)),
+                          h("span", { className: "text-[11px] text-slate-400 shrink-0" }, g.rows.length, " ngành hàng")))),
+                    gOpen && g.rows.map(d => {
+                      const dirty = !!edits[d.id];
+                      const [cls, text] = BADGE[d.status];
+                      return h("tr", { key: d.id, className: dirty ? "bg-amber-50/60" : "hover:bg-slate-50/60" },
+                        h("td", { className: td + " text-slate-700 pl-8" }, d.grp),
+                        h("td", { className: td, style: { minWidth: 150 } },
+                          canEdit
+                            ? h("select", {
+                                value: d.ps,
+                                onChange: e => setEdit(byId.get(d.id) || d, e.target.value),
+                                title: "Sửa PS — sau khi Lưu, kế hoạch cả năm tự chuyển sang PS mới.",
+                                className: cellSel + (dirty ? " border-amber-400" : " border-slate-200")
+                              }, psOptions.map(p => h("option", { key: p, value: p }, p)),
+                                !psOptions.includes(d.ps) && h("option", { value: d.ps }, d.ps))
+                            : d.ps,
+                          psLa(d.ps) && h("span", {
+                            title: "PS này không có trong danh mục PS (dm_ps) — hoá đơn của họ được dịch tên theo dm_ps nên sẽ KHÔNG khớp dòng kế hoạch, số rơi hết sang \"ngoài kế hoạch\". Sửa tên trong dm_ps hoặc chọn đúng PS trong danh mục.",
+                            className: "ml-1 px-1 rounded bg-red-100 text-red-700 text-[10px] font-bold cursor-help"
+                          }, "!")),
+                        h("td", { className: td },
+                          h("span", { className: `inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}` }, text),
+                          d.status === 'diff' && h("span", { className: "text-[11px] text-slate-500 ml-1.5" },
+                            "kế hoạch: ", d.planPs.join(', '),
+                            h("span", { className: "opacity-70" }, " · nhiều PS chồng lấn → không tự apply"))),
+                        canEdit && h("td", { className: td + " whitespace-nowrap text-right" },
+                          h("button", {
+                            onClick: () => doDelete(d),
+                            disabled: busy,
+                            className: "p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                          }, h(Trash2, { size: 13 }))));
+                    }));
+                })))));
+        }),
+    list.length > shownRows && h("div", {
+      className: "px-3 py-2 text-[12px] text-slate-500 bg-white rounded-lg border border-slate-200 mt-1 text-center"
+    }, "Đang hiện ", fmtInt(shownRows), "/", fmtInt(list.length), " dòng (", fmtInt(allShownGroupKeys.length), "/",
+      fmtInt(groups.length), " khách hàng) — dùng bộ lọc hoặc ô tìm kiếm để thu hẹp."));
 }
 
 // ============ MAIN APP ============
@@ -4224,8 +4372,10 @@ function App() {
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
   // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
   const [exportFn, setExportFn] = useState(null);
+  const [diaBanToolbar, setDiaBanToolbar] = useState(null);
   const [addCustOpen, setAddCustOpen] = useState(false); // popup Thêm khách hàng
   const setExporter = useCallback(fn => setExportFn(() => fn), []);
+  const setDiaBanTb = useCallback(fn => setDiaBanToolbar(() => fn), []);
   MASK_MONEY = maskMoney;
   // Map mã KH → customer_alias (tên hiển thị rút gọn, biên tập tay trong dm_khach_hang).
   // Gán vào ALIAS_MAP toàn cục để custLabel() dùng ở mọi nơi hiển thị tên KH.
@@ -5778,7 +5928,7 @@ function App() {
     onClick: exportFn,
     title: "Xuất Excel giữ nguyên cấu trúc gập/mở",
     className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
-  }, /*#__PURE__*/React.createElement(Download, { size: 14 }), "Xuất Excel"), tab !== 'diaban' && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Download, { size: 14 }), "Xuất Excel"), tab === 'diaban' && diaBanToolbar && diaBanToolbar(), tab !== 'diaban' && /*#__PURE__*/React.createElement("div", {
     className: "relative"
   }, /*#__PURE__*/React.createElement(Search, {
     size: 14,
@@ -5817,11 +5967,12 @@ function App() {
     custFilter: custFilter,
     onSave: saveDiaBan,
     onDelete: deleteDiaBan,
-    // onApply/onMove đã bỏ (save = auto apply cả năm từ 2026-08-07)
     onDopChongLan: dopChongLan,
     busy: diaBanBusy,
     prefill: diaBanPrefill,
-    onPrefillDone: () => setDiaBanPrefill(null)
+    onPrefillDone: () => setDiaBanPrefill(null),
+    viewBu: viewBu,
+    onToolbar: setDiaBanTb
   }) : tab === 'summary' ? /*#__PURE__*/React.createElement(SummaryView, {
     rows: summaryRows,
     psFilter: psFilter,
@@ -5838,9 +5989,7 @@ function App() {
     groupFilter: groupFilter,
     search: search,
     onExport: setExporter
-  }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "px-6 pb-8"
-  }, canEdit && pendingCusts.map(c => /*#__PURE__*/React.createElement(NewCustomerCard, {
+  }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DetailScrollBox, null, canEdit && pendingCusts.map(c => /*#__PURE__*/React.createElement(NewCustomerCard, {
     key: 'new:' + (c.custId || c.cust),
     cust: c,
     catIdx: catIdx,
@@ -5886,7 +6035,7 @@ function App() {
           /*#__PURE__*/React.createElement("button", {
             type: "button",
             onClick: toggleTeam,
-            className: "w-full flex items-center gap-2.5 px-4 py-2.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            className: "w-full flex items-center gap-2.5 px-4 py-2.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors sticky-team"
           },
             /*#__PURE__*/React.createElement("div", {
               className: "w-3 h-3 rounded-full shrink-0",
@@ -5904,7 +6053,7 @@ function App() {
               className: "text-slate-400"
             })
           ),
-          isOpen && /*#__PURE__*/React.createElement("div", { className: "mt-1.5 ml-2 border-l-2 border-slate-100 pl-3" },
+          isOpen && /*#__PURE__*/React.createElement("div", { className: "mt-1.5" },
             renderCards(custs)
           )
         );
