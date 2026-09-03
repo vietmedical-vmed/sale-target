@@ -152,6 +152,9 @@ const Trash2 = Ic(['M3 6h18', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 
 const Plus = Ic(['M5 12h14', 'M12 5v14']);
 const XIcon = Ic(['M18 6 6 18', 'm6 6 12 12']);
 const UserPlus = Ic(['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M19 8v6', 'M22 11h-6']);
+const Clock = Ic(['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z', 'M12 6v6l4 2']);
+const Filter = Ic(['M22 3H2l8 9.46V19l4 2v-8.54L22 3z']);
+const Settings = Ic(['M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z']);
 
 // ============ CONSTANTS ============
 const MONTHS = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03'];
@@ -4347,7 +4350,7 @@ function App() {
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban'
+  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'audit'
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   // Bộ lọc đa lựa chọn: mảng rỗng = tất cả (không lọc).
@@ -5773,6 +5776,10 @@ function App() {
     active: tab === 'diaban',
     onClick: () => setTab('diaban'),
     label: "Cấu hình địa bàn"
+  }), (auth.role === 'admin' || auth.role === 'manager') && /*#__PURE__*/React.createElement(TabBtn, {
+    active: tab === 'audit',
+    onClick: () => setTab('audit'),
+    label: "Lịch sử cập nhật"
   })), error && /*#__PURE__*/React.createElement("div", {
     className: "px-6 py-2 bg-red-50 border-t border-red-200 text-[12px] text-red-800 flex items-center gap-2"
   }, /*#__PURE__*/React.createElement(AlertCircle, {
@@ -5947,7 +5954,10 @@ function App() {
     onAdd: addCustomer,
     onAddProduct: addProduct,
     prefill: addProductPrefill
-  }), tab === 'diaban' ? /*#__PURE__*/React.createElement(DiaBanView, {
+  }), tab === 'audit' ? /*#__PURE__*/React.createElement(AuditLogView, {
+    auth: auth,
+    viewBu: viewBu
+  }) : tab === 'diaban' ? /*#__PURE__*/React.createElement(DiaBanView, {
     rows: teamRows,
     diaBan: diaBan,
     customers: custSource,
@@ -6057,6 +6067,347 @@ function App() {
     return renderCards(tree);
   })())));
 }
+// ============ AUDIT LOG VIEW ============
+const ACTION_LABELS = {
+  updateCells: 'Cập nhật ô',
+  addProduct: 'Thêm sản phẩm',
+  deleteProduct: 'Xóa sản phẩm',
+  deleteCustomer: 'Xóa khách hàng',
+  saveDiaBan: 'Lưu địa bàn',
+  deleteDiaBan: 'Xóa địa bàn',
+  setAppConfig: 'Đổi cấu hình',
+};
+const ACTION_COLORS = {
+  updateCells: 'bg-blue-100 text-blue-700',
+  addProduct: 'bg-emerald-100 text-emerald-700',
+  deleteProduct: 'bg-red-100 text-red-700',
+  deleteCustomer: 'bg-red-100 text-red-700',
+  saveDiaBan: 'bg-violet-100 text-violet-700',
+  deleteDiaBan: 'bg-red-100 text-red-700',
+  setAppConfig: 'bg-amber-100 text-amber-700',
+};
+
+function AuditLogView({ auth, viewBu }) {
+  const h = React.createElement;
+  const { useState, useEffect, useCallback, useMemo } = React;
+  const [logs, setLogs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [filterUser, setFilterUser] = useState('');
+  const [filterAction, setFilterAction] = useState('');
+  const [filterBu, setFilterBu] = useState('');
+  const [config, setConfig] = useState({});
+  const [deadlineDay, setDeadlineDay] = useState(5);
+  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [deadlineInput, setDeadlineInput] = useState('5');
+  const [subTab, setSubTab] = useState('log');
+  const LIMIT = 50;
+  const isAdmin = auth.role === 'admin';
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const r = await api('getAppConfig');
+      if (r.config) {
+        setConfig(r.config);
+        setDeadlineDay(Number(r.config.deadline_day) || 5);
+        setDeadlineInput(String(Number(r.config.deadline_day) || 5));
+      }
+    } catch (_) {}
+  }, []);
+
+  const loadLogs = useCallback(async (p) => {
+    setLoading(true);
+    try {
+      const payload = { page: p, limit: LIMIT };
+      if (filterUser) payload.username = filterUser;
+      if (filterAction) payload.action = filterAction;
+      if (filterBu) payload.bu = filterBu;
+      const r = await api('getAuditLog', payload);
+      setLogs(r.logs || []);
+      setTotal(r.total || 0);
+    } catch (e) {
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterUser, filterAction, filterBu]);
+
+  useEffect(() => { loadConfig(); }, []);
+  useEffect(() => { setPage(1); loadLogs(1); }, [filterUser, filterAction, filterBu]);
+  useEffect(() => { loadLogs(page); }, [page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+
+  const isLate = (createdAt) => {
+    const d = new Date(createdAt);
+    return d.getDate() > deadlineDay;
+  };
+
+  const deadlineTag = (createdAt) => {
+    const late = isLate(createdAt);
+    return h('span', {
+      className: `inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${late ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`
+    }, late ? 'Trễ hạn' : 'Đúng hạn');
+  };
+
+  const saveDeadline = async () => {
+    const v = Math.max(1, Math.min(28, Number(deadlineInput) || 5));
+    try {
+      await api('setAppConfig', { key: 'deadline_day', value: v });
+      setDeadlineDay(v);
+      setDeadlineInput(String(v));
+      setEditingDeadline(false);
+      loadLogs(page);
+    } catch (_) {}
+  };
+
+  const fmtTime = (iso) => {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const uniqueUsers = useMemo(() => {
+    const s = new Set(logs.map(l => l.username));
+    return [...s].sort();
+  }, [logs]);
+
+  const exportExcel = () => {
+    const XLSX = window.XLSX;
+    if (!XLSX) { alert('Chưa tải thư viện Excel, tải lại trang rồi thử.'); return; }
+    const header = ['Thời gian', 'Username', 'Họ tên', 'Vai trò', 'Team', 'Thao tác', 'Số dòng', 'Deadline'];
+    const rows = logs.map(l => [
+      fmtTime(l.created_at), l.username, l.ho_ten || '', l.role || '',
+      l.bu || '', ACTION_LABELS[l.action] || l.action, l.row_count,
+      isLate(l.created_at) ? 'Trễ hạn' : 'Đúng hạn'
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    ws['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 8 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Lịch sử');
+    XLSX.writeFile(wb, 'lich_su_cap_nhat.xlsx');
+  };
+
+  // ---- Dashboard tổng quan deadline ----
+  const dashboardData = useMemo(() => {
+    const byUser = new Map();
+    for (const l of logs) {
+      if (!byUser.has(l.username)) {
+        byUser.set(l.username, { username: l.username, ho_ten: l.ho_ten || l.username, role: l.role, bu: l.bu, count: 0, lastAt: l.created_at, onTime: 0, late: 0 });
+      }
+      const u = byUser.get(l.username);
+      u.count++;
+      if (l.created_at > u.lastAt) u.lastAt = l.created_at;
+      if (isLate(l.created_at)) u.late++; else u.onTime++;
+    }
+    return [...byUser.values()].sort((a, b) => b.count - a.count);
+  }, [logs, deadlineDay]);
+
+  // ---- Sub-tab buttons ----
+  const subTabBtn = (key, label, icon) => h('button', {
+    onClick: () => setSubTab(key),
+    className: `flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${subTab === key ? 'bg-emerald-100 text-emerald-800' : 'bg-white text-slate-600 hover:bg-slate-100'}`
+  }, icon && h(icon, { size: 13 }), label);
+
+  return h('div', { className: 'p-6 space-y-4' },
+    // Header
+    h('div', { className: 'flex items-center justify-between' },
+      h('div', { className: 'flex items-center gap-3' },
+        h(Clock, { size: 20, className: 'text-emerald-600' }),
+        h('h2', { className: 'text-lg font-bold text-slate-800' }, 'Lịch sử cập nhật'),
+        h('span', { className: 'text-[12px] text-slate-400' }, total + ' bản ghi')
+      ),
+      h('div', { className: 'flex items-center gap-2' },
+        // Deadline config
+        h('div', { className: 'flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 rounded-md border border-slate-200' },
+          h(Settings, { size: 13, className: 'text-slate-400' }),
+          h('span', { className: 'text-[12px] text-slate-600' }, 'Deadline: ngày '),
+          editingDeadline
+            ? h(React.Fragment, null,
+                h('input', {
+                  type: 'number', min: 1, max: 28, value: deadlineInput,
+                  onChange: e => setDeadlineInput(e.target.value),
+                  className: 'w-10 px-1 py-0.5 text-[12px] border border-emerald-300 rounded text-center outline-none'
+                }),
+                h('button', { onClick: saveDeadline, className: 'ml-1 text-emerald-600 hover:text-emerald-800 text-[12px] font-semibold' }, 'Lưu'),
+                h('button', { onClick: () => { setEditingDeadline(false); setDeadlineInput(String(deadlineDay)); }, className: 'ml-1 text-slate-400 hover:text-slate-600 text-[12px]' }, 'Hủy')
+              )
+            : h(React.Fragment, null,
+                h('span', { className: 'font-bold text-slate-800 text-[13px]' }, deadlineDay),
+                isAdmin && h('button', { onClick: () => setEditingDeadline(true), className: 'ml-1 text-emerald-500 hover:text-emerald-700 text-[11px] underline' }, 'Sửa')
+              )
+        ),
+        h('button', { onClick: exportExcel, className: 'flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md' },
+          h(Download, { size: 13 }), 'Xuất Excel')
+      )
+    ),
+    // Sub-tabs
+    h('div', { className: 'flex items-center gap-2' },
+      subTabBtn('log', 'Chi tiết log', Clock),
+      subTabBtn('dashboard', 'Tổng quan deadline', User)
+    ),
+    // Content
+    subTab === 'dashboard' ? h(DeadlineDashboard, { data: dashboardData, deadlineDay, fmtTime }) :
+    h(React.Fragment, null,
+      // Filters
+      h('div', { className: 'flex items-center gap-2 flex-wrap' },
+        h(Filter, { size: 13, className: 'text-slate-400' }),
+        h('select', {
+          value: filterUser, onChange: e => setFilterUser(e.target.value),
+          className: 'px-2 py-1.5 text-[12px] border border-slate-200 rounded-md outline-none'
+        }, h('option', { value: '' }, 'Tất cả user'), uniqueUsers.map(u => h('option', { key: u, value: u }, u))),
+        h('select', {
+          value: filterAction, onChange: e => setFilterAction(e.target.value),
+          className: 'px-2 py-1.5 text-[12px] border border-slate-200 rounded-md outline-none'
+        }, h('option', { value: '' }, 'Tất cả thao tác'), Object.entries(ACTION_LABELS).map(([k, v]) => h('option', { key: k, value: k }, v))),
+        h('select', {
+          value: filterBu, onChange: e => setFilterBu(e.target.value),
+          className: 'px-2 py-1.5 text-[12px] border border-slate-200 rounded-md outline-none'
+        }, h('option', { value: '' }, 'Tất cả team'), Object.entries(TEAMS).map(([k, t]) => h('option', { key: k, value: k }, t.label))),
+        h('button', { onClick: () => loadLogs(page), className: 'px-2 py-1.5 text-[12px] text-emerald-600 hover:text-emerald-800' },
+          h(RefreshCw, { size: 13 }))
+      ),
+      // Table
+      h('div', { className: 'bg-white rounded-lg border border-slate-200 overflow-hidden' },
+        h('div', { className: 'overflow-x-auto' },
+          h('table', { className: 'w-full text-[12px]' },
+            h('thead', null,
+              h('tr', { className: 'bg-slate-50 border-b border-slate-200' },
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Thời gian'),
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Người dùng'),
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Vai trò'),
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Team'),
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Thao tác'),
+                h('th', { className: 'px-3 py-2 text-right font-semibold text-slate-600' }, 'Số dòng'),
+                h('th', { className: 'px-3 py-2 text-center font-semibold text-slate-600' }, 'Deadline'),
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Chi tiết')
+              )
+            ),
+            h('tbody', null,
+              loading ? h('tr', null, h('td', { colSpan: 8, className: 'px-3 py-8 text-center text-slate-400' },
+                h(Loader2, { size: 16, className: 'inline animate-spin mr-2' }), 'Đang tải...'))
+              : logs.length === 0 ? h('tr', null, h('td', { colSpan: 8, className: 'px-3 py-8 text-center text-slate-400' }, 'Chưa có bản ghi nào'))
+              : logs.map(l => h('tr', { key: l.id, className: 'border-b border-slate-100 hover:bg-slate-50/50' },
+                  h('td', { className: 'px-3 py-2 text-slate-700 whitespace-nowrap' }, fmtTime(l.created_at)),
+                  h('td', { className: 'px-3 py-2' },
+                    h('div', { className: 'font-medium text-slate-800' }, l.ho_ten || l.username),
+                    l.ho_ten && h('div', { className: 'text-[10px] text-slate-400' }, l.username)
+                  ),
+                  h('td', { className: 'px-3 py-2 text-slate-600' }, ROLE_LABELS[l.role] || l.role),
+                  h('td', { className: 'px-3 py-2 text-slate-600' }, (TEAMS[l.bu] && TEAMS[l.bu].label) || l.bu || ''),
+                  h('td', { className: 'px-3 py-2' },
+                    h('span', { className: `inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${ACTION_COLORS[l.action] || 'bg-slate-100 text-slate-600'}` },
+                      ACTION_LABELS[l.action] || l.action)
+                  ),
+                  h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' }, l.row_count),
+                  h('td', { className: 'px-3 py-2 text-center' }, deadlineTag(l.created_at)),
+                  h('td', { className: 'px-3 py-2 text-slate-500 max-w-[200px] truncate' },
+                    l.details ? (() => {
+                      const d = l.details;
+                      if (d.columns) return 'Cột: ' + d.columns.join(', ');
+                      if (d.ps) return d.ps + ' / ' + (d.cust || '');
+                      if (d.key) return d.key + ' = ' + JSON.stringify(d.value);
+                      return '';
+                    })() : ''
+                  )
+                ))
+            )
+          )
+        )
+      ),
+      // Pagination
+      totalPages > 1 && h('div', { className: 'flex items-center justify-between pt-2' },
+        h('span', { className: 'text-[12px] text-slate-500' },
+          'Trang ', page, ' / ', totalPages, ' (', total, ' bản ghi)'),
+        h('div', { className: 'flex items-center gap-1' },
+          h('button', {
+            disabled: page <= 1, onClick: () => setPage(p => Math.max(1, p - 1)),
+            className: 'px-2.5 py-1 text-[12px] rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50'
+          }, 'Trước'),
+          h('button', {
+            disabled: page >= totalPages, onClick: () => setPage(p => Math.min(totalPages, p + 1)),
+            className: 'px-2.5 py-1 text-[12px] rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50'
+          }, 'Sau')
+        )
+      )
+    )
+  );
+}
+
+function DeadlineDashboard({ data, deadlineDay, fmtTime }) {
+  const h = React.createElement;
+  if (data.length === 0) return h('div', { className: 'bg-white rounded-lg border border-slate-200 px-4 py-12 text-center text-slate-400 text-[13px]' }, 'Chưa có dữ liệu');
+  const onTimeCount = data.filter(u => u.late === 0 && u.count > 0).length;
+  const lateCount = data.filter(u => u.late > 0).length;
+  return h('div', { className: 'space-y-4' },
+    // Summary cards
+    h('div', { className: 'grid grid-cols-3 gap-3' },
+      h('div', { className: 'bg-white rounded-lg border border-slate-200 p-4' },
+        h('div', { className: 'text-[11px] uppercase tracking-wide text-slate-400 font-semibold' }, 'Tổng người dùng'),
+        h('div', { className: 'text-2xl font-bold text-slate-800 mt-1' }, data.length)
+      ),
+      h('div', { className: 'bg-emerald-50 rounded-lg border border-emerald-200 p-4' },
+        h('div', { className: 'text-[11px] uppercase tracking-wide text-emerald-600 font-semibold' }, 'Đúng hạn'),
+        h('div', { className: 'text-2xl font-bold text-emerald-700 mt-1' }, onTimeCount)
+      ),
+      h('div', { className: 'bg-red-50 rounded-lg border border-red-200 p-4' },
+        h('div', { className: 'text-[11px] uppercase tracking-wide text-red-600 font-semibold' }, 'Có trễ hạn'),
+        h('div', { className: 'text-2xl font-bold text-red-700 mt-1' }, lateCount)
+      )
+    ),
+    // User table
+    h('div', { className: 'bg-white rounded-lg border border-slate-200 overflow-hidden' },
+      h('table', { className: 'w-full text-[12px]' },
+        h('thead', null,
+          h('tr', { className: 'bg-slate-50 border-b border-slate-200' },
+            h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Người dùng'),
+            h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Vai trò'),
+            h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Team'),
+            h('th', { className: 'px-3 py-2 text-right font-semibold text-slate-600' }, 'Tổng lượt'),
+            h('th', { className: 'px-3 py-2 text-right font-semibold text-emerald-600' }, 'Đúng hạn'),
+            h('th', { className: 'px-3 py-2 text-right font-semibold text-red-600' }, 'Trễ hạn'),
+            h('th', { className: 'px-3 py-2 text-center font-semibold text-slate-600' }, 'Tỷ lệ đúng hạn'),
+            h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Cập nhật cuối'),
+            h('th', { className: 'px-3 py-2 text-center font-semibold text-slate-600' }, 'Trạng thái')
+          )
+        ),
+        h('tbody', null,
+          data.map(u => {
+            const pct = u.count > 0 ? Math.round(u.onTime / u.count * 100) : 0;
+            const lastLate = new Date(u.lastAt).getDate() > deadlineDay;
+            return h('tr', { key: u.username, className: 'border-b border-slate-100 hover:bg-slate-50/50' },
+              h('td', { className: 'px-3 py-2' },
+                h('div', { className: 'font-medium text-slate-800' }, u.ho_ten),
+                h('div', { className: 'text-[10px] text-slate-400' }, u.username)
+              ),
+              h('td', { className: 'px-3 py-2 text-slate-600' }, ROLE_LABELS[u.role] || u.role),
+              h('td', { className: 'px-3 py-2 text-slate-600' }, (TEAMS[u.bu] && TEAMS[u.bu].label) || u.bu || ''),
+              h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium' }, u.count),
+              h('td', { className: 'px-3 py-2 text-right tabular-nums text-emerald-700' }, u.onTime),
+              h('td', { className: 'px-3 py-2 text-right tabular-nums text-red-600' }, u.late),
+              h('td', { className: 'px-3 py-2 text-center' },
+                h('div', { className: 'flex items-center gap-2 justify-center' },
+                  h('div', { className: 'w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden' },
+                    h('div', { className: `h-full rounded-full ${pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`, style: { width: pct + '%' } })
+                  ),
+                  h('span', { className: `text-[11px] font-semibold ${pct >= 80 ? 'text-emerald-700' : pct >= 50 ? 'text-amber-600' : 'text-red-600'}` }, pct + '%')
+                )
+              ),
+              h('td', { className: 'px-3 py-2 text-slate-600 whitespace-nowrap' }, fmtTime(u.lastAt)),
+              h('td', { className: 'px-3 py-2 text-center' },
+                h('span', {
+                  className: `inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${lastLate ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`
+                }, lastLate ? 'Lần cuối trễ' : 'Đúng hạn')
+              )
+            );
+          })
+        )
+      )
+    )
+  );
+}
+
 function TabBtn({
   active,
   onClick,

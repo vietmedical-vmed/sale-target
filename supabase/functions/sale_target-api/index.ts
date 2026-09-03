@@ -58,6 +58,7 @@ async function verifyToken(token, secret) {
   // Vẫn nhận token cũ {u,r,s,b} để không gãy trong lúc chuyển đổi.
   return {
     u: payload.username ?? payload.u,
+    n: payload.ho_ten ?? payload.n ?? payload.username ?? payload.u,
     r: payload.role ?? payload.r,
     s: payload.scope ?? payload.s,
     b: payload.bu ?? payload.b,
@@ -156,6 +157,21 @@ async function getRev(db) {
     .select("updated_at").order("updated_at", { ascending: false }).limit(1);
   if (data && data[0] && data[0].updated_at) return Date.parse(data[0].updated_at);
   return 0;
+}
+
+async function writeAuditLog(db, sess, action, rowCount, details, thangKeHoach) {
+  try {
+    await db.schema("shared").from("audit_log").insert({
+      username: sess.u,
+      ho_ten: sess.n || sess.u,
+      role: sess.r,
+      bu: sess.b,
+      action,
+      row_count: rowCount,
+      details: details || null,
+      thang_ke_hoach: thangKeHoach || null,
+    });
+  } catch (_) { /* không để lỗi log làm gãy action chính */ }
 }
 
 // Suy team (bu) của một PS từ chính dữ liệu kế hoạch của họ.
@@ -539,8 +555,6 @@ Deno.serve(async (req) => {
       }
       if (byRow.size > 0) {
         const p_updates = Array.from(byRow, ([id, patch]) => ({ id, patch }));
-        // Phạm vi quyền do RPC kiểm tra: có id nào ngoài phạm vi -> lỗi 42501,
-        // KHÔNG ghi dòng nào (client vẫn giữ nguyên draft để thử lại).
         const { error } = await db.rpc("update_sale_target_cells", {
           p_updates, ...scopeParams(sess),
         });
@@ -550,18 +564,23 @@ Deno.serve(async (req) => {
           }
           throw new Error(error.message);
         }
+        const cols = new Set();
+        for (const u of updates) if (EDITABLE.has(u.key) || ADMIN_EDITABLE.has(u.key)) cols.add(u.key);
+        await writeAuditLog(db, sess, "updateCells", byRow.size, {
+          columns: [...cols],
+          ids: [...byRow.keys()].slice(0, 50),
+        });
       }
       return json({ ok: true, rev: await getRev(db) });
     }
 
     if (action === "deleteProduct") {
-      // Xóa toàn bộ dòng của 1 sản phẩm (mọi tháng / mọi mức giá) theo danh sách id.
-      // CHỈ admin. Front-end gửi payload.rows = [id, ...].
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (payload.rows || []).map(Number).filter((n) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
       const { error } = await db.schema("shared").from("sale_target").delete().in("id", ids);
       if (error) throw new Error(error.message);
+      await writeAuditLog(db, sess, "deleteProduct", ids.length, { ids: ids.slice(0, 50) });
       return json({ ok: true, rev: await getRev(db) });
     }
 
@@ -578,6 +597,7 @@ Deno.serve(async (req) => {
         const { error } = await db.schema("shared").from("sale_target").delete().in("id", ids.slice(i, i + CHUNK));
         if (error) throw new Error(error.message);
       }
+      await writeAuditLog(db, sess, "deleteCustomer", ids.length, { ids: ids.slice(0, 50) });
       return json({ ok: true, deleted: ids.length, rev: await getRev(db) });
     }
 
@@ -646,6 +666,9 @@ Deno.serve(async (req) => {
       const { data: ins, error } = await db.schema("shared").from("sale_target").insert(rowsIns).select(cols);
       if (error) throw new Error(error.message);
       const inserted = ins || [];
+      await writeAuditLog(db, sess, "addProduct", inserted.length, {
+        ps: psName, cust: s.cust, grp: s.grp, prod: s.prod, mset: s.mset, bu,
+      });
       return json({
         ok: true,
         rows: inserted.map((r) =>
@@ -741,6 +764,7 @@ Deno.serve(async (req) => {
         p_rows, ...scopeParams(sess),
       });
       if (error) return diaBanErr(error);
+      await writeAuditLog(db, sess, "saveDiaBan", p_rows.length, { count: p_rows.length });
       return json({ ok: true, stats: data });
     }
 
@@ -796,8 +820,7 @@ Deno.serve(async (req) => {
         p_ids: ids, ...scopeParams(sess),
       });
       if (error) return diaBanErr(error);
-      // Xoá khai báo KHÔNG đụng tới dòng kế hoạch đã có (dữ liệu kế hoạch vẫn
-      // thuộc PS cũ) → không cần trả rev.
+      await writeAuditLog(db, sess, "deleteDiaBan", ids.length, { ids: ids.slice(0, 50) });
       return json({ ok: true, stats: data });
     }
 
@@ -809,6 +832,46 @@ Deno.serve(async (req) => {
       const { data, error } = await db.rpc("apply_dia_ban_to_plan", { p_ids: ids });
       if (error) throw new Error(error.message);
       return json({ ok: true, stats: data, rev: await getRev(db) });
+    }
+
+    // ---- LỊCH SỬ CẬP NHẬT & CẤU HÌNH ----
+    if (action === "getAuditLog") {
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
+      const page = Math.max(1, Number(payload.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(payload.limit) || 50));
+      const from = (page - 1) * limit;
+      let q = db.schema("shared").from("audit_log")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, from + limit - 1);
+      if (payload.username) q = q.eq("username", payload.username);
+      if (payload.action) q = q.eq("action", payload.action);
+      if (payload.bu) q = q.eq("bu", payload.bu);
+      if (payload.from) q = q.gte("created_at", payload.from);
+      if (payload.to) q = q.lte("created_at", payload.to);
+      const { data, error, count } = await q;
+      if (error) throw new Error(error.message);
+      return json({ ok: true, logs: data || [], total: count || 0, page, limit });
+    }
+
+    if (action === "getAppConfig") {
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
+      const { data, error } = await db.schema("shared").from("app_config").select("key, value");
+      if (error) throw new Error(error.message);
+      const cfg = {};
+      for (const r of data || []) cfg[r.key] = r.value;
+      return json({ ok: true, config: cfg });
+    }
+
+    if (action === "setAppConfig") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const key = String(payload.key || "").trim();
+      if (!key) return json({ ok: false, error: "missing_key" }, 400);
+      const { error } = await db.schema("shared").from("app_config")
+        .upsert({ key, value: payload.value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+      if (error) throw new Error(error.message);
+      await writeAuditLog(db, sess, "setAppConfig", 1, { key, value: payload.value });
+      return json({ ok: true });
     }
 
     return json({ ok: false, error: "unknown_action" }, 400);
