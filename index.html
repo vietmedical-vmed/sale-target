@@ -5699,6 +5699,63 @@ function App() {
   }, /*#__PURE__*/React.createElement(LogOut, {
     size: 14
   }), " Đăng xuất")))), /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-2 flex items-center gap-2.5 flex-wrap border-t border-slate-100"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] uppercase tracking-wide text-slate-500 font-semibold pl-1"
+  }, "Lọc"), /*#__PURE__*/React.createElement(MultiSelect, {
+    label: "Nhóm SP",
+    options: allGroups.map(g => ({ value: g, label: g })),
+    selected: groupFilter,
+    onChange: setGroupFilter
+  }), regionList.length > 0 && (auth.role === 'admin' || auth.role === 'manager' || auth.role === 'product_manager') && /*#__PURE__*/React.createElement(MultiSelect, {
+    label: "Miền",
+    options: regionList.map(rg => ({ value: rg, label: rg })),
+    selected: regionFilter,
+    onChange: v => {
+      setRegionFilter(v);
+      setPsFilter([]);
+      setCustFilter([]);
+    }
+  }), auth.role !== 'ps' && /*#__PURE__*/React.createElement(MultiSelect, {
+    label: "PS",
+    searchable: true,
+    options: psList.map(p => ({ value: p, label: p })),
+    selected: psFilter,
+    onChange: v => {
+      setPsFilter(v);
+      setCustFilter([]);
+    }
+  }), /*#__PURE__*/React.createElement(MultiSelect, {
+    label: "Khách hàng",
+    searchable: true,
+    options: custList.map(c => ({ value: c.cust, label: c.cust })),
+    selected: custFilter,
+    onChange: setCustFilter
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }), tab === 'detail' && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowBasePlan(v => !v),
+    title: showBasePlan ? 'Ẩn cột SL kế hoạch đầu năm để thu gọn bảng' : 'Hiện lại cột SL kế hoạch đầu năm',
+    className: `flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] rounded-md border ${showBasePlan ? 'border-slate-200 text-slate-700 hover:bg-slate-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`
+  }, showBasePlan ? /*#__PURE__*/React.createElement(EyeOff, { size: 14 }) : /*#__PURE__*/React.createElement(Eye, { size: 14 }), showBasePlan ? 'Ẩn SL đầu năm' : 'Hiện SL đầu năm'), canAddCust && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAddCustOpen(true),
+    title: "Thêm khách hàng mới vào kế hoạch",
+    className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
+  }, /*#__PURE__*/React.createElement(UserPlus, { size: 14 }), "Thêm khách hàng"), exportFn && /*#__PURE__*/React.createElement("button", {
+    onClick: exportFn,
+    title: "Xuất Excel giữ nguyên cấu trúc gập/mở",
+    className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
+  }, /*#__PURE__*/React.createElement(Download, { size: 14 }), "Xuất Excel"), tab === 'diaban' && diaBanToolbar && diaBanToolbar(), tab !== 'diaban' && /*#__PURE__*/React.createElement("div", {
+    className: "relative"
+  }, /*#__PURE__*/React.createElement(Search, {
+    size: 14,
+    className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+  }), /*#__PURE__*/React.createElement("input", {
+    value: search,
+    onChange: e => setSearch(e.target.value),
+    placeholder: "Tìm KH, sản phẩm, bộ vật tư…",
+    className: "pl-8 pr-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-64 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "px-6 flex items-center gap-1 border-t border-slate-100"
   }, /*#__PURE__*/React.createElement(TabBtn, {
     active: tab === 'detail',
@@ -5876,69 +5933,7 @@ function App() {
       onClose: () => setDmpsForm(null),
       busy: psBusy
     }),
-    /*#__PURE__*/React.createElement("div", {
-    // Chỉ dính ở màn chi tiết. 2 màn tổng hợp đã có khung bảng cao vừa màn hình
-    // + header bảng dính sẵn bên trong khung (useFitHeight), thêm thanh dính ở
-    // ngoài sẽ che mất header bảng đó.
-    className: "px-6" + (tab === 'detail' ? ' sticky-filter' : '')
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-lg border border-slate-200 px-3 py-2.5 flex items-center gap-2.5 flex-wrap mb-4"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] uppercase tracking-wide text-slate-500 font-semibold pl-1"
-  }, "Lọc"), /*#__PURE__*/React.createElement(MultiSelect, {
-    label: "Nhóm SP",
-    options: allGroups.map(g => ({ value: g, label: g })),
-    selected: groupFilter,
-    onChange: setGroupFilter
-  }), regionList.length > 0 && (auth.role === 'admin' || auth.role === 'manager' || auth.role === 'product_manager') && /*#__PURE__*/React.createElement(MultiSelect, {
-    label: "Miền",
-    options: regionList.map(rg => ({ value: rg, label: rg })),
-    selected: regionFilter,
-    onChange: v => {
-      setRegionFilter(v);
-      setPsFilter([]);
-      setCustFilter([]);
-    }
-  }), auth.role !== 'ps' && /*#__PURE__*/React.createElement(MultiSelect, {
-    label: "PS",
-    searchable: true,
-    options: psList.map(p => ({ value: p, label: p })),
-    selected: psFilter,
-    onChange: v => {
-      setPsFilter(v);
-      setCustFilter([]);
-    }
-  }), /*#__PURE__*/React.createElement(MultiSelect, {
-    label: "Khách hàng",
-    searchable: true,
-    options: custList.map(c => ({ value: c.cust, label: c.cust })),
-    selected: custFilter,
-    onChange: setCustFilter
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1"
-  }), tab === 'detail' && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowBasePlan(v => !v),
-    title: showBasePlan ? 'Ẩn cột SL kế hoạch đầu năm để thu gọn bảng' : 'Hiện lại cột SL kế hoạch đầu năm',
-    className: `flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] rounded-md border ${showBasePlan ? 'border-slate-200 text-slate-700 hover:bg-slate-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`
-  }, showBasePlan ? /*#__PURE__*/React.createElement(EyeOff, { size: 14 }) : /*#__PURE__*/React.createElement(Eye, { size: 14 }), showBasePlan ? 'Ẩn SL đầu năm' : 'Hiện SL đầu năm'), canAddCust && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setAddCustOpen(true),
-    title: "Thêm khách hàng mới vào kế hoạch",
-    className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
-  }, /*#__PURE__*/React.createElement(UserPlus, { size: 14 }), "Thêm khách hàng"), exportFn && /*#__PURE__*/React.createElement("button", {
-    onClick: exportFn,
-    title: "Xuất Excel giữ nguyên cấu trúc gập/mở",
-    className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
-  }, /*#__PURE__*/React.createElement(Download, { size: 14 }), "Xuất Excel"), tab === 'diaban' && diaBanToolbar && diaBanToolbar(), tab !== 'diaban' && /*#__PURE__*/React.createElement("div", {
-    className: "relative"
-  }, /*#__PURE__*/React.createElement(Search, {
-    size: 14,
-    className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-  }), /*#__PURE__*/React.createElement("input", {
-    value: search,
-    onChange: e => setSearch(e.target.value),
-    placeholder: "Tìm KH, sản phẩm, bộ vật tư…",
-    className: "pl-8 pr-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-64 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-  })))), canAddCust && /*#__PURE__*/React.createElement(AddCustomerModal, {
+    canAddCust && /*#__PURE__*/React.createElement(AddCustomerModal, {
     open: addCustOpen || !!addProductPrefill,
     onClose: () => { closeAddCust(); setAddProductPrefill(null); },
     customers: custSource,
