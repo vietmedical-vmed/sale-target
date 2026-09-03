@@ -6173,17 +6173,47 @@ function AuditLogView({ auth, viewBu }) {
     return [...s].sort();
   }, [logs]);
 
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+  };
+
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const l of logs) {
+      const day = fmtDate(l.created_at);
+      const key = day + '|' + l.username + '|' + l.action;
+      if (!map.has(key)) {
+        map.set(key, {
+          key, day, username: l.username, ho_ten: l.ho_ten, role: l.role, bu: l.bu,
+          action: l.action, row_count: 0, count: 0,
+          first_at: l.created_at, last_at: l.created_at, details: []
+        });
+      }
+      const g = map.get(key);
+      g.row_count += l.row_count || 0;
+      g.count++;
+      if (l.created_at < g.first_at) g.first_at = l.created_at;
+      if (l.created_at > g.last_at) g.last_at = l.created_at;
+      if (l.details) g.details.push(l.details);
+    }
+    return [...map.values()];
+  }, [logs]);
+
   const exportExcel = () => {
     const XLSX = window.XLSX;
     if (!XLSX) { alert('Chưa tải thư viện Excel, tải lại trang rồi thử.'); return; }
-    const header = ['Thời gian', 'Username', 'Họ tên', 'Vai trò', 'Team', 'Thao tác', 'Số dòng', 'Deadline'];
-    const rows = logs.map(l => [
-      fmtTime(l.created_at), l.username, l.ho_ten || '', l.role || '',
-      l.bu || '', ACTION_LABELS[l.action] || l.action, l.row_count,
-      isLate(l.created_at) ? 'Trễ hạn' : 'Đúng hạn'
+    const header = ['Ngày', 'Username', 'Họ tên', 'Vai trò', 'Team', 'Thao tác', 'Số lần', 'Tổng dòng', 'Deadline', 'Khoảng giờ'];
+    const rows = grouped.map(g => [
+      g.day, g.username, g.ho_ten || '', g.role || '',
+      (TEAMS[g.bu] && TEAMS[g.bu].label) || g.bu || '',
+      ACTION_LABELS[g.action] || g.action, g.count, g.row_count,
+      isLate(g.last_at) ? 'Trễ hạn' : 'Đúng hạn',
+      g.count > 1 ? fmtTime(g.first_at).split(' ')[1] + ' – ' + fmtTime(g.last_at).split(' ')[1] : fmtTime(g.last_at).split(' ')[1]
     ]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 8 }, { wch: 10 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Lịch sử');
     XLSX.writeFile(wb, 'lich_su_cap_nhat.xlsx');
@@ -6274,43 +6304,41 @@ function AuditLogView({ auth, viewBu }) {
           h('table', { className: 'w-full text-[12px]' },
             h('thead', null,
               h('tr', { className: 'bg-slate-50 border-b border-slate-200' },
-                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Thời gian'),
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Ngày'),
                 h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Người dùng'),
                 h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Vai trò'),
                 h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Team'),
                 h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Thao tác'),
-                h('th', { className: 'px-3 py-2 text-right font-semibold text-slate-600' }, 'Số dòng'),
+                h('th', { className: 'px-3 py-2 text-right font-semibold text-slate-600' }, 'Số lần'),
+                h('th', { className: 'px-3 py-2 text-right font-semibold text-slate-600' }, 'Tổng dòng'),
                 h('th', { className: 'px-3 py-2 text-center font-semibold text-slate-600' }, 'Deadline'),
-                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Chi tiết')
+                h('th', { className: 'px-3 py-2 text-left font-semibold text-slate-600' }, 'Khoảng giờ')
               )
             ),
             h('tbody', null,
-              loading ? h('tr', null, h('td', { colSpan: 8, className: 'px-3 py-8 text-center text-slate-400' },
+              loading ? h('tr', null, h('td', { colSpan: 9, className: 'px-3 py-8 text-center text-slate-400' },
                 h(Loader2, { size: 16, className: 'inline animate-spin mr-2' }), 'Đang tải...'))
-              : logs.length === 0 ? h('tr', null, h('td', { colSpan: 8, className: 'px-3 py-8 text-center text-slate-400' }, 'Chưa có bản ghi nào'))
-              : logs.map(l => h('tr', { key: l.id, className: 'border-b border-slate-100 hover:bg-slate-50/50' },
-                  h('td', { className: 'px-3 py-2 text-slate-700 whitespace-nowrap' }, fmtTime(l.created_at)),
+              : grouped.length === 0 ? h('tr', null, h('td', { colSpan: 9, className: 'px-3 py-8 text-center text-slate-400' }, 'Chưa có bản ghi nào'))
+              : grouped.map(g => h('tr', { key: g.key, className: 'border-b border-slate-100 hover:bg-slate-50/50' },
+                  h('td', { className: 'px-3 py-2 text-slate-700 whitespace-nowrap' }, g.day),
                   h('td', { className: 'px-3 py-2' },
-                    h('div', { className: 'font-medium text-slate-800' }, l.ho_ten || l.username),
-                    l.ho_ten && h('div', { className: 'text-[10px] text-slate-400' }, l.username)
+                    h('div', { className: 'font-medium text-slate-800' }, g.ho_ten || g.username),
+                    g.ho_ten && h('div', { className: 'text-[10px] text-slate-400' }, g.username)
                   ),
-                  h('td', { className: 'px-3 py-2 text-slate-600' }, ROLE_LABELS[l.role] || l.role),
-                  h('td', { className: 'px-3 py-2 text-slate-600' }, (TEAMS[l.bu] && TEAMS[l.bu].label) || l.bu || ''),
+                  h('td', { className: 'px-3 py-2 text-slate-600' }, ROLE_LABELS[g.role] || g.role),
+                  h('td', { className: 'px-3 py-2 text-slate-600' }, (TEAMS[g.bu] && TEAMS[g.bu].label) || g.bu || ''),
                   h('td', { className: 'px-3 py-2' },
-                    h('span', { className: `inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${ACTION_COLORS[l.action] || 'bg-slate-100 text-slate-600'}` },
-                      ACTION_LABELS[l.action] || l.action)
+                    h('span', { className: `inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${ACTION_COLORS[g.action] || 'bg-slate-100 text-slate-600'}` },
+                      ACTION_LABELS[g.action] || g.action)
                   ),
-                  h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' }, l.row_count),
-                  h('td', { className: 'px-3 py-2 text-center' }, deadlineTag(l.created_at)),
-                  h('td', { className: 'px-3 py-2 text-slate-500 max-w-[200px] truncate' },
-                    l.details ? (() => {
-                      const d = l.details;
-                      if (d.columns) return 'Cột: ' + d.columns.join(', ');
-                      if (d.ps) return d.ps + ' / ' + (d.cust || '');
-                      if (d.key) return d.key + ' = ' + JSON.stringify(d.value);
-                      return '';
-                    })() : ''
-                  )
+                  h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' },
+                    g.count > 1 ? g.count + ' lần' : '1 lần'),
+                  h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' }, g.row_count),
+                  h('td', { className: 'px-3 py-2 text-center' }, deadlineTag(g.last_at)),
+                  h('td', { className: 'px-3 py-2 text-slate-500 whitespace-nowrap' },
+                    g.count > 1
+                      ? fmtTime(g.first_at).split(' ')[1] + ' – ' + fmtTime(g.last_at).split(' ')[1]
+                      : fmtTime(g.last_at).split(' ')[1])
                 ))
             )
           )
