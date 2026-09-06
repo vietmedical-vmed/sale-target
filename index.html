@@ -1418,7 +1418,7 @@ function GroupMonthField({ label, value, pending, locked, onCommit }) {
 function ProductGroupSection({
   groupName,
   ps,
-  note,
+  custId,
   aprRow,
   products,
   pendingKeys,
@@ -1430,23 +1430,7 @@ function ProductGroupSection({
   onToggleBasePlan
 }) {
   const [open, setOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState(note || '');
-  useEffect(() => {
-    setNoteDraft(note || '');
-  }, [note]);
-  const notePending = aprRow != null && pendingKeys.has(`${aprRow}:note`);
-  // Ô giải trình tự cao theo nội dung: hạ height về auto rồi lấy scrollHeight.
-  // Nhờ vậy luôn thấy hết chữ, không phải kéo tay, không sinh thanh cuộn trong ô.
-  // Chạy lại khi đổi nội dung, khi mở nhóm (textarea mới mount) và khi đổi bề
-  // rộng cửa sổ (chữ dàn lại dòng -> số dòng khác).
-  const noteRef = useRef(null);
-  const saveNote = () => {
-    if (aprRow != null && noteDraft !== (note || '')) onCommit([{
-      row: aprRow,
-      key: 'note',
-      value: noteDraft
-    }]);
-  };
+  const [noteModal, setNoteModal] = useState(false);
   // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).
   const groupRows = useMemo(() => products.flatMap(p => p.monthly.flatMap(c => c.rows)), [products]);
   const readGroupField = key => {
@@ -1558,23 +1542,16 @@ function ProductGroupSection({
     locked: !canEdit,
     onCommit: v => commitGroupField('mAdd', v)
   })), /*#__PURE__*/React.createElement("div", {
-    className: "meta-sticky-l px-4 py-2 bg-amber-50/40 border-b border-amber-100 flex items-start gap-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[10.5px] font-semibold text-amber-800 uppercase tracking-wide pt-1.5 flex-shrink-0"
-  }, "Giải trình"), /*#__PURE__*/React.createElement("textarea", {
-    ref: noteRef,
-    value: noteDraft,
-    onChange: e => setNoteDraft(e.target.value),
-    onBlur: saveNote,
-    disabled: !canEdit,
-    placeholder: canEdit ? `Giải trình cho nhóm ${groupName} (lý do điều chỉnh / chênh lệch)…` : "(chỉ xem)",
-    rows: 1,
-    // resize-none + overflow-hidden: chiều cao do JS tính (xem useEffect ở trên),
-    // để người dùng kéo tay nữa thì cứ gõ 1 chữ là bị đặt lại -> gây khó chịu.
-    className: `flex-1 text-[12px] px-2.5 py-1.5 rounded-md border outline-none resize-none overflow-hidden min-h-[32px] ${notePending ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'}`
-  }), notePending && /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-amber-600 pt-2 flex-shrink-0"
-  }, "chưa lưu")), /*#__PURE__*/React.createElement("div", {
+    className: "meta-sticky-l px-4 py-2 bg-amber-50/40 border-b border-amber-100 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md border border-amber-200 text-amber-700 bg-white hover:bg-amber-50",
+    onClick: () => setNoteModal(true)
+  }, /*#__PURE__*/React.createElement("span", { className: "text-[13px]" }, "📝"), "Giải trình")),
+  noteModal && /*#__PURE__*/React.createElement(GiaiTrinhModal, {
+    info: { ps: ps, custId: custId || '', grp: groupName },
+    onClose: () => setNoteModal(false),
+    auth: window.__app_auth
+  }), /*#__PURE__*/React.createElement("div", {
     className: "scroll-shadow"
   }, /*#__PURE__*/React.createElement("table", {
     className: "border-collapse",
@@ -1880,7 +1857,7 @@ function CustomerCard({
     key: g.name + '||' + (g.ps || ''),
     groupName: g.name,
     ps: g.ps,
-    note: g.note,
+    custId: custId,
     aprRow: g.aprRow,
     products: g.products,
     pendingKeys: pendingKeys,
@@ -2578,13 +2555,10 @@ function exportSummaryPS(data) {
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 12 });
   moneyCols.push(c, c + 1, c + 2); c += 3;
-  H1.push('Giải trình'); H2.push('');
-  merges.push({ s: { r: 0, c }, e: { r: 1, c } });
-  cols.push({ wch: 40 }); c += 1;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
-  const push = (level, label, d, note) => {
+  const push = (level, label, d) => {
     const dt = Number(d.dt) || 0, ch = (Number(d.dtUpd) || 0) - dt;
     const khYtdDt = Number(d.khYtdDt) || 0, dtYtd = Number(d.dtYtd) || 0;
     const row = ['   '.repeat(level) + label, Number.isFinite(d.custCount) ? d.custCount : ''];
@@ -2602,7 +2576,6 @@ function exportSummaryPS(data) {
     const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.quotaFYDt || 0) - dtYtd);
     row.push(tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.quotaFYDt || 0), tr(dtYtd), quotaRemain);
     row.push(tr(dt), tr(dtUpd), tr(ch));
-    row.push(note || '');
     aoa.push(row);
     levels.push(level);
   };
@@ -2610,22 +2583,21 @@ function exportSummaryPS(data) {
   const pushCust = (level, c) => {
     const subs = c.subs || [];
     // Nhóm "Ngoài kế hoạch": cột Số KH = số KH thật bên dưới (KH thường vẫn để trống)
-    push(level, c.cust + (c.custId ? ` (${c.custId})` : ''), subs.length ? { ...c, custCount: subs.length } : c, '');
+    push(level, c.cust + (c.custId ? ` (${c.custId})` : ''), subs.length ? { ...c, custCount: subs.length } : c);
     for (const s of subs) pushCust(level + 1, s);
     for (const gp of c.grps) {
-      // Giải trình đi theo NHÓM SP, không phải theo khách hàng.
-      push(level + 1, gp.grp, gp, gp.note);
-      for (const pp of gp.prods) push(level + 2, (pp.mset ? pp.mset + ' · ' : '') + pp.prod, pp, '');
+      push(level + 1, gp.grp, gp);
+      for (const pp of gp.prods) push(level + 2, (pp.mset ? pp.mset + ' · ' : '') + pp.prod, pp);
     }
   };
   for (const reg of data.regions) {
-    push(0, reg.region, reg, '');
+    push(0, reg.region, reg);
     for (const ps of reg.psList) {
-      push(1, ps.ps, ps, '');
+      push(1, ps.ps, ps);
       for (const c of ps.custs) pushCust(2, c);
     }
   }
-  push(0, 'TỔNG CỘNG', data.grand, '');
+  push(0, 'TỔNG CỘNG', data.grand);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges'] = merges;
   ws['!cols'] = cols;
@@ -2938,15 +2910,11 @@ function SummaryView({
       const gKey = r.grp || '(Không rõ nhóm)';
       if (!host.grpMap.has(gKey)) host.grpMap.set(gKey, {
         grp: gKey,
-        note: '',
         dt: 0, dtYtd: 0, dtUpd: 0, quotaFY: 0, quotaFYDt: 0, q14Dt: 0, qUpcomingDt: 0, ytd: 0, khLeft: 0, khLeftDt: 0,
         moKhDt: MONTHS.map(() => 0), moActDt: MONTHS.map(() => 0), khYtdDt: 0,
         prodMap: new Map()
       });
       const gNode = host.grpMap.get(gKey);
-      // Giải trình tính cho NHÓM SP (giống màn chi tiết), không phải cho cả
-      // khách hàng: một KH có thể có nhiều nhóm SP, mỗi nhóm một giải trình.
-      if (r.mo === NOTE_MONTH && r.note) gNode.note = r.note;
       bump(gNode);
       // --- Cấp Sản phẩm (trong 1 nhóm, phân biệt theo bộ vật tư + sản phẩm) ---
       const pKey = `${r.mset}||${r.prod}`;
@@ -3371,13 +3339,11 @@ function SummaryGroupRow({
     d: g,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-left text-[11.5px] text-slate-600 align-top border-b border-slate-100 cursor-pointer hover:bg-amber-50/60 group/note",
+    className: "px-4 py-1.5 text-center border-b border-slate-100"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded border border-amber-200 text-amber-700 bg-white hover:bg-amber-50",
     onClick: e => { e.stopPropagation(); _openGiaiTrinh && _openGiaiTrinh({ ps: g._ps, custId: g._custId, grp: g.grp }); }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "whitespace-pre-wrap break-words"
-  }, g.note || /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-300 group-hover/note:text-amber-400"
-  }, "+ Giải trình")))), open && g.prods.map((p, i) => /*#__PURE__*/React.createElement("tr", {
+  }, "📝 Giải trình"))), open && g.prods.map((p, i) => /*#__PURE__*/React.createElement("tr", {
     key: p.mset + '||' + p.prod + '||' + i,
     className: "hover:bg-slate-50/40 border-b border-slate-100"
   }, /*#__PURE__*/React.createElement("td", {
@@ -4551,6 +4517,7 @@ function App() {
   // loadScope = phạm vi gọi API: 'test' khi xem TEST, '' khi xem team thật hoặc tất cả.
   // Chuyển giữa các team thật (CHCS/CTTM/THNK/Tất cả) = instant (client-side), không reload.
   const loadScope = viewBu === 'test' ? 'test' : '';
+  useEffect(() => { window.__app_auth = auth; }, [auth]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [rows, setRows] = useState([]);
@@ -5509,16 +5476,14 @@ function App() {
       if (!c.gMap.has(gKey)) c.gMap.set(gKey, {
         name: grpName,
         ps: r.ps,
-        note: '',
         aprRow: null,
         pMap: new Map()
       });
       const g = c.gMap.get(gKey);
-      if (!g.ps && r.ps) g.ps = r.ps; // PS gắn theo nhóm SP
+      if (!g.ps && r.ps) g.ps = r.ps;
       if (r.mo === NOTE_MONTH) {
         if (g.aprRow == null) g.aprRow = r._row;
-        if (r.note) g.note = r.note;
-      } // giải trình theo nhóm SP
+      }
       // key product by (mset, prod) so same product name under different bộ vật tư stays separate
       const msKey = r.mset || NO_MSET;
       const pKey = msKey + '||' + (r.prod || '—');
@@ -5610,7 +5575,6 @@ function App() {
         return {
           name: g.name,
           ps: g.ps,
-          note: g.note,
           aprRow: g.aprRow,
           products,
           _dt: gdt
@@ -5811,7 +5775,6 @@ function App() {
     upd: 'Đã cập nhật',
     ytd: 'Thực hiện YTD',
     revUpd: 'SL Kế hoạch Update',
-    note: 'Giải trình',
     act: 'SL thực hiện'
   };
   const exportCsv = () => {

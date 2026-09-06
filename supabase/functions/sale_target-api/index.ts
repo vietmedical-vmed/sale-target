@@ -73,14 +73,14 @@ const COL = {
   prod: "san_pham", mset: "bo_vat_tu", qOld: "quota_thau_cu_con_lai",
   mMain: "thang_thau_chinh", dMain: "thoi_gian_thau_chinh", qMain: "quota_thau_chinh",
   mAdd: "thang_thau_bo_sung", qAdd: "quota_bo_sung", rev: "sl_ke_hoach_dau_nam",
-  revUpd: "sl_ke_hoach_update", price: "don_gia", note: "giai_trinh",
+  revUpd: "sl_ke_hoach_update", price: "don_gia",
   act: "sl_thuc_hien", dt: "doanh_thu_kh_dau_nam", bu: "bu",
 };
 // Thứ tự field khi trả getData (app đọc theo fields[])
 const FIELDS = ["fy","mo","region","ps","cust","custId","grp","prod","mset",
-  "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","note","act","dt","bu"];
+  "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","act","dt","bu"];
 // Chỉ các cột này được phép sửa qua updateCells
-const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd","note","price"]);
+const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd","price"]);
 // Các cột nhận diện (bộ vật tư / sản phẩm) — CHỈ admin được sửa qua updateCells.
 const ADMIN_EDITABLE = new Set(["mset","prod","rev","dt"]);
 
