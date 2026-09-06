@@ -2039,8 +2039,9 @@ function useStickyRows(boxRef) {
   useEffect(() => {
     const box = boxRef.current;
     if (!box) return;
+    const thead = box.querySelector('thead');
     let rows = [];       // { el, lv, top (vị trí tự nhiên), h }
-    let base = 0;        // chiều cao thead — vạch ghim của cấp 0
+    let baseH = 0;       // chiều cao thead — vạch ghim của cấp 0
     let pinned = [];
     let raf = 0;
     const clear = el => { el.style.position = ''; el.style.top = ''; el.style.zIndex = ''; };
@@ -2052,8 +2053,8 @@ function useStickyRows(boxRef) {
       pinned = [];
       const els = Array.from(box.querySelectorAll('tr[data-lv]'));
       els.forEach(clear);
-      const head = box.querySelector('thead');
-      base = head ? head.offsetHeight : 0;
+      if (thead) thead.style.top = '';
+      baseH = thead ? thead.offsetHeight : 0;
       const origin = box.getBoundingClientRect().top - box.scrollTop;
       rows = els.map(el => ({
         el,
@@ -2073,6 +2074,19 @@ function useStickyRows(boxRef) {
     };
 
     const apply = () => {
+      // Khi cuộn trang (không phải cuộn trong box) đẩy box lên trên thanh header,
+      // đẩy thead xuống bằng cách tăng sticky top để header bảng luôn nằm ngay dưới
+      // thanh tiêu đề ứng dụng.
+      const hdr = document.querySelector('header.sticky');
+      const headerH = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
+      const boxTop = box.getBoundingClientRect().top;
+      const pageOff = Math.max(0, Math.ceil(headerH - boxTop));
+      if (thead) {
+        thead.style.top = pageOff + 'px';
+        thead.style.boxShadow = pageOff > 0 ? '0 2px 4px rgba(0,0,0,0.08)' : '';
+      }
+
+      const base = baseH + pageOff;
       const s = box.scrollTop;
       // Chuỗi tổ tiên của vùng đang xem: hàng nào đã cuộn qua vạch ghim của cấp
       // nó thì thay chỗ hàng cùng cấp trước đó và xoá các cấp sâu hơn. Quét hết
@@ -2117,8 +2131,10 @@ function useStickyRows(boxRef) {
     remeasure();
     apply();
     const onScroll = () => schedule(false);
+    const onPageScroll = () => schedule(false);
     const onResize = () => schedule(true);
     box.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onPageScroll, { passive: true });
     window.addEventListener('resize', onResize);
     // Gập/mở nhóm nằm trong state của từng hàng con -> component cha không hay
     // biết. Theo dõi thay đổi DOM để đo lại, thay vì phải nâng state lên.
@@ -2131,8 +2147,10 @@ function useStickyRows(boxRef) {
       if (raf) cancelAnimationFrame(raf);
       if (mo) mo.disconnect();
       box.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onPageScroll);
       window.removeEventListener('resize', onResize);
       pinned.forEach(clear);
+      if (thead) { thead.style.top = ''; thead.style.boxShadow = ''; }
     };
   }, [boxRef]);
 }
