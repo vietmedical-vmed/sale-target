@@ -1467,17 +1467,6 @@ function ProductGroupSection({
       chenh: dtUpd - dt
     };
   }, [products]);
-  useEffect(() => {
-    const el = noteRef.current;
-    if (!el) return;
-    const grow = () => {
-      el.style.height = 'auto';
-      el.style.height = el.scrollHeight + 'px';
-    };
-    grow();
-    window.addEventListener('resize', grow);
-    return () => window.removeEventListener('resize', grow);
-  }, [noteDraft, open]);
   // products: [{ mset, product, monthly }], đã sort theo mset → product
   return /*#__PURE__*/React.createElement("div", {
     className: "border-t border-slate-200"
