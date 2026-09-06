@@ -61,6 +61,18 @@ tailwind.config = { theme: { extend: { colors: {
   .fake-scrollbar-wrap::-webkit-scrollbar { height: 8px; }
   .fake-scrollbar-wrap::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .fake-scrollbar-wrap::-webkit-scrollbar-track { background: transparent; }
+  /* 2 màn tổng hợp: thanh cuộn ngang giả nằm trên header bảng, ẩn thanh cuộn thật */
+  .summary-scroll::-webkit-scrollbar { width: 8px; height: 0; }
+  .summary-scroll::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
+  .summary-scroll::-webkit-scrollbar-track { background: transparent; }
+  .summary-sb {
+    position: sticky; left: 0; z-index: 22; top: 0;
+    overflow-x: auto; overflow-y: hidden;
+    background: #fff; border-bottom: 1px solid #e5e7eb;
+  }
+  .summary-sb::-webkit-scrollbar { height: 8px; }
+  .summary-sb::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
+  .summary-sb::-webkit-scrollbar-track { background: transparent; }
   .detail-box .sticky-cust {
     top: 0; z-index: 25;
   }
@@ -2027,6 +2039,51 @@ function DetailScrollBox({ children }) {
     React.createElement("div", { style: { height: 1 } })), children);
 }
 
+// Thanh cuộn ngang giả cho 2 màn tổng hợp: dính trên cùng khung bảng (trên cả
+// header bảng), đồng bộ scrollLeft với khung cuộn chính. Tạo bằng DOM thay vì
+// React element để không phải sửa render output của cả 2 view.
+function useSummaryScrollbar(boxRef) {
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const sb = document.createElement('div');
+    sb.className = 'summary-sb';
+    const spacer = document.createElement('div');
+    spacer.style.height = '1px';
+    sb.appendChild(spacer);
+    box.insertBefore(sb, box.firstChild);
+
+    let syncing = false;
+    let tid = 0;
+    const measure = () => {
+      const has = box.scrollWidth > box.clientWidth + 1;
+      sb.style.display = has ? '' : 'none';
+      sb.style.width = box.clientWidth + 'px';
+      spacer.style.width = box.scrollWidth + 'px';
+    };
+    const debounceMeasure = () => { clearTimeout(tid); tid = setTimeout(measure, 60); };
+    const syncBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
+    const syncSb = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
+    measure();
+    box.addEventListener('scroll', syncBox, { passive: true });
+    sb.addEventListener('scroll', syncSb, { passive: true });
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(debounceMeasure) : null;
+    if (ro) ro.observe(box);
+    const mo = typeof MutationObserver === 'function' ? new MutationObserver(debounceMeasure) : null;
+    if (mo) mo.observe(box, { childList: true, subtree: true });
+    window.addEventListener('resize', measure);
+    return () => {
+      clearTimeout(tid);
+      box.removeEventListener('scroll', syncBox);
+      sb.removeEventListener('scroll', syncSb);
+      if (ro) ro.disconnect();
+      if (mo) mo.disconnect();
+      window.removeEventListener('resize', measure);
+      if (sb.parentNode) sb.parentNode.removeChild(sb);
+    };
+  }, [boxRef]);
+}
+
 // Bảng phân cấp (2 màn tổng hợp): ghim hàng nhóm lại theo cấp khi cuộn trong
 // khung bảng — cuộn hết phần con của một nhóm thì nhóm sau thay chỗ.
 //
@@ -2081,12 +2138,16 @@ function useStickyRows(boxRef) {
       const headerH = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
       const boxTop = box.getBoundingClientRect().top;
       const pageOff = Math.max(0, Math.ceil(headerH - boxTop));
+      // Thanh cuộn ngang giả (nếu có) nằm trên thead → dịch cả 2 xuống đúng vị trí.
+      const sb = box.querySelector('.summary-sb');
+      const sbH = sb && sb.style.display !== 'none' ? Math.ceil(sb.getBoundingClientRect().height) : 0;
+      if (sb) sb.style.top = pageOff + 'px';
       if (thead) {
-        thead.style.top = pageOff + 'px';
+        thead.style.top = (pageOff + sbH) + 'px';
         thead.style.boxShadow = pageOff > 0 ? '0 2px 4px rgba(0,0,0,0.08)' : '';
       }
 
-      const base = baseH + pageOff;
+      const base = baseH + pageOff + sbH;
       const s = box.scrollTop;
       // Chuỗi tổ tiên của vùng đang xem: hàng nào đã cuộn qua vạch ghim của cấp
       // nó thì thay chỗ hàng cùng cấp trước đó và xoá các cấp sâu hơn. Quét hết
@@ -2167,6 +2228,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
   // Thu gọn/mở phần thực hiện theo tháng (mặc định thu gọn → chỉ còn Luỹ kế YTD).
   const [showMonths, setShowMonths] = useState(false);
   const boxRef = useFitHeight();
+  useSummaryScrollbar(boxRef);
   useStickyRows(boxRef); // ghim hàng Sản phẩm / Miền khi cuộn
 
   const data = useMemo(() => {
@@ -2359,7 +2421,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
           title: showMonths ? 'Thu gọn, chỉ hiện tháng hiện tại + Luỹ kế YTD' : 'Hiện chi tiết theo từng tháng',
           className: 'inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
         }, showMonths ? '▾ Thu gọn theo tháng' : '▸ Chi tiết theo tháng')),
-      h('div', { ref: boxRef, className: 'overflow-auto scroll-shadow' },
+      h('div', { ref: boxRef, className: 'overflow-auto summary-scroll' },
         h('table', { className: 'w-full border-collapse sticky-head' },
           h('thead', null,
             h('tr', { className: 'bg-slate-100' },
@@ -2674,6 +2736,7 @@ function SummaryView({
   onExport
 }) {
   const boxRef = useFitHeight();
+  useSummaryScrollbar(boxRef);
   useStickyRows(boxRef); // ghim hàng Miền / PS / Khách hàng / Nhóm SP khi cuộn
   const data = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
@@ -2913,7 +2976,7 @@ function SummaryView({
     className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
   }, showMonths ? "▾ Thu gọn theo tháng" : "▸ Chi tiết theo tháng")), /*#__PURE__*/React.createElement("div", {
     ref: boxRef,
-    className: "overflow-auto scroll-shadow"
+    className: "overflow-auto summary-scroll"
   }, /*#__PURE__*/React.createElement("table", {
     className: "w-full border-collapse sticky-head"
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement(SummaryHead, null)), /*#__PURE__*/React.createElement("tbody", null, data.regions.map(rg => /*#__PURE__*/React.createElement(SummaryRegionRow, {
