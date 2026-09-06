@@ -2571,16 +2571,14 @@ function exportSummaryPS(data) {
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
   moneyCols.push(c, c + 1); pctCols.push(c + 2, c + 3, c + 4, c + 5); c += 6;
-  for (const t of [['KH update', 12], ['KH đầu năm', 12], ['Chênh lệch', 12]]) {
-    H1.push(t[0]); H2.push('');
-    merges.push({ s: { r: 0, c }, e: { r: 1, c } });
-    cols.push({ wch: t[1] }); moneyCols.push(c); c += 1;
-  }
-  for (const t of [['Tổng Quota', 14], ['Quota 1/4', 14], ['Quota upcoming', 16], ['KH còn lại YTD', 14], ['Khả dụng còn lại', 16]]) {
-    H1.push(t[0]); H2.push('');
-    merges.push({ s: { r: 0, c }, e: { r: 1, c } });
-    cols.push({ wch: t[1] }); moneyCols.push(c); c += 1;
-  }
+  H1.push('Quota', '', '', '', ''); H2.push('Quota 1/4', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
+  cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
+  moneyCols.push(c, c + 1, c + 2, c + 3, c + 4); c += 5;
+  H1.push('Target', '', ''); H2.push('KH đầu năm', 'KH Update', 'Chênh lệch');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
+  cols.push({ wch: 12 }, { wch: 12 }, { wch: 12 });
+  moneyCols.push(c, c + 1, c + 2); c += 3;
   H1.push('Giải trình'); H2.push('');
   merges.push({ s: { r: 0, c }, e: { r: 1, c } });
   cols.push({ wch: 40 }); c += 1;
@@ -2602,8 +2600,9 @@ function exportSummaryPS(data) {
     const tdKh = dtUpd > 0 ? khYtdDt / dtUpd : null;     // tốc độ KH YTD = KH YTD / KH update cả năm
     const clP = (tdTh != null && tdKh != null) ? tdTh - tdKh : ''; // CL tốc độ
     row.push(tr(khYtdDt), tr(dtYtd), thP == null ? '' : thP, tdTh == null ? '' : tdTh, tdKh == null ? '' : tdKh, clP);
-    row.push(tr(dtUpd), tr(dt), tr(ch));
-    row.push(tr(d.quotaFYDt || 0), tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.khLeftDt || 0), d.quotaAvailDt == null ? '-' : tr(d.quotaAvailDt));
+    const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.quotaFYDt || 0) - dtYtd);
+    row.push(tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.quotaFYDt || 0), tr(dtYtd), quotaRemain);
+    row.push(tr(dt), tr(dtUpd), tr(ch));
     row.push(note || '');
     aoa.push(row);
     levels.push(level);
@@ -3022,7 +3021,7 @@ function SummaryView({
     className: "px-4 py-2.5"
   })))))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-2"
-  }, "Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH update, TH = DThu thực hiện, % = TH / KH. Mặc định chỉ hiện tháng hiện tại + Luỹ kế YTD; nút \"Chi tiết theo tháng\" hiện đủ 12 tháng. Ở Luỹ kế YTD: % TH YTD = TH YTD / KH YTD; tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm (tiến độ kế hoạch); CL tốc độ = tốc độ TH YTD − tốc độ KH YTD (dương = thực hiện nhanh hơn tiến độ kế hoạch). ≥1 tỷ hiện theo tỷ (1 số lẻ), nhỏ hơn hiện theo triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. KH update = DThu update cả năm; KH đầu năm = DThu kế hoạch đầu năm; Chênh lệch = KH update − KH đầu năm. Tổng Quota / KH còn lại YTD / Khả dụng còn lại = số lượng; Khả dụng còn lại = Tổng Quota − (Thực hiện YTD + KH còn lại YTD)."));
+  }, "Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH update, TH = DThu thực hiện, % = TH / KH. Mặc định chỉ hiện tháng hiện tại + Luỹ kế YTD; nút \"Chi tiết theo tháng\" hiện đủ 12 tháng. Ở Luỹ kế YTD: % TH YTD = TH YTD / KH YTD; tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm (tiến độ kế hoạch); CL tốc độ = tốc độ TH YTD − tốc độ KH YTD (dương = thực hiện nhanh hơn tiến độ kế hoạch). ≥1 tỷ hiện theo tỷ (1 số lẻ), nhỏ hơn hiện theo triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. Quota: Quota 1/4 = quota thầu cũ × đơn giá; Upcoming = (quota chính + bổ sung) × đơn giá; Tổng quota = Quota 1/4 + Upcoming; Khả dụng = Tổng quota − TH YTD. Target: KH đầu năm = DThu kế hoạch đầu năm; KH Update = DThu update cả năm; Chênh lệch = KH Update − KH đầu năm."));
 }
 const chCls = v => v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
 // % Thực hiện YTD = DThu thực hiện YTD / DThu KH update cả năm
@@ -3072,25 +3071,26 @@ function SummaryHead() {
       h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Miền / PS / Khách hàng'),
       ...sumMonthIdxs().map(monthThOf),
       h('th', { colSpan: 6, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-800 border-r border-b border-slate-200 bg-amber-50/60' }, 'Luỹ kế YTD'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-blue-700 bg-emerald-50/60 align-bottom` }, 'KH update'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-emerald-800 bg-emerald-50/60 align-bottom` }, 'KH đầu năm'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-emerald-800 bg-emerald-50/60 align-bottom` }, 'Chênh lệch'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Tổng Quota'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Quota 1/4'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom whitespace-nowrap` }, 'Quota upcoming'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'KH còn lại YTD'),
-      h('th', { rowSpan: 2, className: `px-3 py-2 text-right text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Khả dụng còn lại'),
+      h('th', { colSpan: 5, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60' }, 'Quota'),
+      h('th', { colSpan: 3, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60' }, 'Target'),
       h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} text-amber-700 align-bottom`, style: { minWidth: 200 } }, 'Giải trình')
     ),
     h('tr', { className: 'bg-slate-100' },
       ...sumMonthIdxs().flatMap(i => moHasAct(i) ? sub('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []),
-      ...ytdSub
+      ...ytdSub,
+      h('th', { key: 'qq14', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Quota 1/4'),
+      h('th', { key: 'qqup', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Upcoming'),
+      h('th', { key: 'qqfy', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Tổng quota'),
+      h('th', { key: 'qqth', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'TH YTD'),
+      h('th', { key: 'qqav', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Khả dụng'),
+      h('th', { key: 'tdt', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap` }, 'KH đầu năm'),
+      h('th', { key: 'tdu', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap` }, 'KH Update'),
+      h('th', { key: 'tch', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap` }, 'Chênh lệch')
     )
   );
 }
 
-// Các ô số của 1 dòng theo thứ tự cột: [các tháng] → Luỹ kế YTD → KH đầu năm → Chênh lệch → Tổng Quota → KH còn lại YTD → Khả dụng còn lại.
-// Giá trị theo tháng & YTD = doanh thu (SL × đơn giá). dark = dòng TỔNG CỘNG nền tối.
+// Các ô số: [tháng] → Luỹ kế YTD → Quota (1/4 · Upcoming · Tổng · TH YTD · Khả dụng) → Target (KH đầu năm · KH Update · CL).
 function StatCells({ d, size, dark }) {
   const h = React.createElement;
   const p = size === 'sm' ? 'py-1.5 text-[12px]' : dark ? 'py-2.5 text-[12.5px]' : 'py-2 text-[13px]';
@@ -3124,18 +3124,21 @@ function StatCells({ d, size, dark }) {
   cells.push(h('td', { key: 'ytd', className: `px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}` }, pctTxtSum(d.dtYtd, d.dtUpd)));
   cells.push(h('td', { key: 'ykp', className: `px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}` }, pctTxtSum(d.khYtdDt, d.dtUpd)));
   cells.push(h('td', { key: 'ycl', className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-200 ${clCol} ${ybg}` }, clVal == null ? '—' : (clVal > 0 ? '+' : '') + clVal + '%'));
-  // --- KH update + KH đầu năm + Chênh lệch (doanh thu) ---
+  // --- Quota group: Quota 1/4 · Upcoming · Tổng quota · TH YTD · Khả dụng ---
+  const qbg = dark ? '' : 'bg-teal-50/30';
+  const quotaRemain = d.quotaAvailDt == null ? null : (d.quotaFYDt || 0) - (d.dtYtd || 0);
+  cells.push(h('td', { key: 'q14', className: `px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}` }, moneyTy3(d.q14Dt)));
+  cells.push(h('td', { key: 'qup', className: `px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}` }, moneyTy3(d.qUpcomingDt)));
+  cells.push(h('td', { key: 'q', className: `px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}` }, moneyTy3(d.quotaFYDt)));
+  cells.push(h('td', { key: 'qth', className: `px-3 ${p} text-right tabular-nums font-medium ${orange} ${qbg}` }, moneyTy3(d.dtYtd)));
+  cells.push(h('td', { key: 'qav', className: `px-3 ${p} text-right tabular-nums font-medium border-r border-slate-200 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}` }, quotaRemain == null ? '—' : moneyTy3(quotaRemain)));
+  // --- Target group: KH đầu năm · KH Update · Chênh lệch ---
+  const tbg = dark ? '' : 'bg-emerald-50/30';
   const ch = (d.dtUpd || 0) - (d.dt || 0);
   const chCol = dark ? (ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : '') : chCls(ch);
-  cells.push(h('td', { key: 'du', className: `px-3 ${p} text-right tabular-nums font-medium ${blue}` }, moneyTy3(d.dtUpd)));
-  cells.push(h('td', { key: 'dt', className: `px-3 ${p} text-right tabular-nums font-medium ${base}` }, moneyTy3(d.dt)));
-  cells.push(h('td', { key: 'ch', className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${chCol}` }, ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)));
-  // --- Quota (giá trị tiền) ---
-  cells.push(h('td', { key: 'q', className: `px-3 ${p} text-right tabular-nums font-medium ${base}` }, moneyTy3(d.quotaFYDt)));
-  cells.push(h('td', { key: 'q14', className: `px-3 ${p} text-right tabular-nums font-medium ${base}` }, moneyTy3(d.q14Dt)));
-  cells.push(h('td', { key: 'qup', className: `px-3 ${p} text-right tabular-nums font-medium ${base}` }, moneyTy3(d.qUpcomingDt)));
-  cells.push(h('td', { key: 'kl', className: `px-3 ${p} text-right tabular-nums font-medium ${blue}` }, moneyTy3(d.khLeftDt || 0)));
-  cells.push(h('td', { key: 'av', className: `px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${d.quotaAvailDt == null ? 'text-slate-300' : base}` }, d.quotaAvailDt == null ? '—' : moneyTy3(d.quotaAvailDt)));
+  cells.push(h('td', { key: 'dt', className: `px-3 ${p} text-right tabular-nums font-medium ${base} ${tbg}` }, moneyTy3(d.dt)));
+  cells.push(h('td', { key: 'du', className: `px-3 ${p} text-right tabular-nums font-medium ${blue} ${tbg}` }, moneyTy3(d.dtUpd)));
+  cells.push(h('td', { key: 'ch', className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${chCol} ${tbg}` }, ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)));
   return h(React.Fragment, null, ...cells);
 }
 function SummaryRegionRow({
