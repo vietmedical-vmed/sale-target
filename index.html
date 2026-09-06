@@ -32,6 +32,7 @@ tailwind.config = { theme: { extend: { colors: {
      header dính lại khi cuộn. Dính cả <thead> chứ không dính từng <th> để nền
      của dòng header (bg trên <tr>) đi theo, không bị lộ dữ liệu phía sau. */
   .sticky-head thead { position: sticky; top: 0; z-index: 20; }
+  .sticky-head thead th { white-space: nowrap; }
   /* Màn chi tiết: bộ lọc dính ngay dưới thanh tiêu đề, thẻ tổng hợp của khách
      hàng dính ngay dưới bộ lọc. Mỗi thẻ KH là một khung riêng nên position
      sticky tự lo phần "cuộn hết sản phẩm thì sang KH tiếp theo": thẻ sau đẩy
@@ -2131,9 +2132,6 @@ function useStickyRows(boxRef) {
     };
 
     const apply = () => {
-      // Khi cuộn trang (không phải cuộn trong box) đẩy box lên trên thanh header,
-      // đẩy thead xuống bằng cách tăng sticky top để header bảng luôn nằm ngay dưới
-      // thanh tiêu đề ứng dụng.
       const hdr = document.querySelector('header.sticky');
       const headerH = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
       const boxTop = box.getBoundingClientRect().top;
@@ -2147,7 +2145,8 @@ function useStickyRows(boxRef) {
         thead.style.boxShadow = pageOff > 0 ? '0 2px 4px rgba(0,0,0,0.08)' : '';
       }
 
-      const base = baseH + pageOff + sbH;
+      const curBaseH = thead ? thead.offsetHeight : baseH;
+      const base = curBaseH + pageOff + sbH;
       const s = box.scrollTop;
       // Chuỗi tổ tiên của vùng đang xem: hàng nào đã cuộn qua vạch ghim của cấp
       // nó thì thay chỗ hàng cùng cấp trước đó và xoá các cấp sâu hơn. Quét hết
