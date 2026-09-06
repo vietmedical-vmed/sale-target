@@ -3127,7 +3127,7 @@ function SummaryHead() {
       h('th', { colSpan: 6, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-800 border-r border-b border-slate-200 bg-amber-50/60' }, 'Luỹ kế YTD'),
       h('th', { colSpan: 5, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60' }, 'Quota'),
       h('th', { colSpan: 3, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60' }, 'Target'),
-      h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} text-amber-700 align-bottom`, style: { minWidth: 200 } }, 'Giải trình')
+      h('th', { rowSpan: 2, className: `px-2 py-2 text-center text-[11px] ${base} text-amber-700 align-bottom`, style: { width: 90 } }, 'Giải trình')
     ),
     h('tr', { className: 'bg-slate-100' },
       ...sumMonthIdxs().flatMap(i => moHasAct(i) ? sub('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []),
@@ -3328,11 +3328,11 @@ function SummaryGroupRow({
     d: g,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-center border-b border-slate-100"
+    className: "px-1 py-1.5 text-center border-b border-slate-100"
   }, /*#__PURE__*/React.createElement("button", {
-    className: "inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded border border-amber-200 text-amber-700 bg-white hover:bg-amber-50",
+    className: "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-medium rounded border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 whitespace-nowrap",
     onClick: e => { e.stopPropagation(); _openGiaiTrinh && _openGiaiTrinh({ ps: g._ps, custId: g._custId, grp: g.grp }); }
-  }, "📝 Giải trình"))), open && g.prods.map((p, i) => /*#__PURE__*/React.createElement("tr", {
+  }, "📝"))), open && g.prods.map((p, i) => /*#__PURE__*/React.createElement("tr", {
     key: p.mset + '||' + p.prod + '||' + i,
     className: "hover:bg-slate-50/40 border-b border-slate-100"
   }, /*#__PURE__*/React.createElement("td", {
