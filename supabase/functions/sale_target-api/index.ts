@@ -874,6 +874,39 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ---- Giải trình (append-only log) ----
+
+    if (action === "getGiaiTrinh") {
+      const ps = String(payload.ps || "").trim();
+      const custId = String(payload.customer_id || "").trim();
+      const grp = String(payload.grp || "").trim();
+      if (!ps || !custId) return json({ ok: false, error: "missing_params" }, 400);
+      let q = db.schema("shared").from("giai_trinh")
+        .select("id, content, created_by, created_at")
+        .eq("ps", ps).eq("customer_id", custId);
+      if (grp) q = q.eq("grp", grp);
+      q = q.order("created_at", { ascending: false }).limit(50);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      return json({ ok: true, logs: data || [] });
+    }
+
+    if (action === "saveGiaiTrinh") {
+      if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
+      const ps = String(payload.ps || "").trim();
+      const custId = String(payload.customer_id || "").trim();
+      const grp = String(payload.grp || "").trim();
+      const content = String(payload.content || "").trim();
+      if (!ps || !custId || !content) return json({ ok: false, error: "missing_params" }, 400);
+      const { data, error } = await db.schema("shared").from("giai_trinh")
+        .insert({ ps, customer_id: custId, grp, content, created_by: sess.n || sess.u })
+        .select("id, content, created_by, created_at")
+        .single();
+      if (error) throw new Error(error.message);
+      await writeAuditLog(db, sess, "saveGiaiTrinh", 1, { ps, customer_id: custId, grp });
+      return json({ ok: true, entry: data });
+    }
+
     return json({ ok: false, error: "unknown_action" }, 400);
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) }, 500);
