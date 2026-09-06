@@ -3012,7 +3012,7 @@ function SummaryView({
   })), /*#__PURE__*/React.createElement("tr", {
     className: "bg-slate-800 text-white font-semibold"
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-2.5 text-[12.5px] border-t-2 border-slate-900"
+    className: "px-3 py-2.5 text-[12.5px] border-t-2 border-slate-900 sticky left-0 z-10 bg-slate-800"
   }, "TỔNG CỘNG"), /*#__PURE__*/React.createElement(StatCells, {
     d: g,
     dark: true
@@ -3067,7 +3067,7 @@ function SummaryHead() {
   ];
   return h(React.Fragment, null,
     h('tr', { className: 'bg-slate-100' },
-      h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} border-r text-slate-600 align-bottom` }, 'Miền / PS / Khách hàng'),
+      h('th', { rowSpan: 2, className: `px-4 py-2 text-left text-[11px] ${base} border-r text-slate-600 align-bottom sticky left-0 z-[11] bg-slate-100`, style: { minWidth: 200 } }, 'Miền / PS / Khách hàng'),
       ...sumMonthIdxs().map(monthThOf),
       h('th', { colSpan: 6, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-800 border-r border-b border-slate-200 bg-amber-50/60' }, 'Luỹ kế YTD'),
       h('th', { colSpan: 5, className: 'px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60' }, 'Quota'),
@@ -3149,7 +3149,7 @@ function SummaryRegionRow({
     className: "bg-sky-50 hover:bg-sky-100 cursor-pointer border-b border-slate-200",
     onClick: () => setOpen(!open)
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-2 text-[13px] font-bold text-sky-900 border-r border-slate-100"
+    className: "px-3 py-2 text-[13px] font-bold text-sky-900 border-r border-slate-100 sticky left-0 z-10 bg-sky-50"
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1.5"
   }, open ? /*#__PURE__*/React.createElement(ChevronDown, {
@@ -3176,9 +3176,9 @@ function SummaryPSRow({
     className: "bg-slate-50 hover:bg-slate-100 cursor-pointer border-b border-slate-200",
     onClick: () => setOpen(!open)
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-2 text-[13px] font-semibold text-slate-800 border-r border-slate-100 whitespace-nowrap"
+    className: "px-3 py-2 text-[13px] font-semibold text-slate-800 border-r border-slate-100 whitespace-nowrap sticky left-0 z-10 bg-slate-50"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "inline-flex items-center gap-1.5 pl-4"
+    className: "inline-flex items-center gap-1.5"
   }, open ? /*#__PURE__*/React.createElement(ChevronDown, {
     size: 14,
     className: "text-slate-500"
@@ -3211,10 +3211,9 @@ function SummaryCustRow({
     className: "bg-white hover:bg-slate-50/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
     onClick: hasKids ? () => setOpen(!open) : undefined
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-[12px] text-slate-600 border-r border-slate-100"
+    className: "px-3 py-1.5 text-[12px] text-slate-600 border-r border-slate-100 sticky left-0 z-10 bg-white"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "inline-flex items-center gap-1",
-    style: { paddingLeft: 40 + depth * 28 }
+    className: "inline-flex items-center gap-1"
   }, hasKids ? open ? /*#__PURE__*/React.createElement(ChevronDown, {
     size: 12,
     className: "text-slate-400"
@@ -3257,10 +3256,9 @@ function SummaryGroupRow({
     className: "bg-slate-50 hover:bg-slate-100/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
     onClick: hasKids ? () => setOpen(!open) : undefined
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-[12px] text-slate-700 border-r border-slate-100"
+    className: "px-3 py-1.5 text-[12px] text-slate-700 border-r border-slate-100 sticky left-0 z-10 bg-slate-50"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "inline-flex items-center gap-1",
-    style: { paddingLeft: 68 + depth * 28 }
+    className: "inline-flex items-center gap-1"
   }, hasKids ? open ? /*#__PURE__*/React.createElement(ChevronDown, {
     size: 12,
     className: "text-slate-400"
@@ -3285,13 +3283,10 @@ function SummaryGroupRow({
     key: p.mset + '||' + p.prod + '||' + i,
     className: "hover:bg-slate-50/40 border-b border-slate-100"
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-4 py-1.5 text-[11.5px] text-slate-500 border-r border-slate-100"
+    className: "px-3 py-1.5 text-[11.5px] text-slate-500 border-r border-slate-100 sticky left-0 z-10 bg-white"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "break-words",
-    style: { paddingLeft: 96 + depth * 28 }
-  }, p.prod, p.mset ? /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400"
-  }, " · ", p.mset) : null)), /*#__PURE__*/React.createElement(StatCells, {
+    className: "break-words"
+  }, p.prod)), /*#__PURE__*/React.createElement(StatCells, {
     d: p,
     size: 'sm'
   }), /*#__PURE__*/React.createElement("td", {
