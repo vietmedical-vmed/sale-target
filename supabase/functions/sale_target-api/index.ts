@@ -338,11 +338,14 @@ Deno.serve(async (req) => {
     if (action === "getData") {
       // fetchAll / fetchOutOfPlan / getRev độc lập → chạy song song để tiết kiệm lượt chờ.
       // fetchOutOfPlan hỏng KHÔNG được làm sập getData (vd view chưa tạo) → nuốt lỗi, trả [].
-      const [dbRows, oop, rev] = await Promise.all([
+      const [dbRows, oop, rev, cfgRows] = await Promise.all([
         fetchAll(db, sess, payload),
         fetchOutOfPlan(db, sess, payload).catch(() => ({ rows: [], meta: [] })),
         getRev(db),
+        db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
       ]);
+      const cfg: Record<string, unknown> = {};
+      for (const r of cfgRows) cfg[r.key] = r.value;
       const rows = dbRows.map((r) => FIELDS.map((f) => {
         const v = r[COL[f]];
         return v === null || v === undefined ? "" : v;
@@ -352,6 +355,7 @@ Deno.serve(async (req) => {
         ok: true, fields: FIELDS, rows, rowNums,
         oopRows: oop.rows, oopMeta: oop.meta, rev,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
+        config: cfg,
       });
     }
 

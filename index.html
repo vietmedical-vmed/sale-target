@@ -172,16 +172,12 @@ const Settings = Ic(['M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2
 // ============ CONSTANTS ============
 const MONTHS = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03'];
 const MONTH_LABELS = ['T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T1', 'T2', 'T3'];
-const CURRENT_MONTH = '2026-08'; // ← đổi mỗi tháng để khoá các tháng trước
-const CURRENT_MONTH_IDX = MONTHS.indexOf(CURRENT_MONTH);
+let CURRENT_MONTH = '2026-09'; // cập nhật từ app_config.current_month khi getData trả về
+const getCurIdx = () => MONTHS.indexOf(CURRENT_MONTH);
+const getNoteMonth = () => MONTHS[Math.max(0, getCurIdx() - 1)];
 // Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại (gồm cả tháng hiện tại) — dùng chung cho
 // màn chi tiết và 2 màn tổng hợp để 3 màn không lệch nhau.
-// Hệ quả: "KH còn lại YTD" là kế hoạch TỪ THÁNG SAU trở đi (tháng hiện tại đã tính
-// theo số thực hiện, không đếm hai lần).
-// Lưu ý: tháng hiện tại vẫn SỬA được và số update của nó vẫn vào DThu update —
-// chỉ phần luỹ kế/quota khả dụng là lấy theo thực hiện.
 const isYtdMonth = mo => (mo || '') <= CURRENT_MONTH;
-const NOTE_MONTH = MONTHS[Math.max(0, CURRENT_MONTH_IDX - 1)]; // giải trình lưu vào tháng hiện tại − 1
 // Nhãn hiển thị cho sản phẩm không có bộ vật tư (bo_vat_tu rỗng trong DB).
 const NO_MSET = '(Không phân loại)';
 const TOK_KEY = 'sp_tok';
@@ -3081,8 +3077,8 @@ const chCls = v => v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-s
 const pctYtd = (th, kh) => (kh > 0 ? (th / kh * 100).toFixed(1) + '%' : '—');
 
 // ===== Cột theo tháng (doanh thu) cho màn Tổng hợp theo PS — giống bố cục màn SP =====
-const SUM_CUR_IDX = Math.max(0, CURRENT_MONTH_IDX);
-const moHasAct = i => i <= SUM_CUR_IDX;   // tháng đã qua/hiện tại mới có TH → 3 cột con; tháng sau chỉ 1 cột KH
+const getSumCurIdx = () => Math.max(0, getCurIdx());
+const moHasAct = i => i <= getSumCurIdx();   // tháng đã qua/hiện tại mới có TH → 3 cột con; tháng sau chỉ 1 cột KH
 const moBgSum = i => MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/50' : (i % 2 ? 'bg-slate-50/60' : '');
 const pctTxtSum = (th, kh) => kh > 0 ? Math.round(th / kh * 100) + '%' : '—';
 const pctClsSum = (th, kh) => { if (!(kh > 0)) return 'text-slate-300'; const r = th / kh; return r >= 1 ? 'text-green-700' : r >= 0.8 ? 'text-amber-600' : 'text-red-600'; };
@@ -3090,7 +3086,7 @@ const pctClsSum = (th, kh) => { if (!(kh > 0)) return 'text-slate-300'; const r 
 // SummaryView set biến này trước khi render con (giống cơ chế MASK_MONEY).
 let SUM_SHOW_MONTHS = false;
 // Các cột tháng hiển thị: mặc định chỉ tháng hiện tại; bấm "Chi tiết theo tháng" thì hiện cả 12.
-const sumMonthIdxs = () => SUM_SHOW_MONTHS ? MONTHS.map((_, i) => i) : (CURRENT_MONTH_IDX >= 0 ? [CURRENT_MONTH_IDX] : []);
+const sumMonthIdxs = () => SUM_SHOW_MONTHS ? MONTHS.map((_, i) => i) : (getCurIdx() >= 0 ? [getCurIdx()] : []);
 
 // Header 2 tầng cho màn Tổng hợp theo PS.
 function SummaryHead() {
@@ -3951,7 +3947,7 @@ const diaBanErrMsg = m => {
 function DiaBanView({
   rows, diaBan, customers, psOptions, mienByPs, psKnown, groupOptions, canEdit,
   psFilter, regionFilter, groupFilter, custFilter, onSave, onDelete, onDopChongLan, busy,
-  prefill, onPrefillDone, viewBu, onToolbar
+  prefill, onPrefillDone, viewBu, onToolbar, curMonth, isAdmin, onMonthChange
 }) {
   const h = React.createElement;
   // PS lạ = có trong kế hoạch/khai báo nhưng KHÔNG có trong danh mục dm_ps.
@@ -4297,7 +4293,32 @@ function DiaBanView({
     return () => { if (onToolbar) onToolbar(null); };
   }, [canEdit, overlapCount, busy, allShownGroupKeys, allClosed, search, editCount]);
 
+  const [savingMonth, setSavingMonth] = useState(false);
+  const handleMonthChange = async (mo) => {
+    if (!onMonthChange || mo === curMonth) return;
+    setSavingMonth(true);
+    try { await onMonthChange(mo); } finally { setSavingMonth(false); }
+  };
+
   return h("div", { className: "px-6 pb-8" },
+
+    // ---- Cấu hình hệ thống (admin only) ----
+    isAdmin && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3 px-4 py-3" },
+      h("div", { className: "flex items-center gap-3 flex-wrap" },
+        h(Settings, { size: 15, className: "text-slate-400" }),
+        h("span", { className: "text-[13px] font-semibold text-slate-700" }, "Cấu hình hệ thống"),
+        h("div", { className: "flex items-center gap-2 ml-4" },
+          h("span", { className: "text-[12px] text-slate-500" }, "Tháng hiện tại:"),
+          h("select", {
+            value: curMonth || '',
+            onChange: e => handleMonthChange(e.target.value),
+            disabled: savingMonth,
+            className: "px-2 py-1 text-[13px] font-medium border border-slate-200 rounded-md outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:opacity-50"
+          }, MONTHS.map((mo, i) => h("option", { key: mo, value: mo }, MONTH_LABELS[i] + " (" + mo + ")"))),
+          savingMonth && h("span", { className: "text-[11px] text-slate-400 animate-pulse" }, "Đang lưu...")
+        )
+      )
+    ),
 
     // ---- Chưa khai báo (có kế hoạch nhưng thiếu trong danh mục) ----
     missing.length > 0 && h("div", { className: "bg-white rounded-lg border border-slate-200 mb-3" },
@@ -4533,6 +4554,7 @@ function App() {
   // Bản mới của web app đã deploy nhưng user đang có bản nháp chưa lưu → không
   // reload ngay, chờ user lưu/huỷ rồi mới reload để không mất bản nháp.
   const [pendingReload, setPendingReload] = useState(false);
+  const [curMonth, setCurMonth] = useState(CURRENT_MONTH);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
   const [teamOpen, setTeamOpen] = useState(() => new Set());
@@ -4639,6 +4661,10 @@ function App() {
         oopObjs[i] = o;
       }
       setOopRows(oopObjs);
+      if (r.config && r.config.current_month && MONTHS.includes(r.config.current_month)) {
+        CURRENT_MONTH = r.config.current_month;
+        setCurMonth(r.config.current_month);
+      }
       if (typeof r.rev === 'number') setDataRev(r.rev);
       setStale(false);
       if (r.role) setAuth({
@@ -5469,7 +5495,7 @@ function App() {
       });
       const g = c.gMap.get(gKey);
       if (!g.ps && r.ps) g.ps = r.ps;
-      if (r.mo === NOTE_MONTH) {
+      if (r.mo === getNoteMonth()) {
         if (g.aprRow == null) g.aprRow = r._row;
       }
       // key product by (mset, prod) so same product name under different bộ vật tư stays separate
@@ -5813,7 +5839,7 @@ function App() {
     size: 24,
     className: "animate-spin mx-auto mb-2 text-emerald-600"
   }), "Đang tải dữ liệu từ hệ thống…"));
-  const curLabel = MONTH_LABELS[CURRENT_MONTH_IDX];
+  const curLabel = MONTH_LABELS[getCurIdx()];
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen bg-slate-50 text-slate-900"
   }, /*#__PURE__*/React.createElement("header", {
@@ -6137,7 +6163,19 @@ function App() {
     prefill: diaBanPrefill,
     onPrefillDone: () => setDiaBanPrefill(null),
     viewBu: viewBu,
-    onToolbar: setDiaBanTb
+    onToolbar: setDiaBanTb,
+    curMonth: curMonth,
+    isAdmin: isAdmin,
+    onMonthChange: async (mo) => {
+      try {
+        await api('setAppConfig', { key: 'current_month', value: mo });
+        CURRENT_MONTH = mo;
+        setCurMonth(mo);
+        await loadData();
+      } catch (e) {
+        setError('Lưu tháng hiện tại thất bại: ' + e.message);
+      }
+    }
   }) : tab === 'summary' ? /*#__PURE__*/React.createElement(SummaryView, {
     rows: summaryRows,
     psFilter: psFilter,
