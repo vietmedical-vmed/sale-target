@@ -488,6 +488,7 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
       const pct = s.dtUpd > 0 ? Math.round(s.dtYtd / s.dtUpd * 100) : 0;
       const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 80 ? 'text-amber-600' : 'text-slate-400';
       const active = value === t.key;
+      const masked = value !== '' && !active;
       return h('button', {
         key: t.key,
         type: 'button',
@@ -498,13 +499,13 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
           h('div', { className: 'w-2 h-2 rounded-full shrink-0', style: { background: t.gradient } }),
           h('span', { className: `text-[11px] font-semibold tracking-wide ${active ? 'text-emerald-700' : 'text-slate-600'}` }, t.label)),
         h('div', { className: 'leading-tight mb-0.5' },
-          h('span', { className: 'text-[18px] font-bold tabular-nums text-slate-800' }, moneyTy3(s.dtUpd)),
+          h('span', { className: 'text-[18px] font-bold tabular-nums text-slate-800' }, masked ? '**' : moneyTy3(s.dtUpd)),
           h('span', { className: 'text-[11px] text-slate-400 ml-1' }, 'KH Update')),
         h('div', { className: 'flex items-baseline gap-1 mb-1.5' },
-          h('span', { className: `text-[15px] font-bold tabular-nums ${pctColor}` }, s.dtUpd > 0 ? pct + '%' : '—'),
+          h('span', { className: `text-[15px] font-bold tabular-nums ${masked ? 'text-slate-400' : pctColor}` }, masked ? '**' : s.dtUpd > 0 ? pct + '%' : '—'),
           h('span', { className: 'text-[10px] text-slate-400' }, 'TH FY26')),
         h('div', { className: 'h-1 bg-slate-100 rounded-full overflow-hidden' },
-          h('div', { className: 'h-full rounded-full', style: { width: Math.min(pct, 100) + '%', background: t.gradient } }))
+          masked ? null : h('div', { className: 'h-full rounded-full', style: { width: Math.min(pct, 100) + '%', background: t.gradient } }))
       );
     })
   );
@@ -1530,10 +1531,8 @@ function ProductGroupSection({
     pending: pendGroupField('mAdd'),
     locked: !canEdit,
     onCommit: v => commitGroupField('mAdd', v)
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "meta-sticky-l px-4 py-2 bg-amber-50/40 border-b border-amber-100 flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md border border-amber-200 text-amber-700 bg-white hover:bg-amber-50",
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 ml-auto",
     onClick: () => setNoteModal(true)
   }, /*#__PURE__*/React.createElement("span", { className: "text-[13px]" }, "📝"), "Giải trình")),
   noteModal && /*#__PURE__*/React.createElement(GiaiTrinhModal, {
