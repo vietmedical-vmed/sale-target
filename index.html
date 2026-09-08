@@ -54,9 +54,10 @@ tailwind.config = { theme: { extend: { colors: {
   .detail-box::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .detail-box::-webkit-scrollbar-track { background: transparent; }
   .fake-scrollbar-wrap {
+    position: sticky; left: 0; z-index: 21;
+    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px));
     overflow-x: auto; overflow-y: hidden;
     background: #f0f2f5; border-bottom: 1px solid #e5e7eb;
-    flex-shrink: 0;
   }
   .fake-scrollbar-wrap::-webkit-scrollbar { height: 8px; }
   .fake-scrollbar-wrap::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
@@ -81,7 +82,7 @@ tailwind.config = { theme: { extend: { colors: {
   }
   .detail-box thead {
     position: sticky;
-    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px));
+    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px) + var(--detail-sb-h, 0px));
     z-index: 20;
   }
   .detail-box thead tr { background: #fff; }
@@ -1426,6 +1427,33 @@ function ProductGroupSection({
 }) {
   const [open, setOpen] = useState(false);
   const [noteModal, setNoteModal] = useState(false);
+  const grpSbRef = useRef(null);
+  useEffect(() => {
+    const sb = grpSbRef.current;
+    if (!sb) return;
+    const box = sb.closest('.detail-box');
+    if (!box) return;
+    const spacer = sb.firstElementChild;
+    let syncing = false;
+    let tid = 0;
+    const measure = () => {
+      const has = box.scrollWidth > box.clientWidth;
+      sb.style.display = has ? '' : 'none';
+      sb.style.width = box.clientWidth + 'px';
+      if (spacer) spacer.style.width = box.scrollWidth + 'px';
+      const sbH = has ? Math.ceil(sb.getBoundingClientRect().height) : 0;
+      box.style.setProperty('--detail-sb-h', sbH + 'px');
+    };
+    const schedule = () => { clearTimeout(tid); tid = setTimeout(measure, 60); };
+    const syncFromBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; setTimeout(() => { syncing = false; }, 30); };
+    const syncToBox = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; setTimeout(() => { syncing = false; }, 30); };
+    measure();
+    box.addEventListener('scroll', syncFromBox);
+    sb.addEventListener('scroll', syncToBox);
+    const ro = new ResizeObserver(schedule);
+    ro.observe(box);
+    return () => { clearTimeout(tid); box.removeEventListener('scroll', syncFromBox); sb.removeEventListener('scroll', syncToBox); ro.disconnect(); };
+  }, []);
   // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).
   const groupRows = useMemo(() => products.flatMap(p => p.monthly.flatMap(c => c.rows)), [products]);
   const readGroupField = key => {
@@ -1549,7 +1577,9 @@ function ProductGroupSection({
     info: { ps: ps, custId: custId || '', grp: groupName },
     onClose: () => setNoteModal(false),
     auth: window.__app_auth
-  }), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("div", { className: "fake-scrollbar-wrap", ref: grpSbRef },
+    React.createElement("div", { style: { height: 1 } })),
+  /*#__PURE__*/React.createElement("div", {
     className: "scroll-shadow"
   }, /*#__PURE__*/React.createElement("table", {
     className: "border-collapse",
@@ -1984,26 +2014,19 @@ function useStickyBars(active, hasCards) {
 
 function DetailScrollBox({ children }) {
   const boxRef = useRef(null);
-  const sbRef = useRef(null);
   const coverRef = useRef(null);
   const coverLRef = useRef(null);
   useEffect(() => {
     const box = boxRef.current;
-    const sb = sbRef.current;
     const cover = coverRef.current;
     const coverL = coverLRef.current;
-    if (!box || !sb) return;
-    const spacer = sb.firstElementChild;
-    let syncing = false;
+    if (!box) return;
     let measureId = 0;
     let stickyIndent = 0;
     let rightPad = 0;
     let leftPad = 0;
     const measure = () => {
       const hasOverflow = box.scrollWidth > box.clientWidth;
-      sb.style.display = hasOverflow ? '' : 'none';
-      sb.style.width = box.clientWidth + 'px';
-      if (spacer) spacer.style.width = box.scrollWidth + 'px';
       const custEl = box.querySelector('.sticky-cust');
       const custH = custEl ? Math.ceil(custEl.getBoundingClientRect().height) : 0;
       const grpEl = box.querySelector('.sticky-grp');
@@ -2035,33 +2058,23 @@ function DetailScrollBox({ children }) {
       if (cover) cover.style.transform = 'translate(' + (sl + box.clientWidth - rightPad) + 'px,' + box.scrollTop + 'px)';
       if (coverL) coverL.style.transform = 'translate(' + sl + 'px,' + box.scrollTop + 'px)';
     };
-    const syncBox = () => {
-      pinHoriz();
-      if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; setTimeout(() => { syncing = false; }, 30);
-    };
-    const syncSb = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; setTimeout(() => { syncing = false; }, 30); };
+    const onScroll = () => pinHoriz();
     measure();
-    box.addEventListener('scroll', syncBox);
-    sb.addEventListener('scroll', syncSb);
+    box.addEventListener('scroll', onScroll);
     const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(box);
     const mo = new MutationObserver(scheduleMeasure);
     mo.observe(box, { childList: true, subtree: true });
     window.addEventListener('resize', measure);
-    return () => { clearTimeout(measureId); box.removeEventListener('scroll', syncBox); sb.removeEventListener('scroll', syncSb); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
+    return () => { clearTimeout(measureId); box.removeEventListener('scroll', onScroll); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   return React.createElement("div", {
-    style: { display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4 }
-  },
-  React.createElement("div", { className: "fake-scrollbar-wrap", ref: sbRef },
-    React.createElement("div", { style: { height: 1 } })),
-  React.createElement("div", {
     className: "detail-box px-6 pb-8",
     ref: boxRef,
-    style: { flex: 1, minHeight: 0, position: 'relative' }
+    style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
   }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
   React.createElement("div", { ref: coverLRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
-  children));
+  children);
 }
 
 // Thanh cuộn ngang giả cho 2 màn tổng hợp: dính trên cùng khung bảng (trên cả
