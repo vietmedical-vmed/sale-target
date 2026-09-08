@@ -50,7 +50,7 @@ tailwind.config = { theme: { extend: { colors: {
   .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
   /* Màn chi tiết: khung cuộn ngoài bao tất cả thẻ KH, header bảng + scrollbar dính */
   .detail-box { overflow: auto; }
-  .detail-box::-webkit-scrollbar { width: 8px; height: 0; }
+  .detail-box::-webkit-scrollbar { width: 8px; height: 8px; }
   .detail-box::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .detail-box::-webkit-scrollbar-track { background: transparent; }
   .fake-scrollbar-wrap {
@@ -1174,8 +1174,7 @@ function ProductRow({
       khLeft,
       price,
       totalQuota,
-      // Quota khả dụng còn lại = tổng quota − (thực hiện YTD + KH còn lại YTD)
-      quotaAvailable: totalQuota - (ytd + khLeft),
+      quotaAvailable: totalQuota - ytd,
       dtBase,
       dtUpd,
       chenh: dtUpd - dtBase
@@ -1291,7 +1290,12 @@ function ProductRow({
     onClick: handleDelete,
     title: "Xóa sản phẩm (mọi tháng)",
     className: "shrink-0 text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-  }, /*#__PURE__*/React.createElement(Trash2, { size: 13 })))), /*#__PURE__*/React.createElement(EditableCell, {
+  }, /*#__PURE__*/React.createElement(Trash2, { size: 13 })))), /*#__PURE__*/React.createElement(PriceCell, {
+    value: stats.price,
+    pending: pend('price'),
+    locked: !canEdit,
+    onCommit: commitPrice
+  }), /*#__PURE__*/React.createElement(EditableCell, {
     value: stats.q14,
     pending: pend('qOld'),
     locked: !canEdit,
@@ -1327,12 +1331,7 @@ function ProductRow({
     style: {
       width: 110
     }
-  }, fmtInt(stats.quotaAvailable)), /*#__PURE__*/React.createElement(PriceCell, {
-    value: stats.price,
-    pending: pend('price'),
-    locked: !canEdit,
-    onCommit: commitPrice
-  }), (showBasePlan ? MONTHS.map((mo, i) => /*#__PURE__*/React.createElement(EditableCell, {
+  }, fmtInt(stats.quotaAvailable)), (showBasePlan ? MONTHS.map((mo, i) => /*#__PURE__*/React.createElement(EditableCell, {
     key: 'b' + mo,
     value: monthly[i].rev,
     locked: !isAdmin,
@@ -1441,12 +1440,20 @@ function ProductGroupSection({
   };
   // thống kê cấp nhóm SP
   const gs = useMemo(() => {
-    let plan = 0,
-      dt = 0,
-      dtUpd = 0;
+    let plan = 0, dt = 0, dtUpd = 0;
+    let q14M = 0, qMainM = 0, qAddM = 0, ytdM = 0;
     const mDtBase = Array(12).fill(0);
     const mDtUpd = Array(12).fill(0);
     products.forEach(p => {
+      const allR = p.monthly.flatMap(c => c.rows);
+      let pQ14 = 0, pQMain = 0, pQAdd = 0, pPrice = 0;
+      allR.forEach(r => {
+        pQ14 += Number(r.qOld) || 0;
+        pQMain += Number(r.qMain) || 0;
+        pQAdd += Number(r.qAdd) || 0;
+        if (!pPrice && r.price) pPrice = Number(r.price) || 0;
+      });
+      q14M += pQ14 * pPrice; qMainM += pQMain * pPrice; qAddM += pQAdd * pPrice;
       p.monthly.forEach((c, i) => {
         plan += c.rev;
         c.rows.forEach(r => {
@@ -1456,6 +1463,7 @@ function ProductGroupSection({
           const rb = (Number(r.rev) || 0) * pr;
           dt += rb;
           mDtBase[i] += rb;
+          if (isYtdMonth(MONTHS[i])) ytdM += act * pr;
           const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
           const ru = upd * pr;
           dtUpd += ru;
@@ -1463,13 +1471,12 @@ function ProductGroupSection({
         });
       });
     });
+    const totalQuotaM = q14M + qMainM + qAddM;
     return {
-      plan,
-      dt,
-      dtUpd,
-      chenh: dtUpd - dt,
-      mDtBase,
-      mDtUpd
+      plan, dt, dtUpd, chenh: dtUpd - dt,
+      q14M, qMainM, qAddM, totalQuotaM,
+      ytdM, quotaAvailM: totalQuotaM - ytdM,
+      mDtBase, mDtUpd
     };
   }, [products]);
   // products: [{ mset, product, monthly }], đã sort theo mset → product
@@ -1567,6 +1574,12 @@ function ProductGroupSection({
     }
   }, "Sản\nphẩm"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
+    className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-amber-700 border-r border-b border-slate-200 bg-amber-50/40 align-bottom",
+    style: {
+      width: 85
+    }
+  }, "Đơn\ngiá ✏"), /*#__PURE__*/React.createElement("th", {
+    rowSpan: 2,
     className: "px-1.5 py-1.5 text-right text-[10px] font-semibold uppercase text-blue-700 border-r border-b border-slate-200 bg-blue-50/40 align-bottom",
     style: {
       width: 72
@@ -1602,12 +1615,6 @@ function ProductGroupSection({
       width: 110
     }
   }, "Quota\nkhả\ndụng\ncòn\nlại"), /*#__PURE__*/React.createElement("th", {
-    rowSpan: 2,
-    className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-amber-700 border-r border-b border-slate-200 bg-amber-50/40 align-bottom",
-    style: {
-      width: 85
-    }
-  }, "Đơn\ngiá ✏"), /*#__PURE__*/React.createElement("th", {
     colSpan: showBasePlan ? 12 : 1,
     onClick: () => onToggleBasePlan && onToggleBasePlan(),
     className: "px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-600 border-r border-b border-slate-200 bg-slate-100/70 cursor-pointer select-none hover:bg-slate-200/70",
@@ -1659,12 +1666,27 @@ function ProductGroupSection({
     className: "px-3 py-2 text-[12px] font-bold text-slate-800 border-r border-b border-amber-200 sticky left-0 bg-amber-50 z-[1] uppercase tracking-wide",
     style: { width: 400, minWidth: 400 }
   }, "Tổng cộng"), /*#__PURE__*/React.createElement("td", {
-    colSpan: 7,
-    className: "border-r border-b border-amber-200"
-  }), /*#__PURE__*/React.createElement("td", {
     className: "border-r border-b border-amber-200",
     style: { width: 85 }
-  }), (showBasePlan ? gs.mDtBase.map((v, i) => /*#__PURE__*/React.createElement("td", {
+  }), /*#__PURE__*/React.createElement("td", {
+    className: "px-2 py-2 text-[12px] text-right tabular-nums font-semibold text-slate-700 border-r border-b border-amber-200 bg-blue-50/20",
+    style: { width: 72 }
+  }, MASK_MONEY ? '•••' : moneyTy3(gs.q14M)), /*#__PURE__*/React.createElement("td", {
+    className: "px-2 py-2 text-[12px] text-right tabular-nums font-semibold text-slate-700 border-r border-b border-amber-200 bg-blue-50/20",
+    style: { width: 80 }
+  }, MASK_MONEY ? '•••' : moneyTy3(gs.qMainM)), /*#__PURE__*/React.createElement("td", {
+    className: "px-2 py-2 text-[12px] text-right tabular-nums font-semibold text-slate-700 border-r border-b border-amber-200 bg-blue-50/20",
+    style: { width: 72 }
+  }, MASK_MONEY ? '•••' : moneyTy3(gs.qAddM)), /*#__PURE__*/React.createElement("td", {
+    className: "px-2 py-2 text-[12px] text-right tabular-nums font-bold text-slate-800 border-r border-b border-amber-200 bg-amber-50/80",
+    style: { width: 90 }
+  }, MASK_MONEY ? '•••' : moneyTy3(gs.totalQuotaM)), /*#__PURE__*/React.createElement("td", {
+    className: "px-2 py-2 text-[12px] text-right tabular-nums font-semibold text-slate-700 border-r border-b border-amber-200 bg-orange-50/40",
+    style: { width: 90 }
+  }, MASK_MONEY ? '•••' : moneyTy3(gs.ytdM)), /*#__PURE__*/React.createElement("td", {
+    className: "px-2 py-2 text-[12px] text-right tabular-nums font-semibold text-slate-700 border-r border-b border-amber-200",
+    style: { width: 110 }
+  }, MASK_MONEY ? '•••' : moneyTy3(gs.quotaAvailM)), (showBasePlan ? gs.mDtBase.map((v, i) => /*#__PURE__*/React.createElement("td", {
     key: 'tb' + i,
     className: "px-1 py-2 text-[11px] text-right tabular-nums text-slate-700 font-semibold border-r border-b border-amber-200 bg-amber-50/40",
     style: { width: 58 }
