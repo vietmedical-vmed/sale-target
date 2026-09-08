@@ -54,10 +54,9 @@ tailwind.config = { theme: { extend: { colors: {
   .detail-box::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .detail-box::-webkit-scrollbar-track { background: transparent; }
   .fake-scrollbar-wrap {
-    position: sticky; left: 0; z-index: 22;
-    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px));
     overflow-x: auto; overflow-y: hidden;
     background: #f0f2f5; border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
   }
   .fake-scrollbar-wrap::-webkit-scrollbar { height: 8px; }
   .fake-scrollbar-wrap::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
@@ -82,7 +81,7 @@ tailwind.config = { theme: { extend: { colors: {
   }
   .detail-box thead {
     position: sticky;
-    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px) + var(--detail-sb-h, 0px));
+    top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px));
     z-index: 20;
   }
   .detail-box thead tr { background: #fff; }
@@ -2005,7 +2004,6 @@ function DetailScrollBox({ children }) {
       sb.style.display = hasOverflow ? '' : 'none';
       sb.style.width = box.clientWidth + 'px';
       if (spacer) spacer.style.width = box.scrollWidth + 'px';
-      const sbH = hasOverflow ? Math.ceil(sb.getBoundingClientRect().height) : 0;
       const custEl = box.querySelector('.sticky-cust');
       const custH = custEl ? Math.ceil(custEl.getBoundingClientRect().height) : 0;
       const grpEl = box.querySelector('.sticky-grp');
@@ -2019,7 +2017,6 @@ function DetailScrollBox({ children }) {
         stickyIndent = custEl.getBoundingClientRect().left - boxL + box.scrollLeft;
       }
       const vw = box.clientWidth - stickyIndent - rightPad;
-      box.style.setProperty('--detail-sb-h', sbH + 'px');
       box.style.setProperty('--detail-cust-h', custH + 'px');
       box.style.setProperty('--detail-grp-h', grpH + 'px');
       box.style.setProperty('--detail-vw', vw + 'px');
@@ -2054,13 +2051,17 @@ function DetailScrollBox({ children }) {
     return () => { clearTimeout(measureId); box.removeEventListener('scroll', syncBox); sb.removeEventListener('scroll', syncSb); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   return React.createElement("div", {
+    style: { display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4 }
+  },
+  React.createElement("div", { className: "fake-scrollbar-wrap", ref: sbRef },
+    React.createElement("div", { style: { height: 1 } })),
+  React.createElement("div", {
     className: "detail-box px-6 pb-8",
     ref: boxRef,
-    style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
+    style: { flex: 1, minHeight: 0, position: 'relative' }
   }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
   React.createElement("div", { ref: coverLRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
-  React.createElement("div", { className: "fake-scrollbar-wrap", ref: sbRef },
-    React.createElement("div", { style: { height: 1 } })), children);
+  children));
 }
 
 // Thanh cuộn ngang giả cho 2 màn tổng hợp: dính trên cùng khung bảng (trên cả
