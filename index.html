@@ -59,9 +59,9 @@ tailwind.config = { theme: { extend: { colors: {
     overflow-x: auto; overflow-y: hidden;
     background: #f0f2f5; border-bottom: 1px solid #e5e7eb;
   }
-  .fake-scrollbar-wrap::-webkit-scrollbar { height: 8px; }
-  .fake-scrollbar-wrap::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
-  .fake-scrollbar-wrap::-webkit-scrollbar-track { background: transparent; }
+  .fake-scrollbar-wrap::-webkit-scrollbar { height: 10px; }
+  .fake-scrollbar-wrap::-webkit-scrollbar-thumb { background: #b0b5bd; border-radius: 5px; }
+  .fake-scrollbar-wrap::-webkit-scrollbar-track { background: #e8eaed; border-radius: 5px; }
   /* 2 màn tổng hợp: thanh cuộn ngang giả nằm trên header bảng, ẩn thanh cuộn thật */
   .summary-scroll::-webkit-scrollbar { width: 8px; height: 0; }
   .summary-scroll::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
@@ -1435,24 +1435,24 @@ function ProductGroupSection({
     if (!box) return;
     const spacer = sb.firstElementChild;
     let syncing = false;
-    let tid = 0;
+    const syncFromBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
+    const syncToBox = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
     const measure = () => {
-      const has = box.scrollWidth > box.clientWidth;
-      sb.style.display = has ? '' : 'none';
       sb.style.width = box.clientWidth + 'px';
       if (spacer) spacer.style.width = box.scrollWidth + 'px';
-      const sbH = has ? Math.ceil(sb.getBoundingClientRect().height) : 0;
+      const sbH = Math.ceil(sb.getBoundingClientRect().height);
       box.style.setProperty('--detail-sb-h', sbH + 'px');
+      syncFromBox();
     };
-    const schedule = () => { clearTimeout(tid); tid = setTimeout(measure, 60); };
-    const syncFromBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; setTimeout(() => { syncing = false; }, 30); };
-    const syncToBox = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; setTimeout(() => { syncing = false; }, 30); };
     measure();
     box.addEventListener('scroll', syncFromBox);
     sb.addEventListener('scroll', syncToBox);
-    const ro = new ResizeObserver(schedule);
+    const ro = new ResizeObserver(measure);
     ro.observe(box);
-    return () => { clearTimeout(tid); box.removeEventListener('scroll', syncFromBox); sb.removeEventListener('scroll', syncToBox); ro.disconnect(); };
+    const mo = new MutationObserver(() => requestAnimationFrame(measure));
+    mo.observe(box, { childList: true, subtree: true, attributes: true });
+    window.addEventListener('resize', measure);
+    return () => { box.removeEventListener('scroll', syncFromBox); sb.removeEventListener('scroll', syncToBox); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).
   const groupRows = useMemo(() => products.flatMap(p => p.monthly.flatMap(c => c.rows)), [products]);
