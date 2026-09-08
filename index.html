@@ -6287,6 +6287,14 @@ const ACTION_COLORS = {
   setAppConfig: 'bg-amber-100 text-amber-700',
   saveGiaiTrinh: 'bg-amber-100 text-amber-700',
 };
+const DB_COL_LABELS = {
+  quota_thau_cu_con_lai: 'Quota thầu cũ', thang_thau_chinh: 'Tháng thầu chính',
+  thoi_gian_thau_chinh: 'TG thầu chính', quota_thau_chinh: 'Quota thầu chính',
+  thang_thau_bo_sung: 'Tháng thầu BS', quota_bo_sung: 'Quota BS',
+  sl_ke_hoach_dau_nam: 'SL KH đầu năm', sl_ke_hoach_update: 'SL KH update',
+  don_gia: 'Đơn giá', sl_thuc_hien: 'SL thực hiện',
+  doanh_thu_kh_dau_nam: 'Dthu KH đầu năm', bo_vat_tu: 'Bộ vật tư', san_pham: 'Sản phẩm',
+};
 
 function AuditLogView({ auth, viewBu }) {
   const h = React.createElement;
@@ -6303,6 +6311,7 @@ function AuditLogView({ auth, viewBu }) {
   const [editingDeadline, setEditingDeadline] = useState(false);
   const [deadlineInput, setDeadlineInput] = useState('5');
   const [subTab, setSubTab] = useState('log');
+  const [expandedGroup, setExpandedGroup] = useState(null);
   const LIMIT = 50;
   const isAdmin = auth.role === 'admin';
 
@@ -6520,27 +6529,75 @@ function AuditLogView({ auth, viewBu }) {
               loading ? h('tr', null, h('td', { colSpan: 9, className: 'px-3 py-8 text-center text-slate-400' },
                 h(Loader2, { size: 16, className: 'inline animate-spin mr-2' }), 'Đang tải...'))
               : grouped.length === 0 ? h('tr', null, h('td', { colSpan: 9, className: 'px-3 py-8 text-center text-slate-400' }, 'Chưa có bản ghi nào'))
-              : grouped.map(g => h('tr', { key: g.key, className: 'border-b border-slate-100 hover:bg-slate-50/50' },
-                  h('td', { className: 'px-3 py-2 text-slate-700 whitespace-nowrap' }, g.day),
-                  h('td', { className: 'px-3 py-2' },
-                    h('div', { className: 'font-medium text-slate-800' }, g.ho_ten || g.username),
-                    g.ho_ten && h('div', { className: 'text-[10px] text-slate-400' }, g.username)
-                  ),
-                  h('td', { className: 'px-3 py-2 text-slate-600' }, ROLE_LABELS[g.role] || g.role),
-                  h('td', { className: 'px-3 py-2 text-slate-600' }, (TEAMS[g.bu] && TEAMS[g.bu].label) || g.bu || ''),
-                  h('td', { className: 'px-3 py-2' },
-                    h('span', { className: `inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${ACTION_COLORS[g.action] || 'bg-slate-100 text-slate-600'}` },
-                      ACTION_LABELS[g.action] || g.action)
-                  ),
-                  h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' },
-                    g.count > 1 ? g.count + ' lần' : '1 lần'),
-                  h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' }, g.row_count),
-                  h('td', { className: 'px-3 py-2 text-center' }, deadlineTag(g.last_at)),
-                  h('td', { className: 'px-3 py-2 text-slate-500 whitespace-nowrap' },
-                    g.count > 1
-                      ? fmtTime(g.first_at).split(' ')[1] + ' – ' + fmtTime(g.last_at).split(' ')[1]
-                      : fmtTime(g.last_at).split(' ')[1])
-                ))
+              : grouped.map(g => {
+                  const hasChanges = g.action === 'updateCells' && g.details.some(d => d && d.changes && d.changes.length > 0);
+                  const isExpanded = expandedGroup === g.key;
+                  const allChanges = hasChanges ? g.details.flatMap(d => (d && d.changes) || []) : [];
+                  return h(React.Fragment, { key: g.key },
+                    h('tr', {
+                      className: 'border-b border-slate-100 hover:bg-slate-50/50' + (hasChanges ? ' cursor-pointer' : '') + (isExpanded ? ' bg-blue-50/40' : ''),
+                      onClick: hasChanges ? () => setExpandedGroup(isExpanded ? null : g.key) : undefined
+                    },
+                      h('td', { className: 'px-3 py-2 text-slate-700 whitespace-nowrap' },
+                        hasChanges && h(ChevronDown, { size: 12, className: 'inline mr-1 text-slate-400 transition-transform' + (isExpanded ? ' rotate-180' : '') }),
+                        g.day),
+                      h('td', { className: 'px-3 py-2' },
+                        h('div', { className: 'font-medium text-slate-800' }, g.ho_ten || g.username),
+                        g.ho_ten && h('div', { className: 'text-[10px] text-slate-400' }, g.username)
+                      ),
+                      h('td', { className: 'px-3 py-2 text-slate-600' }, ROLE_LABELS[g.role] || g.role),
+                      h('td', { className: 'px-3 py-2 text-slate-600' }, (TEAMS[g.bu] && TEAMS[g.bu].label) || g.bu || ''),
+                      h('td', { className: 'px-3 py-2' },
+                        h('span', { className: `inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${ACTION_COLORS[g.action] || 'bg-slate-100 text-slate-600'}` },
+                          ACTION_LABELS[g.action] || g.action)
+                      ),
+                      h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' },
+                        g.count > 1 ? g.count + ' lần' : '1 lần'),
+                      h('td', { className: 'px-3 py-2 text-right tabular-nums font-medium text-slate-700' }, g.row_count),
+                      h('td', { className: 'px-3 py-2 text-center' }, deadlineTag(g.last_at)),
+                      h('td', { className: 'px-3 py-2 text-slate-500 whitespace-nowrap' },
+                        g.count > 1
+                          ? fmtTime(g.first_at).split(' ')[1] + ' – ' + fmtTime(g.last_at).split(' ')[1]
+                          : fmtTime(g.last_at).split(' ')[1])
+                    ),
+                    isExpanded && h('tr', { className: 'border-b border-slate-100' },
+                      h('td', { colSpan: 9, className: 'px-3 py-3 bg-blue-50/30' },
+                        h('div', { className: 'overflow-x-auto' },
+                          h('table', { className: 'w-full text-[11px] border border-slate-200 rounded' },
+                            h('thead', null,
+                              h('tr', { className: 'bg-slate-100' },
+                                h('th', { className: 'px-2 py-1.5 text-left font-semibold text-slate-600' }, 'PS'),
+                                h('th', { className: 'px-2 py-1.5 text-left font-semibold text-slate-600' }, 'Khách hàng'),
+                                h('th', { className: 'px-2 py-1.5 text-left font-semibold text-slate-600' }, 'Cột'),
+                                h('th', { className: 'px-2 py-1.5 text-right font-semibold text-red-600' }, 'Giá trị cũ'),
+                                h('th', { className: 'px-2 py-1.5 text-center font-semibold text-slate-400' }, ''),
+                                h('th', { className: 'px-2 py-1.5 text-right font-semibold text-emerald-600' }, 'Giá trị mới')
+                              )
+                            ),
+                            h('tbody', null,
+                              allChanges.length === 0
+                                ? h('tr', null, h('td', { colSpan: 6, className: 'px-2 py-3 text-center text-slate-400' }, 'Không có chi tiết (log cũ)'))
+                                : allChanges.flatMap(ch =>
+                                    Object.entries(ch.diff || {}).map(([col, v]) =>
+                                      h('tr', { key: ch.id + '_' + col, className: 'border-t border-slate-100 hover:bg-white' },
+                                        h('td', { className: 'px-2 py-1 text-slate-700 whitespace-nowrap' }, ch.ps || ''),
+                                        h('td', { className: 'px-2 py-1 text-slate-700 max-w-[200px] truncate' }, ch.cust || ch.custId || ''),
+                                        h('td', { className: 'px-2 py-1 text-slate-600 whitespace-nowrap' }, DB_COL_LABELS[col] || col),
+                                        h('td', { className: 'px-2 py-1 text-right tabular-nums text-red-600 font-medium' }, v.old != null ? String(v.old) : '—'),
+                                        h('td', { className: 'px-2 py-1 text-center text-slate-300' }, '→'),
+                                        h('td', { className: 'px-2 py-1 text-right tabular-nums text-emerald-600 font-medium' }, v.new != null ? String(v.new) : '—')
+                                      )
+                                    )
+                                  )
+                            )
+                          )
+                        ),
+                        allChanges.length > 0 && h('div', { className: 'mt-1 text-[10px] text-slate-400' },
+                          allChanges.length, ' dòng thay đổi')
+                      )
+                    )
+                  );
+                })
             )
           )
         )

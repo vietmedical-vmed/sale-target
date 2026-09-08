@@ -558,6 +558,16 @@ Deno.serve(async (req) => {
         patch[COL[u.key]] = u.value === "" ? null : u.value;
       }
       if (byRow.size > 0) {
+        // Snapshot giá trị CŨ trước khi update (để ghi audit log before/after)
+        const rowIds = [...byRow.keys()];
+        const changedDbCols = new Set();
+        for (const [, patch] of byRow) for (const c of Object.keys(patch)) changedDbCols.add(c);
+        const selectCols = ["id", "ps", "khach_hang", "ma_khach_hang", ...changedDbCols].join(",");
+        const { data: oldRows } = await db.schema("shared").from("sale_target")
+          .select(selectCols).in("id", rowIds);
+        const oldMap = new Map();
+        if (oldRows) for (const r of oldRows) oldMap.set(r.id, r);
+
         const p_updates = Array.from(byRow, ([id, patch]) => ({ id, patch }));
         const { error } = await db.rpc("update_sale_target_cells", {
           p_updates, ...scopeParams(sess),
@@ -570,9 +580,20 @@ Deno.serve(async (req) => {
         }
         const cols = new Set();
         for (const u of updates) if (EDITABLE.has(u.key) || ADMIN_EDITABLE.has(u.key)) cols.add(u.key);
+        // Ghi audit log kèm giá trị cũ/mới cho từng dòng (giới hạn 50 dòng)
+        const changes = rowIds.slice(0, 50).map(id => {
+          const old = oldMap.get(id) || {};
+          const patch = byRow.get(id) || {};
+          const diff = {};
+          for (const [col, newVal] of Object.entries(patch)) {
+            diff[col] = { old: old[col] ?? null, new: newVal };
+          }
+          return { id, ps: old.ps, cust: old.khach_hang, custId: old.ma_khach_hang, diff };
+        });
         await writeAuditLog(db, sess, "updateCells", byRow.size, {
           columns: [...cols],
-          ids: [...byRow.keys()].slice(0, 50),
+          ids: rowIds.slice(0, 50),
+          changes,
         });
       }
       return json({ ok: true, rev: await getRev(db) });
