@@ -338,15 +338,15 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      const [allRows, rev, cfgRows] = await Promise.all([
+      const [allRows, classifyRes, rev, cfgRows] = await Promise.all([
         fetchAll(db, sess, payload),
+        db.rpc("classify_oop_sale_target").then((r) => r.data || []).catch(() => []),
         getRev(db),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
       ]);
       const cfg: Record<string, unknown> = {};
       for (const r of cfgRows) cfg[r.key] = r.value;
-      // OOP rows now live in sale_target with ngoai_ke_hoach = true (inserted by map function).
-      // Split them out so frontend receives same oopRows structure as before.
+      // OOP rows live in sale_target with ngoai_ke_hoach = true (inserted by map function).
       const dbRows = [];
       const oopDbRows = [];
       for (const r of allRows) {
@@ -360,7 +360,12 @@ Deno.serve(async (req) => {
       const rows = dbRows.map(mapRow);
       const rowNums = dbRows.map((r) => r.id);
       const oopRows = oopDbRows.map(mapRow);
-      const oopMeta = oopDbRows.map(() => ({ ly_do: "", ps_dia_ban: "" }));
+      // Match ly_do / ps_dia_ban from classify RPC by sale_target.id
+      const classMap = new Map(classifyRes.map((c) => [c.target_id, c]));
+      const oopMeta = oopDbRows.map((r) => {
+        const c = classMap.get(r.id);
+        return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
+      });
       return json({
         ok: true, fields: FIELDS, rows, rowNums,
         oopRows, oopMeta, rev,
@@ -494,9 +499,12 @@ Deno.serve(async (req) => {
     // khi sửa hoá đơn: view hoa_don_actual/v_actual_ngoai_ke_hoach tự cập nhật,
     // chỉ cần lấy lại mảng OOP + meta.
     if (action === "getOop") {
-      // OOP rows now in sale_target with ngoai_ke_hoach = true.
-      // Query only OOP rows (not full table).
-      const cols = FIELDS.map((f) => COL[f]).join(",");
+      // OOP rows in sale_target with ngoai_ke_hoach = true. Query only OOP rows + classify.
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
+      const [classifyRes] = await Promise.all([
+        db.rpc("classify_oop_sale_target").then((r) => r.data || []).catch(() => []),
+      ]);
+      const classMap = new Map(classifyRes.map((c) => [c.target_id, c]));
       const out = [];
       for (let from = 0; ; from += PAGE) {
         let q = db.schema("shared").from("sale_target").select(cols)
@@ -512,7 +520,10 @@ Deno.serve(async (req) => {
         const v = r[COL[f]];
         return v === null || v === undefined ? "" : v;
       }));
-      const oopMeta = out.map(() => ({ ly_do: "", ps_dia_ban: "" }));
+      const oopMeta = out.map((r) => {
+        const c = classMap.get(r.id);
+        return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
+      });
       return json({ ok: true, oopRows, oopMeta, rev: await getRev(db) });
     }
 
