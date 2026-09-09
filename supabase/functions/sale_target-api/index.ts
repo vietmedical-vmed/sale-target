@@ -267,6 +267,19 @@ async function fetchAll(db, sess, payload) {
   return out.filter(Boolean);
 }
 
+// Phân loại OOP rows — paginated vì PostgREST max_rows cắt kết quả RPC.
+async function fetchOopClassify(db) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.rpc("classify_oop_sale_target")
+      .range(from, from + PAGE - 1);
+    if (error) break;
+    out.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return new Map(out.map((c) => [c.target_id, c]));
+}
+
 // ---- Actual NGOÀI KẾ HOẠCH ----
 // Các dòng thực hiện không khớp dòng kế hoạch nào (view v_actual_ngoai_ke_hoach).
 // Trả về DƯỚI DẠNG RIÊNG (oopRows), KHÔNG trộn vào rows: app chỉ dùng ở 2 màn tổng
@@ -338,9 +351,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      const [allRows, classifyRes, rev, cfgRows] = await Promise.all([
+      const [allRows, classMap, rev, cfgRows] = await Promise.all([
         fetchAll(db, sess, payload),
-        db.rpc("classify_oop_sale_target").then((r) => r.data || []).catch(() => []),
+        fetchOopClassify(db).catch(() => new Map()),
         getRev(db),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
       ]);
@@ -360,8 +373,6 @@ Deno.serve(async (req) => {
       const rows = dbRows.map(mapRow);
       const rowNums = dbRows.map((r) => r.id);
       const oopRows = oopDbRows.map(mapRow);
-      // Match ly_do / ps_dia_ban from classify RPC by sale_target.id
-      const classMap = new Map(classifyRes.map((c) => [c.target_id, c]));
       const oopMeta = oopDbRows.map((r) => {
         const c = classMap.get(r.id);
         return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
@@ -501,10 +512,7 @@ Deno.serve(async (req) => {
     if (action === "getOop") {
       // OOP rows in sale_target with ngoai_ke_hoach = true. Query only OOP rows + classify.
       const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
-      const [classifyRes] = await Promise.all([
-        db.rpc("classify_oop_sale_target").then((r) => r.data || []).catch(() => []),
-      ]);
-      const classMap = new Map(classifyRes.map((c) => [c.target_id, c]));
+      const classMap = await fetchOopClassify(db).catch(() => new Map());
       const out = [];
       for (let from = 0; ; from += PAGE) {
         let q = db.schema("shared").from("sale_target").select(cols)
