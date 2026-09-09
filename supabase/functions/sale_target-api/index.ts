@@ -979,6 +979,13 @@ Deno.serve(async (req) => {
       return json({ ok: true, entry: data });
     }
 
+    if (action === "syncThucHien") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const { data, error } = await db.rpc("cap_nhat_thuc_hien");
+      if (error) throw new Error(error.message);
+      return json({ ok: true, result: data });
+    }
+
     return json({ ok: false, error: "unknown_action" }, 400);
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) }, 500);
