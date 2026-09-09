@@ -75,11 +75,11 @@ const COL = {
   mAdd: "thang_thau_bo_sung", qAdd: "quota_bo_sung", rev: "sl_ke_hoach_dau_nam",
   revUpd: "sl_ke_hoach_update", price: "don_gia",
   act: "sl_thuc_hien", dtAct: "doanh_thu_thuc_hien",
-  dt: "doanh_thu_kh_dau_nam", bu: "bu",
+  dt: "doanh_thu_kh_dau_nam", bu: "bu", oop: "ngoai_ke_hoach",
 };
 // Thứ tự field khi trả getData (app đọc theo fields[])
 const FIELDS = ["fy","mo","region","ps","cust","custId","grp","prod","mset",
-  "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","act","dtAct","dt","bu"];
+  "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","act","dtAct","dt","bu","oop"];
 // Chỉ các cột này được phép sửa qua updateCells
 const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd","price"]);
 // Các cột nhận diện (bộ vật tư / sản phẩm) — CHỈ admin được sửa qua updateCells.
@@ -338,24 +338,32 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      // fetchAll / fetchOutOfPlan / getRev độc lập → chạy song song để tiết kiệm lượt chờ.
-      // fetchOutOfPlan hỏng KHÔNG được làm sập getData (vd view chưa tạo) → nuốt lỗi, trả [].
-      const [dbRows, oop, rev, cfgRows] = await Promise.all([
+      const [allRows, rev, cfgRows] = await Promise.all([
         fetchAll(db, sess, payload),
-        fetchOutOfPlan(db, sess, payload).catch(() => ({ rows: [], meta: [] })),
         getRev(db),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
       ]);
       const cfg: Record<string, unknown> = {};
       for (const r of cfgRows) cfg[r.key] = r.value;
-      const rows = dbRows.map((r) => FIELDS.map((f) => {
+      // OOP rows now live in sale_target with ngoai_ke_hoach = true (inserted by map function).
+      // Split them out so frontend receives same oopRows structure as before.
+      const dbRows = [];
+      const oopDbRows = [];
+      for (const r of allRows) {
+        if (r[COL.oop]) oopDbRows.push(r);
+        else dbRows.push(r);
+      }
+      const mapRow = (r) => FIELDS.map((f) => {
         const v = r[COL[f]];
         return v === null || v === undefined ? "" : v;
-      }));
+      });
+      const rows = dbRows.map(mapRow);
       const rowNums = dbRows.map((r) => r.id);
+      const oopRows = oopDbRows.map(mapRow);
+      const oopMeta = oopDbRows.map(() => ({ ly_do: "", ps_dia_ban: "" }));
       return json({
         ok: true, fields: FIELDS, rows, rowNums,
-        oopRows: oop.rows, oopMeta: oop.meta, rev,
+        oopRows, oopMeta, rev,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
         config: cfg,
       });
@@ -486,8 +494,26 @@ Deno.serve(async (req) => {
     // khi sửa hoá đơn: view hoa_don_actual/v_actual_ngoai_ke_hoach tự cập nhật,
     // chỉ cần lấy lại mảng OOP + meta.
     if (action === "getOop") {
-      const oop = await fetchOutOfPlan(db, sess, payload).catch(() => ({ rows: [], meta: [] }));
-      return json({ ok: true, oopRows: oop.rows, oopMeta: oop.meta, rev: await getRev(db) });
+      // OOP rows now in sale_target with ngoai_ke_hoach = true.
+      // Query only OOP rows (not full table).
+      const cols = FIELDS.map((f) => COL[f]).join(",");
+      const out = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = db.schema("shared").from("sale_target").select(cols)
+          .eq("ngoai_ke_hoach", true)
+          .range(from, from + PAGE - 1);
+        q = applyScope(q, sess, payload);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        out.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
+      const oopRows = out.map((r) => FIELDS.map((f) => {
+        const v = r[COL[f]];
+        return v === null || v === undefined ? "" : v;
+      }));
+      const oopMeta = out.map(() => ({ ly_do: "", ps_dia_ban: "" }));
+      return json({ ok: true, oopRows, oopMeta, rev: await getRev(db) });
     }
 
     // Sửa PS hàng loạt trong hoá đơn theo PS địa bàn — chỉ admin. Dùng cho nút
