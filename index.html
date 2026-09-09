@@ -460,11 +460,12 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
       const pr = Number(r.price) || 0;
       const rev = Number(r.rev) || 0;
       const act = Number(r.act) || 0;
+      const dtActR = Number(r.dtAct) || 0;
       const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
       const useAct = MONTHS[idx] < CURRENT_MONTH || (MONTHS[idx] === CURRENT_MONTH && (act !== 0));
       const inYtd = MONTHS[idx] <= CURRENT_MONTH;
-      const upd = (useAct ? act : rawUpd) * pr;
-      const actDt = act * pr;
+      const upd = useAct ? dtActR : rawUpd * pr;
+      const actDt = dtActR;
       const khDt = rawUpd * pr;
       if (m[bu]) {
         m[bu].dtUpd += upd;
@@ -1159,10 +1160,11 @@ function ProductRow({
       c.rows.forEach(r => {
         const pr = Number(r.price) || 0;
         const act = Number(r.act) || 0;
+        const dtActR = Number(r.dtAct) || 0;
         const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
         dtBase += (Number(r.rev) || 0) * pr;
         const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-        dtUpd += upd * pr;
+        dtUpd += useAct ? dtActR : upd * pr;
       });
     });
     const totalQuota = q14 + qMain + qAdd;
@@ -1486,13 +1488,14 @@ function ProductGroupSection({
         c.rows.forEach(r => {
           const pr = Number(r.price) || 0;
           const act = Number(r.act) || 0;
+          const dtActR = Number(r.dtAct) || 0;
           const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
           const rb = (Number(r.rev) || 0) * pr;
           dt += rb;
           mDtBase[i] += rb;
-          if (isYtdMonth(MONTHS[i])) ytdM += act * pr;
+          if (isYtdMonth(MONTHS[i])) ytdM += dtActR;
           const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-          const ru = upd * pr;
+          const ru = useAct ? dtActR : upd * pr;
           dtUpd += ru;
           mDtUpd[i] += ru;
         });
@@ -1825,12 +1828,13 @@ function CustomerCard({
           c.rows.forEach(r => {
             const pr = Number(r.price) || 0;
             const act = Number(r.act) || 0;
+            const dtActR = Number(r.dtAct) || 0;
             const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             const d = (Number(r.rev) || 0) * pr;
             dt += d;
             monthlyDt[i] += d;
             const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-            dtUpd += upd * pr;
+            dtUpd += useAct ? dtActR : upd * pr;
           });
         });
       });
@@ -2511,7 +2515,7 @@ function ProductSummaryView({ rows, psFilter, regionFilter, custFilter, groupFil
                       if (rOpen) {
                         // Nhóm "Ngoài kế hoạch" mở ra được để xem từng KH thật bên dưới
                         const custRow = (cu, key, pad, kids) => h('tr', {
-                          key, className: 'border-b border-slate-100' + (kids ? ' cursor-pointer bg-amber-50/30' : ''),
+                          key, className: 'border-b border-slate-100' + (cu.oop ? ' bg-amber-50/40' : '') + (kids ? ' cursor-pointer' : ''),
                           onClick: kids ? () => toggle(key) : undefined
                         },
                           h('td', { className: `${pad} pr-4 py-1.5 text-[11.5px] text-slate-500 ${stickyLabel('bg-white')}` },
@@ -2916,6 +2920,7 @@ function SummaryView({
       if (!ps.custMap.has(cKey)) ps.custMap.set(cKey, newCust(cKey, isOop ? '' : r.custId));
       const c = ps.custMap.get(cKey);
       const price = Number(r.price) || 0; // đơn giá TỪNG DÒNG
+      const dtActVal = Number(r.dtAct) || 0;
       const mi = MONTHS.indexOf(r.mo);             // vị trí tháng (−1 nếu ngoài 12 tháng)
       const isPast = (r.mo || '') < CURRENT_MONTH || ((r.mo || '') === CURRENT_MONTH && (Number(r.act) || 0) !== 0);
       const inYtd = isYtdMonth(r.mo);              // luỹ kế YTD gồm cả tháng hiện tại
@@ -2926,7 +2931,7 @@ function SummaryView({
       // Delta của DÒNG này — dùng chung cho cả 3 cấp: KH → Nhóm SP → Sản phẩm
       const dSl = Number(r.rev) || 0;
       const dDt = dSl * price;
-      const dDtUpd = updQty * price;
+      const dDtUpd = isPast ? dtActVal : updQty * price;
       const dQ14 = Number(r.qOld) || 0;
       const dQUpcoming = (Number(r.qMain) || 0) + (Number(r.qAdd) || 0);
       const dQuota = dQ14 + dQUpcoming;
@@ -2934,11 +2939,11 @@ function SummaryView({
       const dQ14Dt = dQ14 * price;
       const dQUpcomingDt = dQUpcoming * price;
       const dYtd = inYtd ? actQty : 0;
-      const dDtYtd = inYtd ? actQty * price : 0;
+      const dDtYtd = inYtd ? dtActVal : 0;
       const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const dKhLeftDt = dKhLeft * price;
       const dMoKh = planUpd * price;       // DThu KH update của tháng này
-      const dMoAct = actQty * price;       // DThu thực hiện của tháng này
+      const dMoAct = dtActVal;             // DThu thực hiện của tháng này
       const dKhYtdDt = isOop ? 0 : (inYtd ? dMoKh : 0);  // DThu KH update luỹ kế YTD (bỏ OOP khỏi mẫu)
       const bump = o => {
         o.dt += dDt;
@@ -3334,10 +3339,10 @@ function SummaryCustRow({
     "data-lv": 2,
     // bg-white thay vì để trong suốt: hàng này bị ghim khi cuộn, phải che được
     // dữ liệu chạy phía sau (trên nền bảng trắng nên nhìn không khác gì trước).
-    className: "bg-white hover:bg-slate-50/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
+    className: (c.oop ? "bg-amber-50/40" : "bg-white") + " hover:bg-slate-50/60 border-b border-slate-100" + (hasKids ? " cursor-pointer" : ""),
     onClick: hasKids ? () => setOpen(!open) : undefined
   }, /*#__PURE__*/React.createElement("td", {
-    className: "px-3 py-1.5 text-[12px] text-slate-600 border-r border-slate-100 sticky left-0 z-10 bg-white"
+    className: "px-3 py-1.5 text-[12px] text-slate-600 border-r border-slate-100 sticky left-0 z-10 " + (c.oop ? "bg-amber-50/40" : "bg-white")
   }, /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1"
   }, hasKids ? open ? /*#__PURE__*/React.createElement(ChevronDown, {
@@ -5626,10 +5631,11 @@ function App() {
           cell.rows.forEach(r => {
             const pr = Number(r.price) || 0;
             const act = Number(r.act) || 0;
+            const dtActR = Number(r.dtAct) || 0;
             const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             const upd = useAct ? act
               : (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0);
-            v += upd * pr;
+            v += useAct ? dtActR : upd * pr;
           });
         });
       }));
@@ -5641,7 +5647,7 @@ function App() {
       c.gMap.forEach(g => g.pMap.forEach(p => {
         p.monthly.forEach((cell, i) => {
           if (!isYtdMonth(MONTHS[i])) return;
-          cell.rows.forEach(r => { v += (Number(r.act) || 0) * (Number(r.price) || 0); });
+          cell.rows.forEach(r => { v += Number(r.dtAct) || 0; });
         });
       }));
       return v;
@@ -5701,11 +5707,12 @@ function App() {
             const pr = Number(r.price) || 0;
             const rev = Number(r.rev) || 0;
             const act = Number(r.act) || 0;
+            const dtActR = Number(r.dtAct) || 0;
             const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
             const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             dt += rev * pr;
-            dtUpd += (useAct ? act : rawUpd) * pr;
-            if (inYtd) { dtYtd += act * pr; khYtdDt += rawUpd * pr; }
+            dtUpd += useAct ? dtActR : rawUpd * pr;
+            if (inYtd) { dtYtd += dtActR; khYtdDt += rawUpd * pr; }
           });
         });
       });
@@ -5723,13 +5730,14 @@ function App() {
       if (!matchSearch(r, q)) continue;
       const pr = Number(r.price) || 0;
       const act = Number(r.act) || 0;
+      const dtActR = Number(r.dtAct) || 0;
       const past = (r.mo || '') < CURRENT_MONTH || ((r.mo || '') === CURRENT_MONTH && act !== 0);
       const inYtd = isYtdMonth(r.mo);
       const rev = Number(r.rev) || 0;
       const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
       dt += rev * pr;
-      dtUpd += (past ? act : rawUpd) * pr;
-      if (inYtd) { dtYtd += act * pr; }
+      dtUpd += past ? dtActR : rawUpd * pr;
+      if (inYtd) { dtYtd += dtActR; }
     }
     return {
       plan,
@@ -5757,7 +5765,7 @@ function App() {
       let a = cnt.get(ly);
       if (!a) { a = { rows: 0, dt: 0, custs: new Set() }; cnt.set(ly, a); }
       a.rows++;
-      a.dt += (Number(r.act) || 0) * (Number(r.price) || 0);
+      a.dt += Number(r.dtAct) || 0;
       a.custs.add(r.custId ? '#' + r.custId : '@' + (r.cust || ''));
     }
     for (const [ly, a] of cnt) acc.set(ly, { ...a, custCount: a.custs.size });
@@ -7073,7 +7081,7 @@ function OopDetailModal({
                 isAdmin && h("th", { className: th }, ""))),
               h("tbody", null, shown.map((r, i) => {
                 const lb = LY_DO_LABEL[r._lyDo] || { short: r._lyDo, color: 'slate' };
-                const dt = (Number(r.act) || 0) * (Number(r.price) || 0);
+                const dt = Number(r.dtAct) || 0;
                 return h("tr", { key: i, className: "hover:bg-slate-50" },
                   h("td", { className: cellCls + " whitespace-nowrap text-slate-500 font-mono" }, r.mo),
                   h("td", { className: cellCls + " text-slate-800" },
