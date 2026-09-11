@@ -1435,9 +1435,8 @@ function ProductGroupSection({
     const syncFromBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
     const syncToBox = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
     const measure = () => {
-      const pr = parseInt(getComputedStyle(box).paddingRight) || 0;
       sb.style.width = box.clientWidth + 'px';
-      if (spacer) spacer.style.width = (box.scrollWidth - pr) + 'px';
+      if (spacer) spacer.style.width = box.scrollWidth + 'px';
       const sbH = Math.ceil(sb.getBoundingClientRect().height);
       box.style.setProperty('--detail-sb-h', sbH + 'px');
       syncFromBox();
@@ -2071,7 +2070,7 @@ function DetailScrollBox({ children }) {
     return () => { clearTimeout(measureId); box.removeEventListener('scroll', onScroll); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   return React.createElement("div", {
-    className: "detail-box px-6 pb-8",
+    className: "detail-box pl-6 pb-8",
     ref: boxRef,
     style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
   }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
