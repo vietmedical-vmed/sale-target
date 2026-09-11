@@ -1435,7 +1435,10 @@ function ProductGroupSection({
     let syncing = false;
     const syncFromBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
     const syncToBox = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
+    const inner = box.querySelector('.detail-inner');
+    const innerPadL = inner ? parseInt(getComputedStyle(inner).paddingLeft) || 0 : 0;
     const measure = () => {
+      sb.style.marginLeft = '-' + innerPadL + 'px';
       sb.style.width = box.clientWidth + 'px';
       if (spacer) spacer.style.width = box.scrollWidth + 'px';
       const sbH = Math.ceil(sb.getBoundingClientRect().height);
@@ -2035,7 +2038,7 @@ function DetailScrollBox({ children }) {
       const grpH = grpEl ? Math.ceil(grpEl.getBoundingClientRect().height) : 0;
       const inner = box.querySelector('.detail-inner');
       leftPad = inner ? parseInt(getComputedStyle(inner).paddingLeft) || 0 : 0;
-      rightPad = inner ? parseInt(getComputedStyle(inner).paddingRight) || 0 : 0;
+      rightPad = 0;
       if (custEl) {
         custEl.style.transform = ''; custEl.style.width = ''; custEl.style.maxWidth = '';
         const boxL = box.getBoundingClientRect().left;
