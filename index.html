@@ -50,6 +50,7 @@ tailwind.config = { theme: { extend: { colors: {
   .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
   /* Màn chi tiết: khung cuộn ngoài bao tất cả thẻ KH, header bảng + scrollbar dính */
   .detail-box { overflow: auto; }
+  .detail-inner { width: fit-content; min-width: 100%; padding: 0 24px 32px; }
   .detail-box::-webkit-scrollbar { width: 8px; height: 0; }
   .detail-box::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .detail-box::-webkit-scrollbar-track { background: transparent; }
@@ -94,7 +95,7 @@ tailwind.config = { theme: { extend: { colors: {
   .detail-box .meta-sticky-l {
     box-sizing: border-box;
   }
-  .detail-box .cust-wrap { }
+  .detail-box .cust-wrap { min-width: min-content; }
 </style>
 </head>
 <body>
@@ -2032,8 +2033,9 @@ function DetailScrollBox({ children }) {
       const custH = custEl ? Math.ceil(custEl.getBoundingClientRect().height) : 0;
       const grpEl = box.querySelector('.sticky-grp');
       const grpH = grpEl ? Math.ceil(grpEl.getBoundingClientRect().height) : 0;
-      leftPad = parseInt(getComputedStyle(box).paddingLeft) || 0;
-      rightPad = 24;
+      const inner = box.querySelector('.detail-inner');
+      leftPad = inner ? parseInt(getComputedStyle(inner).paddingLeft) || 0 : 0;
+      rightPad = inner ? parseInt(getComputedStyle(inner).paddingRight) || 0 : 0;
       if (custEl) {
         custEl.style.transform = ''; custEl.style.width = ''; custEl.style.maxWidth = '';
         const boxL = box.getBoundingClientRect().left;
@@ -2069,12 +2071,12 @@ function DetailScrollBox({ children }) {
     return () => { clearTimeout(measureId); box.removeEventListener('scroll', onScroll); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   return React.createElement("div", {
-    className: "detail-box pl-6 pb-8",
+    className: "detail-box",
     ref: boxRef,
     style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
   }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
   React.createElement("div", { ref: coverLRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
-  children);
+  React.createElement("div", { className: "detail-inner" }, children));
 }
 
 // Thanh cuộn ngang giả cho 2 màn tổng hợp: dính trên cùng khung bảng (trên cả
