@@ -1133,7 +1133,8 @@ function ProductRow({
   canEdit,
   isAdmin,
   onDeleteProduct,
-  showBasePlan
+  showBasePlan,
+  productCode
 }) {
   const allRows = useMemo(() => monthly.flatMap(c => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
@@ -1254,27 +1255,20 @@ function ProductRow({
   }, /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-1.5 text-[11.5px] text-slate-500 border-r border-b border-slate-100 sticky left-0 bg-white group-hover:bg-slate-50/40 z-[1]",
     style: {
-      width: 180,
-      minWidth: 180,
-      maxWidth: 180
+      width: 130,
+      minWidth: 130,
+      maxWidth: 130
     }
-  }, showMset ? (isAdmin ? /*#__PURE__*/React.createElement(StickyEdit, {
-    value: mset,
-    title: mset,
+  }, /*#__PURE__*/React.createElement("div", {
     className: "truncate",
-    onSave: v => commitIdentity('mset', v)
-  }) : /*#__PURE__*/React.createElement("div", {
-    className: "truncate",
-    title: mset
-  }, mset)) : /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-300"
-  }, "›")), /*#__PURE__*/React.createElement("td", {
+    title: productCode || ''
+  }, productCode || '')), /*#__PURE__*/React.createElement("td", {
     className: "px-3 py-1.5 text-[12px] text-slate-800 border-r border-b border-slate-100 sticky bg-white group-hover:bg-slate-50/40 z-[1] font-medium",
     style: {
       width: 220,
       minWidth: 220,
       maxWidth: 220,
-      left: 180
+      left: 130
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1"
@@ -1425,7 +1419,8 @@ function ProductGroupSection({
   isAdmin,
   onDeleteProduct,
   showBasePlan,
-  onToggleBasePlan
+  onToggleBasePlan,
+  catIdx
 }) {
   const [open, setOpen] = useState(false);
   const [noteModal, setNoteModal] = useState(false);
@@ -1595,14 +1590,14 @@ function ProductGroupSection({
     rowSpan: 2,
     className: "px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500 border-r border-b border-slate-200 sticky left-0 bg-white z-[2] align-bottom",
     style: {
-      width: 180
+      width: 130
     }
-  }, "Bộ\nvật\ntư"), /*#__PURE__*/React.createElement("th", {
+  }, "Mã\nSP"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500 border-r border-b border-slate-200 sticky bg-white z-[2] align-bottom",
     style: {
       width: 220,
-      left: 180
+      left: 130
     }
   }, "Sản\nphẩm"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
@@ -1696,7 +1691,7 @@ function ProductGroupSection({
   }, /*#__PURE__*/React.createElement("td", {
     colSpan: 2,
     className: "px-3 py-2 text-[12px] font-bold text-slate-800 border-r border-b border-amber-200 sticky left-0 bg-amber-50 z-[1] uppercase tracking-wide",
-    style: { width: 400, minWidth: 400 }
+    style: { width: 350, minWidth: 350 }
   }, "Tổng cộng"), /*#__PURE__*/React.createElement("td", {
     className: "border-r border-b border-amber-200",
     style: { width: 85 }
@@ -1751,7 +1746,8 @@ function ProductGroupSection({
       canEdit: canEdit,
       isAdmin: isAdmin,
       onDeleteProduct: onDeleteProduct,
-      showBasePlan: showBasePlan
+      showBasePlan: showBasePlan,
+      productCode: catIdx ? catIdx.codeOf(groupName, p.mset, p.product) : ''
     });
   }))))));
 }
@@ -1945,7 +1941,8 @@ function CustomerCard({
     isAdmin: isAdmin,
     onDeleteProduct: onDeleteProduct,
     showBasePlan: showBasePlan,
-    onToggleBasePlan: onToggleBasePlan
+    onToggleBasePlan: onToggleBasePlan,
+    catIdx: catIdx
   }))));
 }
 
@@ -3501,6 +3498,7 @@ function CustomerPicker({ customers, value, onChange, className }) {
 // phép lọc mỗi lần render. Ở đây chỉ còn tra Map.
 function buildCatalogIndex(catalog) {
   const byGrp = new Map();
+  const codeMap = new Map();
   for (const c of catalog || []) {
     const g = c.grp || '';
     if (!g) continue;
@@ -3511,6 +3509,8 @@ function buildCatalogIndex(catalog) {
     let arr = node.msets.get(m);
     if (!arr) { arr = []; node.msets.set(m, arr); }
     arr.push(c);
+    const code = isLooseSet(m) ? (c.maSp || '') : (c.maBvt || '');
+    if (code) codeMap.set(`${g}||${m}||${c.prod || ''}`, code);
   }
   const sorted = new Map(); // cache danh sách bộ vật tư đã sort theo nhóm
   return {
@@ -3534,6 +3534,9 @@ function buildCatalogIndex(catalog) {
       if (n.msets.size === 0) return n.noMset;
       if (m === NO_MSET) return n.noMset;
       return m ? (n.msets.get(m) || []) : [];
+    },
+    codeOf(g, m, p) {
+      return codeMap.get(`${g}||${m}||${p}`) || '';
     }
   };
 }

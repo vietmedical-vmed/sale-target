@@ -406,7 +406,7 @@ Deno.serve(async (req) => {
       const seen = new Set();
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await db.schema("shared").from("dm_bo_vat_tu_mapping")
-          .select("nhom_san_pham, bo_vat_tu, san_pham")
+          .select("nhom_san_pham, bo_vat_tu, san_pham, ma_bo_vat_tu, ma_san_pham")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
@@ -417,6 +417,7 @@ Deno.serve(async (req) => {
           seen.add(key);
           catalog.push({
             grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham,
+            maBvt: c.ma_bo_vat_tu || '', maSp: c.ma_san_pham || '',
           });
         }
         if (data.length < PAGE) break;
