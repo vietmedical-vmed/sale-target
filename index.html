@@ -1450,7 +1450,7 @@ function ProductGroupSection({
     mo.observe(box, { childList: true, subtree: true, attributes: true });
     window.addEventListener('resize', measure);
     return () => { box.removeEventListener('scroll', syncFromBox); sb.removeEventListener('scroll', syncToBox); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
-  }, []);
+  }, [open]);
   // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).
   const groupRows = useMemo(() => products.flatMap(p => p.monthly.flatMap(c => c.rows)), [products]);
   const readGroupField = key => {
