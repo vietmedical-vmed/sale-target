@@ -50,12 +50,12 @@ tailwind.config = { theme: { extend: { colors: {
   .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
   /* Màn chi tiết: khung cuộn ngoài bao tất cả thẻ KH, header bảng + scrollbar dính */
   .detail-box { overflow: auto; }
-  .detail-inner { width: fit-content; min-width: 100%; padding: 0 24px 32px; }
+  .detail-inner { width: fit-content; min-width: 100%; padding: 0 24px 32px 0; }
   .detail-box::-webkit-scrollbar { width: 8px; height: 0; }
   .detail-box::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
   .detail-box::-webkit-scrollbar-track { background: transparent; }
   .fake-scrollbar-wrap {
-    position: sticky; left: 0; z-index: 21;
+    position: sticky; z-index: 21;
     top: calc(var(--detail-cust-h, 0px) + var(--detail-grp-h, 0px));
     overflow-x: auto; overflow-y: hidden;
     background: #f0f2f5; border-bottom: 1px solid #e5e7eb;
@@ -1435,12 +1435,8 @@ function ProductGroupSection({
     let syncing = false;
     const syncFromBox = () => { if (syncing) return; syncing = true; sb.scrollLeft = box.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
     const syncToBox = () => { if (syncing) return; syncing = true; box.scrollLeft = sb.scrollLeft; requestAnimationFrame(() => { syncing = false; }); };
-    const inner = box.querySelector('.detail-inner');
-    const innerPadL = inner ? parseInt(getComputedStyle(inner).paddingLeft) || 0 : 0;
     const measure = () => {
-      sb.style.marginLeft = '-' + innerPadL + 'px';
-      sb.style.width = box.clientWidth + 'px';
-      if (spacer) spacer.style.width = box.scrollWidth + 'px';
+      if (spacer) spacer.style.width = (box.scrollWidth - box.clientWidth + sb.clientWidth) + 'px';
       const sbH = Math.ceil(sb.getBoundingClientRect().height);
       box.style.setProperty('--detail-sb-h', sbH + 'px');
       syncFromBox();
@@ -1450,6 +1446,7 @@ function ProductGroupSection({
     sb.addEventListener('scroll', syncToBox);
     const ro = new ResizeObserver(measure);
     ro.observe(box);
+    ro.observe(sb);
     const mo = new MutationObserver(() => requestAnimationFrame(measure));
     mo.observe(box, { childList: true, subtree: true, attributes: true });
     window.addEventListener('resize', measure);
@@ -2036,9 +2033,9 @@ function DetailScrollBox({ children }) {
       const custH = custEl ? Math.ceil(custEl.getBoundingClientRect().height) : 0;
       const grpEl = box.querySelector('.sticky-grp');
       const grpH = grpEl ? Math.ceil(grpEl.getBoundingClientRect().height) : 0;
+      leftPad = parseInt(getComputedStyle(box).paddingLeft) || 0;
       const inner = box.querySelector('.detail-inner');
-      leftPad = inner ? parseInt(getComputedStyle(inner).paddingLeft) || 0 : 0;
-      rightPad = 0;
+      rightPad = inner ? parseInt(getComputedStyle(inner).paddingRight) || 0 : 0;
       if (custEl) {
         custEl.style.transform = ''; custEl.style.width = ''; custEl.style.maxWidth = '';
         const boxL = box.getBoundingClientRect().left;
@@ -2048,7 +2045,7 @@ function DetailScrollBox({ children }) {
       box.style.setProperty('--detail-cust-h', custH + 'px');
       box.style.setProperty('--detail-grp-h', grpH + 'px');
       box.style.setProperty('--detail-vw', vw + 'px');
-      if (cover) { cover.style.display = 'none'; }
+      if (cover) { cover.style.display = hasOverflow ? '' : 'none'; cover.style.width = rightPad + 'px'; cover.style.height = box.clientHeight + 'px'; }
       if (coverL) { coverL.style.display = hasOverflow ? '' : 'none'; coverL.style.width = stickyIndent + 'px'; coverL.style.height = box.clientHeight + 'px'; }
       pinHoriz();
     };
@@ -2057,7 +2054,7 @@ function DetailScrollBox({ children }) {
       const sl = box.scrollLeft;
       const tx = 'translateX(' + sl + 'px)';
       const w = (box.clientWidth - stickyIndent - rightPad) + 'px';
-      box.querySelectorAll('.sticky-cust, .sticky-grp, .meta-sticky-l').forEach(el => { el.style.transform = tx; el.style.width = w; el.style.maxWidth = w; });
+      box.querySelectorAll('.sticky-cust, .sticky-grp, .meta-sticky-l, .fake-scrollbar-wrap').forEach(el => { el.style.transform = tx; el.style.width = w; el.style.maxWidth = w; });
       const tw = (box.clientWidth - leftPad - rightPad) + 'px';
       box.querySelectorAll('.sticky-team').forEach(el => { el.style.transform = tx; el.style.width = tw; el.style.maxWidth = tw; });
       if (cover) cover.style.transform = 'translate(' + (sl + box.clientWidth - rightPad) + 'px,' + box.scrollTop + 'px)';
@@ -2074,7 +2071,7 @@ function DetailScrollBox({ children }) {
     return () => { clearTimeout(measureId); box.removeEventListener('scroll', onScroll); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   return React.createElement("div", {
-    className: "detail-box",
+    className: "detail-box pl-6",
     ref: boxRef,
     style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
   }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
