@@ -2611,7 +2611,7 @@ function exportSummaryPS(data) {
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
   moneyCols.push(c, c + 1); pctCols.push(c + 2, c + 3, c + 4, c + 5); c += 6;
-  H1.push('Quota', '', '', '', ''); H2.push('Quota 1/4', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng');
+  H1.push('Quota', '', '', '', ''); H2.push('On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
   moneyCols.push(c, c + 1, c + 2, c + 3, c + 4); c += 5;
@@ -2932,8 +2932,13 @@ function SummaryView({
       const dSl = Number(r.rev) || 0;
       const dDt = dSl * price;
       const dDtUpd = isPast ? dtActVal : updQty * price;
-      const dQ14 = Number(r.qOld) || 0;
-      const dQUpcoming = (Number(r.qMain) || 0) + (Number(r.qAdd) || 0);
+      const dQOld = Number(r.qOld) || 0;
+      const qMainVal = Number(r.qMain) || 0;
+      const qAddVal = Number(r.qAdd) || 0;
+      const mainOnHand = r.mMain && r.mMain <= CURRENT_MONTH;
+      const addOnHand = r.mAdd && r.mAdd <= CURRENT_MONTH;
+      const dQ14 = dQOld + (mainOnHand ? qMainVal : 0) + (addOnHand ? qAddVal : 0);
+      const dQUpcoming = (mainOnHand ? 0 : qMainVal) + (addOnHand ? 0 : qAddVal);
       const dQuota = dQ14 + dQUpcoming;
       const dQuotaDt = dQuota * price;
       const dQ14Dt = dQ14 * price;
@@ -3151,7 +3156,7 @@ function SummaryView({
     className: "px-4 py-2.5"
   })))))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-2"
-  }, "Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH update, TH = DThu thực hiện, % = TH / KH. Mặc định chỉ hiện tháng hiện tại + Luỹ kế YTD; nút \"Chi tiết theo tháng\" hiện đủ 12 tháng. Ở Luỹ kế YTD: % TH YTD = TH YTD / KH YTD; tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm (tiến độ kế hoạch); CL tốc độ = tốc độ TH YTD − tốc độ KH YTD (dương = thực hiện nhanh hơn tiến độ kế hoạch). ≥1 tỷ hiện theo tỷ (1 số lẻ), nhỏ hơn hiện theo triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. Quota: Quota 1/4 = quota thầu cũ × đơn giá; Upcoming = (quota chính + bổ sung) × đơn giá; Tổng quota = Quota 1/4 + Upcoming; Khả dụng = Tổng quota − TH YTD. Target: KH đầu năm = DThu kế hoạch đầu năm; KH Update = DThu update cả năm; Chênh lệch = KH Update − KH đầu năm.")));
+  }, "Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH update, TH = DThu thực hiện, % = TH / KH. Mặc định chỉ hiện tháng hiện tại + Luỹ kế YTD; nút \"Chi tiết theo tháng\" hiện đủ 12 tháng. Ở Luỹ kế YTD: % TH YTD = TH YTD / KH YTD; tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm (tiến độ kế hoạch); CL tốc độ = tốc độ TH YTD − tốc độ KH YTD (dương = thực hiện nhanh hơn tiến độ kế hoạch). ≥1 tỷ hiện theo tỷ (1 số lẻ), nhỏ hơn hiện theo triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. Quota: On hand = (quota thầu cũ + quota chính đã tới tháng + quota BS đã tới tháng) × đơn giá; Upcoming = (quota chính + BS chưa tới tháng hoặc chưa điền tháng) × đơn giá; Tổng quota = On hand + Upcoming; Khả dụng = Tổng quota − TH YTD. Target: KH đầu năm = DThu kế hoạch đầu năm; KH Update = DThu update cả năm; Chênh lệch = KH Update − KH đầu năm.")));
 }
 const chCls = v => v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
 // % Thực hiện YTD = DThu thực hiện YTD / DThu KH update cả năm
@@ -3208,7 +3213,7 @@ function SummaryHead() {
     h('tr', { className: 'bg-slate-100' },
       ...sumMonthIdxs().flatMap(i => moHasAct(i) ? sub('s' + i, MONTHS[i] === CURRENT_MONTH ? 'bg-blue-50/40' : '') : []),
       ...ytdSub,
-      h('th', { key: 'qq14', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Quota 1/4'),
+      h('th', { key: 'qq14', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'On hand'),
       h('th', { key: 'qqup', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Upcoming'),
       h('th', { key: 'qqfy', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'Tổng quota'),
       h('th', { key: 'qqth', className: `px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap` }, 'TH YTD'),
@@ -3220,7 +3225,7 @@ function SummaryHead() {
   );
 }
 
-// Các ô số: [tháng] → Luỹ kế YTD → Quota (1/4 · Upcoming · Tổng · TH YTD · Khả dụng) → Target (KH đầu năm · KH Update · CL).
+// Các ô số: [tháng] → Luỹ kế YTD → Quota (On hand · Upcoming · Tổng · TH YTD · Khả dụng) → Target (KH đầu năm · KH Update · CL).
 function StatCells({ d, size, dark }) {
   const h = React.createElement;
   const p = size === 'sm' ? 'py-1.5 text-[12px]' : dark ? 'py-2.5 text-[12.5px]' : 'py-2 text-[13px]';
@@ -3254,7 +3259,7 @@ function StatCells({ d, size, dark }) {
   cells.push(h('td', { key: 'ytd', className: `px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}` }, pctTxtSum(d.dtYtd, d.dtUpd)));
   cells.push(h('td', { key: 'ykp', className: `px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}` }, pctTxtSum(d.khYtdDt, d.dtUpd)));
   cells.push(h('td', { key: 'ycl', className: `px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-200 ${clCol} ${ybg}` }, clVal == null ? '—' : (clVal > 0 ? '+' : '') + clVal + '%'));
-  // --- Quota group: Quota 1/4 · Upcoming · Tổng quota · TH YTD · Khả dụng ---
+  // --- Quota group: On hand · Upcoming · Tổng quota · TH YTD · Khả dụng ---
   const qbg = dark ? '' : 'bg-teal-50/30';
   const quotaRemain = d.quotaAvailDt == null ? null : (d.quotaFYDt || 0) - (d.dtYtd || 0);
   cells.push(h('td', { key: 'q14', className: `px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}` }, moneyTy3(d.q14Dt)));
