@@ -2070,7 +2070,7 @@ function DetailScrollBox({ children }) {
     return () => { clearTimeout(measureId); box.removeEventListener('scroll', onScroll); ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   return React.createElement("div", {
-    className: "detail-box px-6 pb-8",
+    className: "detail-box pl-6 pb-8",
     ref: boxRef,
     style: { maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))', marginTop: -4, position: 'relative' }
   }, React.createElement("div", { ref: coverRef, style: { position: 'absolute', top: 0, left: 0, zIndex: 21, background: '#f0f2f5', pointerEvents: 'none' } }),
