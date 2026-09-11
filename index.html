@@ -2032,9 +2032,8 @@ function DetailScrollBox({ children }) {
       const custH = custEl ? Math.ceil(custEl.getBoundingClientRect().height) : 0;
       const grpEl = box.querySelector('.sticky-grp');
       const grpH = grpEl ? Math.ceil(grpEl.getBoundingClientRect().height) : 0;
-      const cs = getComputedStyle(box);
-      rightPad = parseInt(cs.paddingRight) || 0;
-      leftPad = parseInt(cs.paddingLeft) || 0;
+      leftPad = parseInt(getComputedStyle(box).paddingLeft) || 0;
+      rightPad = 24;
       if (custEl) {
         custEl.style.transform = ''; custEl.style.width = ''; custEl.style.maxWidth = '';
         const boxL = box.getBoundingClientRect().left;
@@ -2044,7 +2043,7 @@ function DetailScrollBox({ children }) {
       box.style.setProperty('--detail-cust-h', custH + 'px');
       box.style.setProperty('--detail-grp-h', grpH + 'px');
       box.style.setProperty('--detail-vw', vw + 'px');
-      if (cover) { cover.style.display = hasOverflow ? '' : 'none'; cover.style.width = rightPad + 'px'; cover.style.height = box.clientHeight + 'px'; }
+      if (cover) { cover.style.display = 'none'; }
       if (coverL) { coverL.style.display = hasOverflow ? '' : 'none'; coverL.style.width = stickyIndent + 'px'; coverL.style.height = box.clientHeight + 'px'; }
       pinHoriz();
     };
