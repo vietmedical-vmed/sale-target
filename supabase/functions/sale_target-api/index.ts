@@ -146,6 +146,49 @@ function scopeParams(sess) {
   return { ...nil, p_bu: sess.b, p_ps: sess.s }; // ps + mặc định: hẹp nhất
 }
 
+// Phạm vi ĐỌC cho get_quota_thau. Khác scopeParams đúng một điểm: admin/manager
+// đang xem 1 team cụ thể trên TeamSwitcher thì khoá theo team đó, giống nhánh
+// payload.bu của applyScope(). p_bu = null nghĩa là "tất cả team", và chính hàm
+// SQL sẽ tự loại team demo trong trường hợp đó.
+function readScopeParams(sess, payload = {}) {
+  const role = String(sess.r || "").toLowerCase();
+  const p = scopeParams(sess);
+  if ((role === "admin" || role === "manager") && payload && payload.bu) {
+    return { ...p, p_bu: payload.bu };
+  }
+  return p;
+}
+
+// Đợt thầu + quota thầu (shared.dot_thau / shared.quota_thau).
+// Tách khỏi sale_target vì quota là dữ liệu cấp GÓI THẦU, không theo tháng:
+// 1 nhóm SP có thể có nhiều đợt thầu bổ sung trong cùng năm, và quota gắn với
+// từng MỨC GIÁ (mỗi mức giá là một gói thầu).
+async function fetchQuotaThau(db, sess, payload = {}) {
+  const { data, error } = await db.rpc("get_quota_thau", {
+    p_fy: payload && payload.fy ? payload.fy : null,
+    ...readScopeParams(sess, payload),
+  });
+  if (error) throw new Error(error.message);
+  const dots = [];
+  const quotas = [];
+  for (const r of data || []) {
+    if (r.kind === "dot") {
+      dots.push({
+        fy: r.fy, ps: r.ps, custId: r.cust_id ?? "", grp: r.grp ?? "",
+        loai: r.loai, dot: r.dot,
+        thang: r.thang ?? "", thoiGian: r.thoi_gian ?? "",
+      });
+    } else {
+      quotas.push({
+        fy: r.fy, ps: r.ps, custId: r.cust_id ?? "", grp: r.grp ?? "",
+        mset: r.mset ?? "", prod: r.prod ?? "", price: r.price ?? 0,
+        loai: r.loai, dot: r.dot, qty: r.qty ?? 0,
+      });
+    }
+  }
+  return { dots, quotas };
+}
+
 function admin() {
   return createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -351,11 +394,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      const [allRows, classMap, rev, cfgRows] = await Promise.all([
+      const [allRows, classMap, rev, cfgRows, quotaThau] = await Promise.all([
         fetchAll(db, sess, payload),
         fetchOopClassify(db).catch(() => new Map()),
         getRev(db),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
+        // Bảng quota mới còn đang chạy song song với các cột quota cũ trên
+        // sale_target: lỗi ở đây không được làm gãy cả màn hình kế hoạch.
+        fetchQuotaThau(db, sess, payload).catch(() => ({ dots: [], quotas: [] })),
       ]);
       const cfg: Record<string, unknown> = {};
       for (const r of cfgRows) cfg[r.key] = r.value;
@@ -380,6 +426,7 @@ Deno.serve(async (req) => {
       return json({
         ok: true, fields: FIELDS, rows, rowNums,
         oopRows, oopMeta, rev,
+        dots: quotaThau.dots, quotas: quotaThau.quotas,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
         config: cfg,
       });
@@ -645,6 +692,79 @@ Deno.serve(async (req) => {
         });
       }
       return json({ ok: true, rev: await getRev(db) });
+    }
+
+    // --- Đợt thầu & quota thầu (shared.dot_thau / shared.quota_thau) ---------
+    // Phạm vi ghi do RPC tự kiểm qua sale_target rồi lấy bu/mien từ đó, nên
+    // client KHÔNG khai được team của mình. Ở đây chỉ gác quyền sửa nói chung.
+
+    // Thêm hoặc sửa đợt thầu. Bỏ trống `dot` = thêm đợt mới, RPC tự đánh số kế
+    // tiếp -> đây là đường để có nhiều đợt thầu bổ sung trong cùng một năm.
+    if (action === "saveDotThau") {
+      if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
+      const { data, error } = await db.rpc("upsert_dot_thau", {
+        p_rows: rows, ...scopeParams(sess), p_actor: sess.u,
+      });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
+        if (msg.includes("thang_sai_dinh_dang")) return json({ ok: false, error: "thang_sai_dinh_dang" }, 400);
+        if (msg.includes("loai_khong_hop_le")) return json({ ok: false, error: "loai_khong_hop_le" }, 400);
+        throw new Error(msg);
+      }
+      await writeAuditLog(db, sess, "saveDotThau", Number(data) || rows.length, {
+        rows: rows.slice(0, 50),
+      });
+      return json({ ok: true, saved: Number(data) || 0 });
+    }
+
+    // Xoá 1 đợt thầu kèm toàn bộ quota thuộc đợt đó.
+    if (action === "deleteDotThau") {
+      if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
+      const dot = Number(payload.dot);
+      if (!payload.fy || !payload.ps || !payload.loai || !Number.isFinite(dot)) {
+        return json({ ok: false, error: "thieu_tham_so" }, 400);
+      }
+      const { data, error } = await db.rpc("delete_dot_thau", {
+        p_fy: payload.fy, p_ps_row: payload.ps,
+        p_cust: payload.custId ?? "", p_grp: payload.grp ?? "",
+        p_loai: payload.loai, p_dot: dot,
+        ...scopeParams(sess),
+      });
+      if (error) {
+        if (String(error.message || "").includes("out_of_scope")) {
+          return json({ ok: false, error: "forbidden_rows" }, 403);
+        }
+        throw new Error(error.message);
+      }
+      await writeAuditLog(db, sess, "deleteDotThau", Number(data) || 0, {
+        fy: payload.fy, ps: payload.ps, custId: payload.custId ?? "",
+        grp: payload.grp ?? "", loai: payload.loai, dot,
+      });
+      return json({ ok: true, deleted: Number(data) || 0 });
+    }
+
+    // Ghi quota theo sản phẩm x mức giá x đợt. qty = 0 hoặc rỗng thì RPC xoá dòng.
+    if (action === "saveQuotaThau") {
+      if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
+      const { data, error } = await db.rpc("upsert_quota_thau", {
+        p_rows: rows, ...scopeParams(sess), p_actor: sess.u,
+      });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
+        if (msg.includes("dot_khong_ton_tai")) return json({ ok: false, error: "dot_khong_ton_tai" }, 400);
+        if (msg.includes("loai_khong_hop_le")) return json({ ok: false, error: "loai_khong_hop_le" }, 400);
+        throw new Error(msg);
+      }
+      await writeAuditLog(db, sess, "saveQuotaThau", Number(data) || rows.length, {
+        rows: rows.slice(0, 50),
+      });
+      return json({ ok: true, saved: Number(data) || 0 });
     }
 
     if (action === "deleteProduct") {
