@@ -122,7 +122,8 @@ const {
   useEffect,
   useMemo,
   useRef,
-  useCallback
+  useCallback,
+  useContext
 } = React;
 console.log('[boot] script start');
 
@@ -1139,6 +1140,30 @@ function ProductRow({
 }) {
   const allRows = useMemo(() => monthly.flatMap(c => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
+  // Quota nay đọc từ shared.quota_thau (tách theo mức giá và theo đợt). Chừng nào
+  // sản phẩm chưa có dòng nào bên bảng mới thì vẫn hiện số cũ trên sale_target,
+  // nhờ vậy màn hình không rỗng trong lúc hai nguồn còn chạy song song.
+  const quotaCtx = useContext(QuotaThauCtx);
+  const [quotaOpen, setQuotaOpen] = useState(false);
+  const qInfo = useMemo(() => {
+    if (!quotaCtx || !anchor) return null;
+    const list = quotaCtx.quotasByProduct.get(
+      prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product));
+    if (!list || !list.length) return null;
+    let cu = 0, chinh = 0, bo_sung = 0;
+    for (const q of list) {
+      const n = Number(q.qty) || 0;
+      if (q.loai === 'cu') cu += n;
+      else if (q.loai === 'chinh') chinh += n;
+      else bo_sung += n;
+    }
+    return { cu, chinh, bo_sung };
+  }, [quotaCtx, anchor, mset, product]);
+  const prices = useMemo(() => {
+    const s = new Set();
+    for (const r of allRows) s.add(Number(r.price) || 0);
+    return [...s];
+  }, [allRows]);
   const stats = useMemo(() => {
     let q14 = 0,
       qMain = 0,
@@ -1169,6 +1194,7 @@ function ProductRow({
         dtUpd += useAct ? dtActR : upd * pr;
       });
     });
+    if (qInfo) { q14 = qInfo.cu; qMain = qInfo.chinh; qAdd = qInfo.bo_sung; }
     const totalQuota = q14 + qMain + qAdd;
     return {
       q14,
@@ -1183,7 +1209,7 @@ function ProductRow({
       dtUpd,
       chenh: dtUpd - dtBase
     };
-  }, [allRows, monthly]);
+  }, [allRows, monthly, qInfo]);
   const commitProductField = (key, value, isText = false) => {
     if (!anchor) return;
     const updates = [{
@@ -1292,27 +1318,32 @@ function ProductRow({
     pending: pend('price'),
     locked: !canEdit,
     onCommit: commitPrice
-  }), /*#__PURE__*/React.createElement(EditableCell, {
+  }), /*#__PURE__*/React.createElement(QuotaCell, {
     value: stats.q14,
     pending: pend('qOld'),
-    locked: !canEdit,
-    onCommit: v => commitProductField('qOld', v),
     width: 72,
-    bg: "bg-blue-50/20"
-  }), /*#__PURE__*/React.createElement(EditableCell, {
+    onOpen: quotaCtx && anchor ? () => setQuotaOpen(true) : null,
+    fallbackLocked: !canEdit,
+    onCommit: v => commitProductField('qOld', v)
+  }), /*#__PURE__*/React.createElement(QuotaCell, {
     value: stats.qMain,
     pending: pend('qMain'),
-    locked: !canEdit,
-    onCommit: v => commitProductField('qMain', v),
     width: 80,
-    bg: "bg-blue-50/20"
-  }), /*#__PURE__*/React.createElement(EditableCell, {
+    onOpen: quotaCtx && anchor ? () => setQuotaOpen(true) : null,
+    fallbackLocked: !canEdit,
+    onCommit: v => commitProductField('qMain', v)
+  }), /*#__PURE__*/React.createElement(QuotaCell, {
     value: stats.qAdd,
     pending: pend('qAdd'),
-    locked: !canEdit,
-    onCommit: v => commitProductField('qAdd', v),
     width: 72,
-    bg: "bg-blue-50/20"
+    onOpen: quotaCtx && anchor ? () => setQuotaOpen(true) : null,
+    fallbackLocked: !canEdit,
+    onCommit: v => commitProductField('qAdd', v)
+  }), quotaOpen && anchor && /*#__PURE__*/React.createElement(QuotaThauModal, {
+    fy: anchor.fy, ps: anchor.ps, custId: anchor.custId, grp: anchor.grp,
+    mset: mset, prod: product, prices: prices,
+    locked: !canEdit,
+    onClose: () => setQuotaOpen(false)
   }), /*#__PURE__*/React.createElement("td", {
     className: "px-2 py-1.5 text-[12px] text-right tabular-nums text-slate-700 font-medium border-r border-b border-slate-100 bg-slate-50/60",
     style: {
@@ -1407,6 +1438,226 @@ function GroupMonthField({ label, value, pending, locked, onCommit }) {
   );
 }
 
+// ============ ĐỢT THẦU & QUOTA (shared.dot_thau / shared.quota_thau) ============
+// Quota đã tách khỏi sale_target: 1 nhóm SP có thể có NHIỀU đợt thầu bổ sung trong
+// cùng năm, và quota gắn với từng MỨC GIÁ (mỗi mức giá là một gói thầu) chứ không
+// gắn với sản phẩm. Dữ liệu đi qua context để khỏi xuyên prop qua 4 tầng component.
+const QuotaThauCtx = React.createContext(null);
+const grpKey = (fy, ps, custId, grp) => [fy || '', ps || '', custId || '', grp || ''].join('||');
+const prodKey = (fy, ps, custId, grp, mset, prod) =>
+  [fy || '', ps || '', custId || '', grp || '', mset || '', prod || ''].join('||');
+const LOAI_LABEL = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Bổ sung' };
+// Nhãn ngắn cho 1 đợt: thầu chính 1 đợt thì không cần số, nhiều đợt mới đánh số.
+const dotLabel = (loai, dot, tong) =>
+  loai === 'cu' ? LOAI_LABEL.cu
+    : tong > 1 ? `${LOAI_LABEL[loai]} ${dot}`
+    : LOAI_LABEL[loai];
+
+// Ô nhập tháng thầu của MỘT đợt. Bỏ trống là hợp lệ (đã biết có đợt, chưa rõ tháng).
+function DotMonthInput({ value, locked, onCommit }) {
+  const h = React.createElement;
+  const [draft, setDraft] = useState(value || '');
+  const [err, setErr] = useState(false);
+  useEffect(() => { setDraft(value || ''); }, [value]);
+  const commit = () => {
+    const v = (draft || '').trim();
+    if (v === (value || '')) { setErr(false); return; }
+    if (v !== '' && !/^\d{4}-\d{2}$/.test(v)) { setErr(true); return; }
+    setErr(false);
+    onCommit(v);
+  };
+  return h("input", {
+    value: draft,
+    onChange: e => setDraft(e.target.value),
+    onBlur: commit,
+    onKeyDown: e => { if (e.key === 'Enter') e.target.blur(); },
+    disabled: locked,
+    placeholder: "yyyy-mm",
+    className: `w-[86px] text-[12px] px-2 py-1 rounded-md border outline-none ${err ? 'border-red-400 bg-red-50 ring-1 ring-red-200' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'}`
+  });
+}
+
+// Danh sách đợt thầu của 1 nhóm SP, thay cho 2 ô tháng cố định trước đây.
+function DotThauPanel({ fy, ps, custId, grp, locked }) {
+  const h = React.createElement;
+  const ctx = useContext(QuotaThauCtx);
+  const [busy, setBusy] = useState(false);
+  if (!ctx) return null;
+  const all = ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || [];
+  const cua = loai => all.filter(d => d.loai === loai).sort((a, b) => a.dot - b.dot);
+  const chinh = cua('chinh');
+  const bs = cua('bo_sung');
+
+  const run = async fn => {
+    if (busy) return;
+    setBusy(true);
+    try { await fn(); } finally { setBusy(false); }
+  };
+  const them = loai => run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, thang: '' }]));
+  const doiThang = (loai, dot, thang) => run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, dot, thang }]));
+  const xoa = (loai, dot, nhan) => {
+    if (!confirm(`Xoá ${nhan}?\nQuota đã nhập cho đợt này cũng bị xoá. Không hoàn tác được.`)) return;
+    run(() => ctx.deleteDot({ fy, ps, custId, grp, loai, dot }));
+  };
+
+  const hang = (loai, list) => h("div", { className: "flex items-center gap-2 flex-wrap" },
+    h("span", { className: "text-[10.5px] font-semibold text-blue-800 uppercase tracking-wide whitespace-nowrap" },
+      LOAI_LABEL[loai]),
+    list.length === 0 && h("span", { className: "text-[11px] text-slate-400" }, "chưa có đợt nào"),
+    list.map(d => h("span", { key: loai + d.dot, className: "inline-flex items-center gap-1" },
+      list.length > 1 && h("span", { className: "text-[10px] text-slate-500 tabular-nums" }, `#${d.dot}`),
+      h(DotMonthInput, {
+        value: d.thang,
+        locked: locked || busy,
+        onCommit: v => doiThang(loai, d.dot, v)
+      }),
+      !locked && h("button", {
+        onClick: () => xoa(loai, d.dot, dotLabel(loai, d.dot, list.length)),
+        title: "Xoá đợt này",
+        className: "text-slate-300 hover:text-red-600"
+      }, h(Trash2, { size: 12 }))
+    )),
+    !locked && h("button", {
+      onClick: () => them(loai),
+      disabled: busy,
+      className: "text-[11px] font-semibold px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
+    }, "+ đợt")
+  );
+
+  return h("div", { className: "flex flex-col gap-1.5" }, hang('chinh', chinh), hang('bo_sung', bs));
+}
+
+// Modal nhập quota của 1 sản phẩm: hàng = mức giá (mỗi mức giá là 1 gói thầu),
+// cột = thầu cũ + từng đợt thầu chính / bổ sung.
+function QuotaThauModal({ fy, ps, custId, grp, mset, prod, prices, locked, onClose }) {
+  const h = React.createElement;
+  const ctx = useContext(QuotaThauCtx);
+  const dots = ctx ? (ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || []) : [];
+  const rowsQ = ctx ? (ctx.quotasByProduct.get(prodKey(fy, ps, custId, grp, mset, prod)) || []) : [];
+  // Cột: thầu cũ luôn có (không thuộc đợt nào), rồi tới từng đợt đã khai báo.
+  const cols = useMemo(() => {
+    const nChinh = dots.filter(d => d.loai === 'chinh').length;
+    const nBs = dots.filter(d => d.loai === 'bo_sung').length;
+    const ds = [...dots].sort((a, b) =>
+      a.loai === b.loai ? a.dot - b.dot : a.loai === 'chinh' ? -1 : 1);
+    return [{ loai: 'cu', dot: 1, label: LOAI_LABEL.cu, thang: '' }].concat(
+      ds.map(d => ({
+        loai: d.loai, dot: d.dot, thang: d.thang,
+        label: dotLabel(d.loai, d.dot, d.loai === 'chinh' ? nChinh : nBs)
+      })));
+  }, [dots]);
+  // Mức giá: gộp giá đang có trên kế hoạch với giá đã từng nhập quota.
+  const giaList = useMemo(() => {
+    const s = new Set((prices || []).map(p => Number(p) || 0));
+    for (const q of rowsQ) s.add(Number(q.price) || 0);
+    if (s.size === 0) s.add(0);
+    return [...s].sort((a, b) => a - b);
+  }, [prices, rowsQ]);
+  const cell = (price, c) => {
+    const f = rowsQ.find(q => (Number(q.price) || 0) === price && q.loai === c.loai && q.dot === c.dot);
+    return f ? f.qty : '';
+  };
+  const [draft, setDraft] = useState({}); // 'price|loai|dot' -> chuỗi đang nhập
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const key = (price, c) => `${price}|${c.loai}|${c.dot}`;
+  const val = (price, c) => {
+    const k = key(price, c);
+    return k in draft ? draft[k] : (cell(price, c) === '' ? '' : String(cell(price, c)));
+  };
+
+  const luu = async () => {
+    const rows = [];
+    for (const price of giaList) {
+      for (const c of cols) {
+        const k = key(price, c);
+        if (!(k in draft)) continue;
+        const raw = String(draft[k]).trim();
+        const qty = raw === '' ? 0 : Number(raw);
+        if (!Number.isFinite(qty) || qty < 0) { setErr('Số lượng không hợp lệ: ' + raw); return; }
+        if (qty === (Number(cell(price, c)) || 0)) continue;
+        rows.push({ fy, ps, custId, grp, mset, prod, price, loai: c.loai, dot: c.dot, qty });
+      }
+    }
+    if (!rows.length) { onClose(); return; }
+    setBusy(true);
+    setErr('');
+    try {
+      await ctx.saveQuota(rows, { fy, ps, custId, grp, mset, prod });
+      onClose();
+    } catch (e) {
+      setErr(e.message || 'Lưu không được');
+    }
+    setBusy(false);
+  };
+
+  // Modal được mở từ trong <tr> nên phải portal ra body, không thì có <div> nằm
+  // trực tiếp trong <tr> — DOM sai chuẩn.
+  return ReactDOM.createPortal(h(Modal, {
+    open: true, onClose, width: 860,
+    title: `Quota thầu · ${prod}`,
+    icon: h("span", { className: "text-[14px]" }, "📦")
+  }, h("div", { className: "px-4 py-3" },
+    h("div", { className: "text-[11.5px] text-slate-500 mb-2" },
+      "Mỗi mức giá là một gói thầu riêng. Để trống hoặc nhập 0 để xoá quota của ô đó."),
+    cols.length === 1 && h("div", { className: "text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2" },
+      "Nhóm SP này chưa khai báo đợt thầu nào. Thêm đợt ở phần đầu nhóm trước, rồi mới nhập được quota thầu chính và bổ sung."),
+    h("div", { className: "overflow-x-auto" },
+      h("table", { className: "border-collapse text-[12px]" },
+        h("thead", null,
+          h("tr", null,
+            h("th", { className: "px-2 py-1.5 text-left font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap" }, "Đơn giá"),
+            cols.map(c => h("th", {
+              key: c.loai + c.dot,
+              className: "px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap"
+            }, c.label, c.thang ? h("div", { className: "text-[10px] font-normal text-slate-400" }, c.thang) : null)),
+            h("th", { className: "px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-slate-200" }, "Tổng")
+          )),
+        h("tbody", null, giaList.map(price => {
+          let tong = 0;
+          for (const c of cols) tong += Number(val(price, c)) || 0;
+          return h("tr", { key: price },
+            h("td", { className: "px-2 py-1 tabular-nums text-slate-700 border-b border-r border-slate-100 whitespace-nowrap" }, fmtInt(price)),
+            cols.map(c => h("td", { key: c.loai + c.dot, className: "px-1 py-1 border-b border-r border-slate-100" },
+              h("input", {
+                value: val(price, c),
+                disabled: locked || busy,
+                onChange: e => setDraft(d => ({ ...d, [key(price, c)]: e.target.value })),
+                className: "w-[74px] text-[12px] text-right px-1.5 py-1 rounded border border-slate-200 tabular-nums outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50"
+              }))),
+            h("td", { className: "px-2 py-1 text-right tabular-nums font-semibold text-slate-800 border-b border-slate-100" }, fmtInt(tong))
+          );
+        }))
+      )),
+    err && h("div", { className: "mt-2 text-[12px] text-red-600" }, err),
+    h("div", { className: "mt-3 flex items-center justify-end gap-2" },
+      h("button", {
+        onClick: onClose,
+        className: "px-3 py-1.5 text-[12px] rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+      }, "Đóng"),
+      !locked && h("button", {
+        onClick: luu, disabled: busy,
+        className: "px-3 py-1.5 text-[12px] font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+      }, busy ? "Đang lưu…" : "Lưu quota"))
+  )), document.body);
+}
+
+// Ô quota trên dòng sản phẩm. Có bảng quota mới thì bấm vào mở modal nhập theo
+// mức giá và theo đợt; chưa có thì rơi về ô sửa tại chỗ như trước.
+function QuotaCell({ value, pending, width, onOpen, fallbackLocked, onCommit }) {
+  if (!onOpen) {
+    return /*#__PURE__*/React.createElement(EditableCell, {
+      value, pending, locked: fallbackLocked, onCommit, width, bg: "bg-blue-50/20"
+    });
+  }
+  return /*#__PURE__*/React.createElement("td", {
+    onClick: onOpen,
+    title: "Bấm để nhập quota theo mức giá và theo đợt thầu",
+    className: `px-1.5 py-1.5 text-[12px] text-right tabular-nums border-r border-b border-slate-100 cursor-pointer hover:bg-emerald-50/60 ${pending ? 'bg-amber-50' : 'bg-blue-50/20'}`,
+    style: { width, minWidth: width }
+  }, value ? fmtInt(value) : '·');
+}
+
 // ============ PRODUCT GROUP (Nhóm SP) — 1 bảng, Bộ vật tư là cột ============
 function ProductGroupSection({
   groupName,
@@ -1454,6 +1705,9 @@ function ProductGroupSection({
   }, [open]);
   // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).
   const groupRows = useMemo(() => products.flatMap(p => p.monthly.flatMap(c => c.rows)), [products]);
+  // Năm tài chính của nhóm, lấy từ chính dữ liệu đang hiển thị — khoá của đợt thầu.
+  const quotaCtx = useContext(QuotaThauCtx);
+  const grpFy = groupRows.length ? groupRows[0].fy : '';
   const readGroupField = key => {
     for (const r of groupRows) if (r[key]) return r[key];
     return '';
@@ -1556,19 +1810,22 @@ function ProductGroupSection({
     className: `text-[12px] font-semibold tabular-nums ${gs.chenh > 0 ? 'text-emerald-700' : gs.chenh < 0 ? 'text-red-600' : 'text-slate-400'}`
   }, gs.chenh === 0 ? '—' : MASK_MONEY ? '•••' : (gs.chenh > 0 ? '+' : '') + fmtTy3(gs.chenh))))), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "meta-sticky-l px-4 py-2 bg-blue-50/40 border-b border-blue-100 flex flex-wrap items-center gap-x-6 gap-y-2"
-  }, /*#__PURE__*/React.createElement(GroupMonthField, {
-    label: "Tháng thầu chính",
-    value: readGroupField('mMain'),
-    pending: pendGroupField('mMain'),
-    locked: !canEdit,
-    onCommit: v => commitGroupField('mMain', v)
-  }), /*#__PURE__*/React.createElement(GroupMonthField, {
-    label: "Tháng thầu bổ sung",
-    value: readGroupField('mAdd'),
-    pending: pendGroupField('mAdd'),
-    locked: !canEdit,
-    onCommit: v => commitGroupField('mAdd', v)
-  }), /*#__PURE__*/React.createElement("button", {
+  }, quotaCtx && grpFy ? /*#__PURE__*/React.createElement(DotThauPanel, {
+    fy: grpFy, ps: ps, custId: custId || '', grp: groupName, locked: !canEdit
+  }) : /*#__PURE__*/React.createElement(React.Fragment, null,
+    /*#__PURE__*/React.createElement(GroupMonthField, {
+      label: "Tháng thầu chính",
+      value: readGroupField('mMain'),
+      pending: pendGroupField('mMain'),
+      locked: !canEdit,
+      onCommit: v => commitGroupField('mMain', v)
+    }), /*#__PURE__*/React.createElement(GroupMonthField, {
+      label: "Tháng thầu bổ sung",
+      value: readGroupField('mAdd'),
+      pending: pendGroupField('mAdd'),
+      locked: !canEdit,
+      onCommit: v => commitGroupField('mAdd', v)
+    })), /*#__PURE__*/React.createElement("button", {
     className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 ml-auto",
     onClick: () => setNoteModal(true)
   }, /*#__PURE__*/React.createElement("span", { className: "text-[13px]" }, "📝"), "Giải trình")),
@@ -4649,6 +4906,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [rows, setRows] = useState([]);
+  // Đợt thầu + quota thầu (shared.dot_thau / shared.quota_thau) — nguồn riêng,
+  // không nằm trong rows vì grain khác hẳn (gói thầu, không phải tháng).
+  const [dots, setDots] = useState([]);
+  const [quotas, setQuotas] = useState([]);
   // Dòng thực hiện NGOÀI KẾ HOẠCH — chỉ dùng cho 2 màn tổng hợp, không vào màn chi tiết.
   const [oopRows, setOopRows] = useState([]);
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
@@ -4697,6 +4958,107 @@ function App() {
   // từng role). Xoá dòng / cấu hình địa bàn vẫn chỉ admin -> dùng isAdmin.
   const canEdit = ['admin', 'ps', 'manager', 'area_manager'].includes(auth.role);
   const isAdmin = auth.role === 'admin';
+  // --- Đợt thầu & quota thầu -------------------------------------------------
+  // Hai bảng mới là nguồn CHUẨN cho quota, nhưng các cột quota cũ trên sale_target
+  // vẫn được ghi đè bằng số tổng sau mỗi lần lưu: hai màn tổng hợp và các report
+  // ngoài app còn đang đọc cột cũ, ngưng ghi là chúng lệch ngay.
+  const dotsByGroup = useMemo(() => {
+    const m = new Map();
+    for (const d of dots) {
+      const k = grpKey(d.fy, d.ps, d.custId, d.grp);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(d);
+    }
+    return m;
+  }, [dots]);
+  const quotasByProduct = useMemo(() => {
+    const m = new Map();
+    for (const q of quotas) {
+      const k = prodKey(q.fy, q.ps, q.custId, q.grp, q.mset, q.prod);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(q);
+    }
+    return m;
+  }, [quotas]);
+  // Ghi số tổng của 1 sản phẩm ngược về sale_target: dồn vào dòng đầu, các dòng
+  // còn lại về 0 — đúng cách commitProductField đang làm, nên tổng không đổi.
+  // Ghi số tổng quota ngược về sale_target cho từng sản phẩm: dồn vào dòng đầu,
+  // các dòng còn lại về 0 — đúng cách commitProductField vẫn làm, nên tổng không đổi.
+  // `pham_vi` giới hạn những sản phẩm cần đồng bộ: 1 sản phẩm khi lưu quota, cả
+  // nhóm SP khi xoá đợt (xoá đợt kéo theo quota của mọi sản phẩm trong nhóm).
+  const syncQuotaVeSaleTarget = useCallback(async (danhSachQuota, phamVi) => {
+    const thuoc = r =>
+      r.fy === phamVi.fy && r.ps === phamVi.ps &&
+      (r.custId || '') === (phamVi.custId || '') && (r.grp || '') === (phamVi.grp || '') &&
+      (phamVi.mset === undefined || (r.mset || '') === (phamVi.mset || '')) &&
+      (phamVi.prod === undefined || (r.prod || '') === (phamVi.prod || ''));
+    const idsByProd = new Map();
+    for (const r of rows) {
+      if (!thuoc(r)) continue;
+      const k = prodKey(r.fy, r.ps, r.custId, r.grp, r.mset, r.prod);
+      if (!idsByProd.has(k)) idsByProd.set(k, []);
+      idsByProd.get(k).push(r._row);
+    }
+    if (!idsByProd.size) return;
+    const tongByProd = new Map();
+    for (const q of danhSachQuota) {
+      const k = prodKey(q.fy, q.ps, q.custId, q.grp, q.mset, q.prod);
+      if (!idsByProd.has(k)) continue;
+      if (!tongByProd.has(k)) tongByProd.set(k, { cu: 0, chinh: 0, bo_sung: 0 });
+      const t = tongByProd.get(k);
+      t[q.loai] = (t[q.loai] || 0) + (Number(q.qty) || 0);
+    }
+    const updates = [];
+    for (const [k, ids] of idsByProd) {
+      const t = tongByProd.get(k) || { cu: 0, chinh: 0, bo_sung: 0 };
+      for (const key of ['qOld', 'qMain', 'qAdd']) {
+        const val = key === 'qOld' ? t.cu : key === 'qMain' ? t.chinh : t.bo_sung;
+        ids.forEach((id, i) => updates.push({ row: id, key, value: i === 0 ? val : 0 }));
+      }
+    }
+    if (!updates.length) return;
+    await api('updateCells', { updates });
+    // Vá tại chỗ thay vì gọi lại getData: tải lại cả bộ dữ liệu làm mọi nhóm SP
+    // đang mở bị đóng lại, người dùng mất chỗ đang nhập.
+    const patchByRow = new Map();
+    for (const u of updates) {
+      let p = patchByRow.get(u.row);
+      if (!p) { p = {}; patchByRow.set(u.row, p); }
+      p[u.key] = u.value;
+    }
+    setRows(prev => prev.map(r => {
+      const p = patchByRow.get(r._row);
+      return p ? { ...r, ...p } : r;
+    }));
+  }, [rows]);
+  // Nạp lại riêng đợt + quota (không đụng tới rows) và trả về danh sách quota mới.
+  const napLaiQuota = useCallback(async () => {
+    const r = await api('getData', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
+    const ds = Array.isArray(r.dots) ? r.dots : [];
+    const qs = Array.isArray(r.quotas) ? r.quotas : [];
+    setDots(ds);
+    setQuotas(qs);
+    return qs;
+  }, [auth.role, loadScope]);
+  const saveDot = useCallback(async rowsIn => {
+    await api('saveDotThau', { rows: rowsIn });
+    await napLaiQuota();
+  }, [napLaiQuota]);
+  const deleteDot = useCallback(async info => {
+    await api('deleteDotThau', info);
+    const qs = await napLaiQuota();
+    // Xoá đợt là xoá luôn quota của đợt đó, nên cột quota cũ trên sale_target phải
+    // hạ theo — nếu không, hai màn tổng hợp vẫn cộng số của đợt đã xoá.
+    await syncQuotaVeSaleTarget(qs, { fy: info.fy, ps: info.ps, custId: info.custId, grp: info.grp });
+  }, [napLaiQuota, syncQuotaVeSaleTarget]);
+  const saveQuota = useCallback(async (rowsIn, info) => {
+    await api('saveQuotaThau', { rows: rowsIn });
+    const qs = await napLaiQuota();
+    if (info) await syncQuotaVeSaleTarget(qs, info);
+  }, [napLaiQuota, syncQuotaVeSaleTarget]);
+  const quotaThauCtx = useMemo(() => ({
+    dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota
+  }), [dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota]);
   useEffect(() => {
     // Bypass đăng nhập khi vào từ portal: nếu có token dùng chung (vmed_token) mà tab
     // chưa có phiên riêng -> nạp token chung vào sessionStorage để api() dùng.
@@ -4751,6 +5113,8 @@ function App() {
         objs[i] = o;
       }
       setRows(objs);
+      setDots(Array.isArray(r.dots) ? r.dots : []);
+      setQuotas(Array.isArray(r.quotas) ? r.quotas : []);
       // Dòng THỰC HIỆN NGOÀI KẾ HOẠCH: giữ RIÊNG, không trộn vào rows.
       // Chỉ 2 màn tổng hợp dùng tới (cho đủ số); màn chi tiết không thấy, không sửa được.
       // Không đặt _row → mọi thao tác sửa/xoá theo id đều không đụng tới các dòng này.
@@ -5962,7 +6326,9 @@ function App() {
     className: "animate-spin mx-auto mb-2 text-emerald-600"
   }), "Đang tải dữ liệu từ hệ thống…"));
   const curLabel = MONTH_LABELS[getCurIdx()];
-  return /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement(QuotaThauCtx.Provider, {
+    value: quotaThauCtx
+  }, /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen bg-slate-50 text-slate-900"
   }, /*#__PURE__*/React.createElement("header", {
     className: "bg-white border-b border-slate-200 sticky top-0 z-30"
@@ -6386,7 +6752,7 @@ function App() {
       });
     }
     return renderCards(tree);
-  })())));
+  })()))));
 }
 // ============ AUDIT LOG VIEW ============
 const ACTION_LABELS = {
