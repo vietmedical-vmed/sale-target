@@ -1104,6 +1104,14 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const { data, error } = await db.rpc("cap_nhat_thuc_hien");
       if (error) throw new Error(error.message);
+      const d = data || {};
+      await writeAuditLog(db, sess, "syncThucHien", d.set_rows || 0, {
+        matched_keys: d.matched_keys || 0,
+        unmatched_keys: d.unmatched_keys || 0,
+        set_rows: d.set_rows || 0,
+        zeroed: d.zeroed || 0,
+        months: d.months || 0,
+      });
       return json({ ok: true, result: data });
     }
 

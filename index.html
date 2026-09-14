@@ -466,7 +466,7 @@ function TeamSummaryBar({ rows, oopRows, value, onChange }) {
       const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
       const useAct = MONTHS[idx] < CURRENT_MONTH || (MONTHS[idx] === CURRENT_MONTH && (act !== 0));
       const inYtd = MONTHS[idx] <= CURRENT_MONTH;
-      const upd = useAct ? dtActR : rawUpd * pr;
+      const upd = useAct ? act * pr : rawUpd * pr;
       const actDt = dtActR;
       const khDt = rawUpd * pr;
       if (m[bu]) {
@@ -1191,7 +1191,7 @@ function ProductRow({
         const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
         dtBase += (Number(r.rev) || 0) * pr;
         const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-        dtUpd += useAct ? dtActR : upd * pr;
+        dtUpd += upd * pr;
       });
     });
     if (qInfo) { q14 = qInfo.cu; qMain = qInfo.chinh; qAdd = qInfo.bo_sung; }
@@ -1745,7 +1745,7 @@ function ProductGroupSection({
           mDtBase[i] += rb;
           if (isYtdMonth(MONTHS[i])) ytdM += dtActR;
           const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-          const ru = useAct ? dtActR : upd * pr;
+          const ru = upd * pr;
           dtUpd += ru;
           mDtUpd[i] += ru;
         });
@@ -2088,7 +2088,7 @@ function CustomerCard({
             dt += d;
             monthlyDt[i] += d;
             const upd = useAct ? act : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-            dtUpd += useAct ? dtActR : upd * pr;
+            dtUpd += upd * pr;
           });
         });
       });
@@ -3193,7 +3193,7 @@ function SummaryView({
       // Delta của DÒNG này — dùng chung cho cả 3 cấp: KH → Nhóm SP → Sản phẩm
       const dSl = Number(r.rev) || 0;
       const dDt = dSl * price;
-      const dDtUpd = isPast ? dtActVal : updQty * price;
+      const dDtUpd = updQty * price;
       const dQOld = Number(r.qOld) || 0;
       const qMainVal = Number(r.qMain) || 0;
       const qAddVal = Number(r.qAdd) || 0;
@@ -6039,7 +6039,7 @@ function App() {
             const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             const upd = useAct ? act
               : (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : Number(r.rev) || 0);
-            v += useAct ? dtActR : upd * pr;
+            v += upd * pr;
           });
         });
       }));
@@ -6115,7 +6115,7 @@ function App() {
             const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
             const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
             dt += rev * pr;
-            dtUpd += useAct ? dtActR : rawUpd * pr;
+            dtUpd += useAct ? act * pr : rawUpd * pr;
             if (inYtd) { dtYtd += dtActR; khYtdDt += rawUpd * pr; }
           });
         });
@@ -6766,6 +6766,7 @@ const ACTION_LABELS = {
   deleteDiaBan: 'Xóa địa bàn',
   setAppConfig: 'Đổi cấu hình',
   saveGiaiTrinh: 'Giải trình',
+  syncThucHien: 'Đồng bộ thực hiện',
 };
 const ACTION_COLORS = {
   updateCells: 'bg-blue-100 text-blue-700',
@@ -6776,6 +6777,7 @@ const ACTION_COLORS = {
   deleteDiaBan: 'bg-red-100 text-red-700',
   setAppConfig: 'bg-amber-100 text-amber-700',
   saveGiaiTrinh: 'bg-amber-100 text-amber-700',
+  syncThucHien: 'bg-blue-100 text-blue-700',
 };
 const DB_COL_LABELS = {
   quota_thau_cu_con_lai: 'Quota thầu cũ', thang_thau_chinh: 'Tháng thầu chính',
