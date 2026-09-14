@@ -6140,7 +6140,7 @@ function App() {
       const rev = Number(r.rev) || 0;
       const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null ? Number(r.revUpd) || 0 : rev;
       dt += rev * pr;
-      dtUpd += past ? dtActR : rawUpd * pr;
+      dtUpd += past ? act * pr : rawUpd * pr;
       if (inYtd) { dtYtd += dtActR; }
     }
     return {
