@@ -1446,7 +1446,7 @@ const QuotaThauCtx = React.createContext(null);
 const grpKey = (fy, ps, custId, grp) => [fy || '', ps || '', custId || '', grp || ''].join('||');
 const prodKey = (fy, ps, custId, grp, mset, prod) =>
   [fy || '', ps || '', custId || '', grp || '', mset || '', prod || ''].join('||');
-const LOAI_LABEL = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Bổ sung' };
+const LOAI_LABEL = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Thầu bổ sung' };
 // Nhãn ngắn cho 1 đợt: thầu chính 1 đợt thì không cần số, nhiều đợt mới đánh số.
 const dotLabel = (loai, dot, tong) =>
   loai === 'cu' ? LOAI_LABEL.cu
@@ -1881,7 +1881,7 @@ function ProductGroupSection({
     style: {
       width: 72
     }
-  }, "Quota\nBS ✏"), /*#__PURE__*/React.createElement("th", {
+  }, "Quota\nthầu\nbổ sung ✏"), /*#__PURE__*/React.createElement("th", {
     rowSpan: 2,
     className: "px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500 border-r border-b border-slate-200 align-bottom",
     style: {
@@ -6270,7 +6270,7 @@ function App() {
     dMain: 'Thời gian Thầu chính',
     qMain: 'Quota Thầu chính',
     mAdd: 'Tháng Thầu bổ sung',
-    qAdd: 'Quota Bổ sung',
+    qAdd: 'Quota thầu bổ sung',
     rev: 'SL Kế hoạch đầu năm',
     price: 'Đơn giá',
     dt: 'DT',
@@ -6780,7 +6780,7 @@ const ACTION_COLORS = {
 const DB_COL_LABELS = {
   quota_thau_cu_con_lai: 'Quota thầu cũ', thang_thau_chinh: 'Tháng thầu chính',
   thoi_gian_thau_chinh: 'TG thầu chính', quota_thau_chinh: 'Quota thầu chính',
-  thang_thau_bo_sung: 'Tháng thầu BS', quota_bo_sung: 'Quota BS',
+  thang_thau_bo_sung: 'Tháng thầu BS', quota_bo_sung: 'Quota thầu bổ sung',
   sl_ke_hoach_dau_nam: 'SL KH đầu năm', sl_ke_hoach_update: 'SL KH update',
   don_gia: 'Đơn giá', sl_thuc_hien: 'SL thực hiện',
   doanh_thu_kh_dau_nam: 'Dthu KH đầu năm', bo_vat_tu: 'Bộ vật tư', san_pham: 'Sản phẩm',
