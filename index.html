@@ -1994,7 +1994,7 @@ function ProductGroupSection({
   }, gs.chenh === 0 ? '—' : MASK_MONEY ? '•••' : (gs.chenh > 0 ? '+' : '') + fmtTy3(gs.chenh))), products.map((p, idx) => {
     const showMset = idx === 0 || products[idx - 1].mset !== p.mset;
     return /*#__PURE__*/React.createElement(ProductRow, {
-      key: p.mset + '||' + p.product,
+      key: p.mset + '||' + p.product + '||' + (p.pPrice || 0),
       product: p.product,
       mset: p.mset,
       showMset: showMset,
@@ -5981,12 +5981,14 @@ function App() {
       if (r.mo === getNoteMonth()) {
         if (g.aprRow == null) g.aprRow = r._row;
       }
-      // key product by (mset, prod) so same product name under different bộ vật tư stays separate
+      // key product by (mset, prod, price) so same product with different đơn giá stays separate
       const msKey = r.mset || NO_MSET;
-      const pKey = msKey + '||' + (r.prod || '—');
+      const prKey = Number(r.price) || 0;
+      const pKey = msKey + '||' + (r.prod || '—') + '||' + prKey;
       if (!g.pMap.has(pKey)) g.pMap.set(pKey, {
         mset: msKey,
         product: r.prod || '—',
+        pPrice: prKey,
         monthly: Array.from({
           length: 12
         }, () => ({
@@ -6065,7 +6067,7 @@ function App() {
       _thYtd: custThYtd(c),
       groups: Array.from(c.gMap.values()).map(g => {
         const products = Array.from(g.pMap.values()); // hiện mọi SP, kể cả DThu = 0 (SP mới thêm)
-        products.sort((a, b) => (a.mset || '').localeCompare(b.mset || '') || (a.product || '').localeCompare(b.product || ''));
+        products.sort((a, b) => (a.mset || '').localeCompare(b.mset || '') || (a.product || '').localeCompare(b.product || '') || (a.pPrice || 0) - (b.pPrice || 0));
         let gdt = 0;
         products.forEach(p => p.monthly.forEach(cell => cell.rows.forEach(r => {
           gdt += (Number(r.rev) || 0) * (Number(r.price) || 0);
