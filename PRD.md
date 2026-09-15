@@ -4,6 +4,7 @@
 | Phiên bản tài liệu | Nội dung | Ngày | Thực hiện bởi |
 |---|---|---|---|
 | 1.0 | Khởi tạo tài liệu | 2026-06-20 | Đỗ Hoàng Giang |
+| 1.1 | Cập nhật theo các thay đổi tới 2026-09-15: chuyển toàn bộ bảng sang schema `shared`; tách đợt thầu & quota thầu ra bảng riêng (nhập nhiều mức giá); giải trình chuyển sang log append-only; thêm tab "Lịch sử cập nhật" (audit log); nút "Đồng bộ thực hiện"; admin sửa được một số cột danh mục; product summary 5 cột quota; cột Mã SP; danh sách action & mô hình dữ liệu cập nhật lại | 2026-09-15 | Đỗ Hoàng Giang |
 
 ---
 
@@ -48,7 +49,7 @@ Lựa chọn **Supabase** (Postgres + Edge Functions) làm backend, frontend tĩ
 |---|---|---|
 | G1 | Cho phép PS/Admin sửa kế hoạch & thực hiện theo tháng ngay trên bảng | Sản phẩm |
 | G2 | Phân quyền dữ liệu theo 5 vai trò × phạm vi (team/miền/PS/ngành hàng) | Sản phẩm |
-| G3 | Cung cấp 4 màn hình: Chi tiết + 2 màn tổng hợp + Cấu hình địa bàn | Sản phẩm |
+| G3 | Cung cấp 5 màn hình: Chi tiết + 2 màn tổng hợp + Cấu hình địa bàn + Lịch sử cập nhật | Sản phẩm |
 | G4 | Xuất Excel giữ cấu trúc phân cấp (gộp/mở, header gộp) | Sản phẩm |
 | G5 | Tải & thao tác mượt ở quy mô ~20k dòng | Kỹ thuật |
 | G6 | Giúp quản lý bám sát quota khả dụng còn lại và chênh lệch kế hoạch | Kinh doanh |
@@ -57,7 +58,7 @@ Lựa chọn **Supabase** (Postgres + Edge Functions) làm backend, frontend tĩ
 - Không phải hệ CRM/quản lý cơ hội bán hàng; không quản lý đơn hàng/hợp đồng chi tiết.
 - Không tự động tính hoa hồng/lương thưởng.
 - Không có quy trình phê duyệt (approval workflow) nhiều bước ở phiên bản hiện tại.
-- Không import dữ liệu thực hiện bằng tay qua UI (việc đẩy `sl_thuc_hien` do pipeline ngoài đảm nhiệm — xem §8).
+- Không nhập tay số thực hiện từng dòng qua UI: `sl_thuc_hien`/`doanh_thu_thuc_hien` sinh từ hoá đơn qua pipeline map (§8.2). App chỉ có nút **"Đồng bộ thực hiện"** (`syncThucHien`, màn Cấu hình địa bàn) để chạy lại pipeline map đó, không phải chỗ gõ số bằng tay.
 - Không hỗ trợ đa ngôn ngữ (chỉ tiếng Việt).
 
 ---
@@ -122,15 +123,20 @@ cộng chung với team thật.
 
 ## 6. Yêu cầu chức năng (Functional Requirements)
 
-Ứng dụng có **4 màn hình chính** (tab):
+Ứng dụng có **5 màn hình chính** (tab): Chi tiết kế hoạch, Tổng hợp theo PS/KH, Tổng hợp theo Sản phẩm, Cấu hình địa bàn, Lịch sử cập nhật.
 
 ### 6.1 Màn "Chi tiết kế hoạch"
 Bảng dạng bảng tính, mỗi dòng = một (Khách hàng × Sản phẩm × đơn giá) với 12 cột tháng.
+Sản phẩm cùng tên nhưng **khác đơn giá** tách thành **dòng riêng** (không gộp — §8.1).
 
 - **Sửa trực tiếp từng ô**: Ô đang sửa có viền nhấn; ô chưa lưu (pending) tô màu hổ phách.
-- Các cột **được phép sửa** (`EDITABLE`): `qOld` (quota thầu cũ còn lại), `mMain`/`dMain`/`qMain` (tháng/thời gian/quota thầu chính), `mAdd`/`qAdd` (tháng/quota thầu bổ sung), `revUpd` (SL kế hoạch update từng tháng), `note` (giải trình), `price` (đơn giá).
-- Hiển thị: SL kế hoạch đầu năm, SL update theo tháng, doanh thu, chênh lệch (tô xanh/đỏ theo dấu), quota khả dụng còn lại.
-- Tháng hiện tại được highlight.
+- Các cột **được phép sửa** (`EDITABLE`, mọi role có `canEdit`): `qOld` (quota thầu cũ còn lại), `mMain`/`dMain`/`qMain` (tháng/thời gian/quota thầu chính), `mAdd`/`qAdd` (tháng/quota thầu bổ sung), `revUpd` (SL kế hoạch update từng tháng), `price` (đơn giá).
+- **Cột chỉ `admin` sửa** (`ADMIN_EDITABLE`): `mset` (bộ vật tư), `prod` (sản phẩm), `rev` (SL kế hoạch đầu năm), `dt` (doanh thu KH đầu năm) — sửa danh mục/số gốc là việc quản trị, không mở cho PS.
+- **Giải trình không còn là ô trong bảng**: đã bỏ cột `giai_trinh` khỏi `sale_target`, chuyển sang **log append-only** `shared.giai_trinh` (§7.1) — mở qua nút giải trình trên dòng (`getGiaiTrinh`/`saveGiaiTrinh`), giữ nguyên lịch sử từng lần ghi.
+- **Đợt thầu & quota thầu nhập theo nhiều mức giá**: quota thầu tách sang bảng riêng `shared.dot_thau`/`shared.quota_thau` (§7.1), cho nhập nhiều đợt thầu với quota theo từng mức giá, đọc/ghi qua RPC (`get_quota_thau`, `saveDotThau`, `saveQuotaThau`…).
+- **Cột Mã SP** (thay cột Bộ vật tư cũ), lấy từ `dm_bo_vat_tu_mapping`.
+- Hiển thị: SL kế hoạch đầu năm, SL update theo tháng, doanh thu (kể cả `doanh_thu_thuc_hien` lấy từ DB), chênh lệch (tô xanh/đỏ theo dấu), quota khả dụng còn lại. Dòng **ngoài kế hoạch** được tô màu riêng.
+- Tháng hiện tại được highlight; mốc "tháng hiện tại" lấy từ `app_config` trong DB, không hardcode (§10).
 
 ### 6.2 Màn "Tổng hợp theo PS / Khách hàng"
 Cấu trúc phân cấp: **Miền → PS → Khách hàng → Nhóm SP → Sản phẩm**, có thể gập/mở.
@@ -143,7 +149,8 @@ Cấu trúc phân cấp: **Miền → PS → Khách hàng → Nhóm SP → Sản
 
 ### 6.3 Màn "Tổng hợp theo Sản phẩm"
 Cấu trúc phân cấp: **Sản phẩm → Miền → Khách hàng**, có thể gập/mở.
-- Cột: SL KH update theo 12 tháng, Tổng Quota, Thực hiện YTD, KH còn lại YTD, Quota khả dụng còn lại.
+- Cột: SL KH update theo 12 tháng, rồi **5 cột quota**: **On hand** (`qOld` + quota các đợt thầu đã tới tháng), **Upcoming** (quota các đợt thầu chưa tới tháng), **Tổng Quota**, **Thực hiện YTD**, **Khả dụng còn lại**.
+- Dòng "Không rõ SP" xếp xuống cuối.
 - **Ngoài kế hoạch**: xem 6.6.
 
 ### 6.4 Màn "Cấu hình địa bàn"
@@ -235,7 +242,20 @@ riêng qua `oopRows`, đánh dấu `_oop` ở client — **không** trộn vào 
 
 ---
 
+### 6.7 Màn "Lịch sử cập nhật" (audit log)
+Nhật ký thao tác ghi vào `shared.audit_log` (action `getAuditLog`).
+- Mỗi lần PS/admin sửa ô ghi lại **giá trị cũ/mới**, người sửa, thời điểm.
+- Log **cùng ngày/user/action được gom** thành một dòng cho gọn.
+- Kèm theo dõi **deadline** cập nhật kế hoạch.
+- Có hàm dọn log cũ (§9.2) để không phình bảng.
+
+---
+
 ## 7. Mô hình dữ liệu (Data Model)
+
+> **Schema:** Từ 2026-08 toàn bộ bảng nghiệp vụ đã chuyển sang schema **`shared`**
+> (không còn `public`). Edge function gọi `.schema("shared")`; migration mới phải
+> `GRANT` cho `service_role` vì `auto_expose_new_tables` tắt.
 
 ### 7.1 Bảng chính
 
@@ -259,10 +279,16 @@ riêng qua `oopRows`, đánh dấu `_oop` ở client — **không** trộn vào 
 | `sl_ke_hoach_update` | revUpd | SL kế hoạch update |
 | `don_gia` | price | Đơn giá |
 | `doanh_thu_kh_dau_nam` | dt | Doanh thu KH đầu năm |
-| `sl_thuc_hien` | act | SL thực hiện (đẩy từ pipeline ngoài) |
-| `giai_trinh` | note | Giải trình |
+| `sl_thuc_hien` | act | SL thực hiện (map từ hoá đơn qua pipeline) |
+| `doanh_thu_thuc_hien` | dtAct | Doanh thu thực hiện (map từ hoá đơn) |
+| `ngoai_ke_hoach` | — | Cờ dòng thực hiện không khớp kế hoạch (§6.6) |
 | `bu` | — | Team (business unit) |
 | `updated_at` | — | Mốc cập nhật (nguồn của `rev`) |
+
+> **Đã bỏ cột `giai_trinh`** khỏi `sale_target` (2026-09): giải trình chuyển sang log
+> append-only `shared.giai_trinh`. **Đợt thầu / quota thầu** cũng tách ra bảng riêng —
+> các cột `quota_thau_*`/`thang_thau_*` trên `sale_target` là dạng đơn giản một đợt,
+> còn nhiều đợt/nhiều mức giá lưu ở `shared.dot_thau` + `shared.quota_thau`.
 
 **`dm_bo_vat_tu_mapping`** — nguồn danh mục cho form thêm SP (`getCatalog`): `bu`, `nhom_san_pham`, `bo_vat_tu`, `san_pham`, `san_pham_thay_the`, `so_luong_dinh_muc`. Dropdown chỉ dùng 3 trường `nhom_san_pham`/`bo_vat_tu`/`san_pham` và **gom trùng** (1 sản phẩm có nhiều dòng mapping khác nhau ở `bu`/`san_pham_thay_the`/`so_luong_dinh_muc`).
 
@@ -287,7 +313,22 @@ RPC: `upsert_dm_dia_ban` (ghi lô), `chuyen_dia_ban` (đóng bản cũ + mở b�
 hoạch theo đúng khoảng hiệu lực), `dia_ban_hieu_luc(thang)` (trạng thái tại 1 tháng).
 View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào phủ (dùng để chặn ghi).
 
-**`users`** — tài khoản: `username`, `password_hash` (SHA-256), `role`, `scope`, `bu`.
+**`shared.dot_thau` / `shared.quota_thau`** — đợt thầu & quota thầu tách riêng, cho nhập
+**nhiều đợt và nhiều mức giá** cho một dòng kế hoạch. Đọc qua RPC `get_quota_thau`
+(có phân trang), ghi qua `upsert_dot_thau` / `upsert_quota_thau` / `delete_dot_thau`.
+On hand / Upcoming ở màn Sản phẩm (§6.3) tính từ đây.
+
+**`shared.giai_trinh`** — log giải trình **append-only** (thay cột `giai_trinh` cũ):
+mỗi lần ghi là một dòng mới, giữ nguyên lịch sử. Đọc `getGiaiTrinh`, ghi `saveGiaiTrinh`.
+
+**`shared.audit_log`** — nhật ký sửa ô (giá trị cũ/mới, user, thời điểm) cho tab Lịch sử
+cập nhật (§6.7); có composite index + hàm dọn log cũ.
+
+**`shared.app_config`** — cấu hình runtime, gồm **tháng hiện tại** (`CURRENT_MONTH`) để
+không hardcode trong frontend. Đọc `getAppConfig`, ghi `setAppConfig`.
+
+**`users`** — tài khoản: `username`, `password_hash` (SHA-256), `role`, `scope`, `bu`,
+`nhom_san_pham` (ngành hàng phụ trách cho `product_manager`).
 
 ### 7.2 Chỉ số & công thức
 - **Thực hiện YTD** = tổng `sl_thuc_hien` luỹ kế **đến hết tháng hiện tại** (mốc dùng
@@ -311,7 +352,7 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 1. **Một sản phẩm có thể có nhiều dòng** nếu **đơn giá khác nhau** giữa các khách hàng.
 2. **Đẩy `sl_thuc_hien` khớp theo PS**: một khách hàng có thể do nhiều PS phụ trách; import thực hiện phải khớp đúng PS tương ứng (qua pipeline ngoài).
 3. **Năm tài chính**: 12 tháng từ **Tháng 04 năm nay → Tháng 03 năm sau**.
-4. **Chỉ các cột `EDITABLE`** được sửa qua `updateCells`; mọi cột khác bị bỏ qua ở server (kể cả nếu client gửi lên).
+4. **Chỉ các cột `EDITABLE`** được sửa qua `updateCells` (mọi role có `canEdit`); thêm nhóm `ADMIN_EDITABLE` (`mset`, `prod`, SL đầu năm, DThu đầu năm) chỉ `admin` sửa. Mọi cột khác bị bỏ qua ở server (kể cả nếu client gửi lên). Ghi cuối cùng chốt ở RPC `update_sale_target_cells`, không tin client.
 5. **Sản phẩm mới** luôn gắn `bu` của người tạo (kể cả admin), khởi tạo `sl_ke_hoach_dau_nam = 0`, `sl_thuc_hien = 0`.
 6. **Phạm vi quyền khoá phía server**: role không phải admin/manager không thể mở rộng phạm vi bằng payload.
 7. **Cấu hình địa bàn chỉ `admin` ghi**; khai báo địa bàn **không tự đổi** dữ liệu kế hoạch — phải chủ động "Áp dụng", và mỗi bản chỉ ghi vào **các tháng nằm trong khoảng hiệu lực của nó** nên tháng đã qua không bị bản mới ghi đè (giữ khớp actual — §8.2).
@@ -332,7 +373,9 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 ### 9.2 Hiệu năng
 - Đọc toàn bộ dữ liệu theo phạm vi quyền, **phân trang 1000 dòng/lần** (giới hạn PostgREST), **tải song song 6 trang** để giảm thời gian chờ ở ~20k dòng (~21 trang).
 - Đếm tổng số dòng trước (`head:true`) rồi tải trang song song, sắp xếp theo `id` để phân trang ổn định.
-- Có index hiệu năng (migration `perf_indexes`).
+- Có index hiệu năng (`perf_indexes`) + đợt tối ưu index/materialized view (`optimize_indexes_matview`).
+- Audit log có composite index + hàm dọn log cũ để không phình bảng.
+- `get_quota_thau` và một số RPC đọc lượng lớn được **phân trang** để tránh cắt ở `max_rows`.
 
 ### 9.3 Khả dụng & UX
 - Giao diện tiếng Việt, phong cách bảng tính quen thuộc, highlight tháng hiện tại, màu sắc trực quan cho chênh lệch.
@@ -351,16 +394,18 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
         ▼
 [Supabase Edge Function: sale_target-api]  ← xác thực token HMAC, áp phạm vi quyền
 [Supabase Edge Function: sale_target-login] ← xác thực mật khẩu, phát token
-        │  service role
+        │  service role, .schema("shared")
         ▼
-[Postgres: sale_target, dm_bo_vat_tu, dm_khach_hang, dm_dia_ban, users]  (RLS bật)
+[Postgres schema shared: sale_target, dot_thau, quota_thau, giai_trinh, audit_log,
+ app_config, dm_ps, dm_bo_vat_tu, dm_bo_vat_tu_mapping, dm_khach_hang, dm_dia_ban, users]
+ (RLS bật)
 ```
 
 ### 10.1 Điểm triển khai quan trọng
 - **Frontend**: `index.html` deploy tự động qua **GitHub Pages** (GitHub Actions).
 - **Edge Functions**: **phải deploy tay riêng** (`supabase functions deploy ... --no-verify-jwt`); **không** đi theo pipeline Pages. Cần secret `SESSION_SECRET` giống nhau cho cả login & api.
-- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `getPs`, `updateCells`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `chuyenDiaBan`, `deleteDiaBan`, `applyDiaBan`.
-- **Migration mới phải `supabase db push`** (hoặc dán vào SQL Editor) — bảng/RPC mới không tự lộ qua Data API (`auto_expose_new_tables` tắt) nên migration tự `GRANT` cho `service_role`.
+- **Endpoint API duy nhất** xử lý mọi action: `ping`, `getData`, `getRev`, `getCatalog`, `getCustomers`, `getPs`, `savePs`, `getOop`, `suaPsHoaDon`, `suaPsHoaDonBulk`, `updateCells`, `saveDotThau`, `deleteDotThau`, `saveQuotaThau`, `addProduct`, `deleteProduct`, `deleteCustomer`, `getDiaBan`, `saveDiaBan`, `chuyenDiaBan`, `dopChongLan`, `deleteDiaBan`, `applyDiaBan`, `getAuditLog`, `getAppConfig`, `setAppConfig`, `getGiaiTrinh`, `saveGiaiTrinh`, `syncThucHien`.
+- **Migration mới phải `supabase db push`** (hoặc dán vào SQL Editor) — bảng/RPC mới không tự lộ qua Data API (`auto_expose_new_tables` tắt) nên migration tự `GRANT` cho `service_role`. Script hoàn tác để ở `supabase/rollbacks/`, **không** để trong `supabase/migrations/` (xem README).
 
 ---
 
@@ -390,7 +435,6 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 - Danh mục khách hàng/sản phẩm được quản trị ngoài UI.
 
 ### 12.3 Hướng phát triển (Future)
-- Ghi log/audit trail cho `updateCells`.
 - Quy trình phê duyệt kế hoạch.
 - Khoá phiên bản ô (concurrency control) rõ ràng.
 - Dashboard biểu đồ trực quan (xu hướng, so sánh team).
@@ -409,10 +453,13 @@ View `v_dia_ban_khoang_trong` — tháng có kế hoạch mà không bản nào 
 
 ### 13.2 Ánh xạ field ↔ cột
 Xem bảng đầy đủ ở §7.1. Thứ tự field khi trả `getData`:
-`fy, mo, region, ps, cust, custId, grp, prod, mset, qOld, mMain, dMain, qMain, mAdd, qAdd, rev, revUpd, price, note, act, dt`
+`fy, mo, region, ps, cust, custId, grp, prod, mset, qOld, mMain, dMain, qMain, mAdd, qAdd, rev, revUpd, price, act, dtAct, dt, bu, oop`
 
 ### 13.3 Danh sách action API
-`ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `getPs` · `updateCells` · `addProduct` ·
-`deleteProduct` · `deleteCustomer` · `getDiaBan` · `saveDiaBan` · `chuyenDiaBan` · `deleteDiaBan` · `applyDiaBan`
+`ping` · `getData` · `getRev` · `getCatalog` · `getCustomers` · `getPs` · `savePs` · `getOop` ·
+`suaPsHoaDon` · `suaPsHoaDonBulk` · `updateCells` · `saveDotThau` · `deleteDotThau` · `saveQuotaThau` ·
+`addProduct` · `deleteProduct` · `deleteCustomer` · `getDiaBan` · `saveDiaBan` · `chuyenDiaBan` ·
+`dopChongLan` · `deleteDiaBan` · `applyDiaBan` · `getAuditLog` · `getAppConfig` · `setAppConfig` ·
+`getGiaiTrinh` · `saveGiaiTrinh` · `syncThucHien`
 
 ---
