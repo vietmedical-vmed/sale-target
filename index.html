@@ -3757,6 +3757,10 @@ function CustomerPicker({ customers, value, onChange, className }) {
 function buildCatalogIndex(catalog) {
   const byGrp = new Map();
   const codeMap = new Map();
+  // bu (nhãn dài "CH&CS"/"CTTM & CTUT"/"THNS & CSVT" từ dm_bo_vat_tu_mapping.bu)
+  // → tập nhóm SP thuộc BU đó. Dùng cho form thêm SP: PS chỉ được chọn nhóm
+  // trong BU của mình (không giới hạn theo rows kế hoạch hiện có).
+  const grpsByBuLabel = new Map();
   for (const c of catalog || []) {
     const g = c.grp || '';
     if (!g) continue;
@@ -3769,10 +3773,16 @@ function buildCatalogIndex(catalog) {
     arr.push(c);
     const code = isLooseSet(m) ? (c.maSp || '') : (c.maBvt || '');
     if (code) codeMap.set(`${g}||${m}||${c.prod || ''}`, code);
+    if (c.bu) {
+      let s = grpsByBuLabel.get(c.bu);
+      if (!s) { s = new Set(); grpsByBuLabel.set(c.bu, s); }
+      s.add(g);
+    }
   }
   const sorted = new Map(); // cache danh sách bộ vật tư đã sort theo nhóm
   return {
     groups: Array.from(byGrp.keys()).sort(),
+    grpsByBuLabel,
     // Nhóm "lai" (vừa có dòng có bộ vật tư, vừa có dòng bo_vat_tu rỗng) được thêm
     // một mục NO_MSET ở cuối — nếu không thì các SP rỗng bộ vật tư không cách nào chọn.
     msetsOf(g) {
@@ -3863,9 +3873,9 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
   };
   const fmtTr = (vnd) => (vnd ? String(vnd / 1e6).replace('.', ',') : '');
 
-  // Nhóm SP được phép chọn = mọi nhóm trong BU của PS (suy từ rows trong view +
-  // dm_ps.bu_code, xem groupsByPs ở AppInner) ∩ danh mục. Nới hơn so với "chỉ nhóm
-  // PS đã có plan" để đỡ chặn admin/PS khi BU vừa mở nhóm mới.
+  // Nhóm SP được phép chọn = mọi nhóm trong BU của PS (nguồn danh mục
+  // dm_bo_vat_tu_mapping, ghép qua dm_ps.bu_code — xem groupsByPs ở AppInner)
+  // ∩ danh mục. PS mới/chưa có plan vẫn thấy đủ nhóm của BU mình.
   const groups = useMemo(() => {
     if (!ps) return [];
     const allowed = groupsByPs.get(ps);
@@ -5828,15 +5838,13 @@ function App() {
   // Dùng cho: panel thêm KH tự điền miền, và form thêm SP giới hạn nhóm SP theo PS.
   const { regionsByPs, groupsByPs } = useMemo(() => {
     const reg = new Map();
-    const grpPs = new Map();      // ps → nhóm PS đã có plan (giữ để tương thích)
-    const grpBu = new Map();      // bu → mọi nhóm từng xuất hiện trong BU
+    const grpPs = new Map();      // ps → nhóm PS đã có plan (fallback khi thiếu mapping)
     const bump = (m, k, v) => {
       let s = m.get(k);
       if (!s) { s = new Set(); m.set(k, s); }
       s.add(v);
     };
     rows.forEach(r => {
-      if (r.grp && r.bu) bump(grpBu, r.bu, r.grp);
       if (!r.ps) return;
       if (r.region) bump(reg, r.ps, r.region);
       if (r.grp) bump(grpPs, r.ps, r.grp);
@@ -5845,24 +5853,23 @@ function App() {
     // dm_ps.area là miền chính thức của PS → đè lên phần suy từ kế hoạch (dữ liệu
     // cũ có thể để PS ở 2 miền, khi đó panel thêm KH đang bắt chọn tay).
     psDir.forEach(p => { if (p.ps && p.mien) regions.set(p.ps, [p.mien]); });
-    // Nới nhóm SP: mỗi PS được phép chọn TẤT CẢ nhóm trong BU của họ (suy từ
-    // dm_ps.bu_code), không chỉ nhóm PS đã từng có plan. Case: BU có nhóm SP
-    // mới nhưng PS chưa gán KH nào → nhóm vẫn hiện để admin/PS thêm được.
-    const psToBu = new Map();
-    psDir.forEach(p => { if (p.ps && p.bu) psToBu.set(p.ps, p.bu); });
+    // Nhóm SP cho form thêm SP: lấy từ dm_bo_vat_tu_mapping (chuẩn danh mục) theo
+    // BU của PS. Không phụ thuộc rows kế hoạch → PS mới/chưa có plan vẫn thấy đủ
+    // nhóm. Ghép qua psDir[i].buLabel (nhãn dài "CH&CS") = catalog.bu.
+    const grpsByBuLabel = (catIdx && catIdx.grpsByBuLabel) || new Map();
     const groups = new Map();
-    const psSet = new Set([...grpPs.keys(), ...psToBu.keys()]);
-    psSet.forEach(ps => {
-      const bu = psToBu.get(ps);
-      const pool = bu ? grpBu.get(bu) : null;
-      // Union: nhóm BU + nhóm PS đã có (phòng khi PS chưa mapping BU trong dm_ps).
+    psDir.forEach(p => {
+      if (!p.ps) return;
+      const pool = p.buLabel ? grpsByBuLabel.get(p.buLabel) : null;
       const s = new Set(pool || []);
-      const own = grpPs.get(ps);
-      if (own) own.forEach(g => s.add(g));
-      if (s.size) groups.set(ps, s);
+      const own = grpPs.get(p.ps);
+      if (own) own.forEach(g => s.add(g)); // phòng nhóm trong plan chưa có trong danh mục
+      if (s.size) groups.set(p.ps, s);
     });
+    // PS không có trong dm_ps: fallback nhóm PS đã có plan.
+    grpPs.forEach((s, ps) => { if (!groups.has(ps)) groups.set(ps, s); });
     return { regionsByPs: regions, groupsByPs: groups };
-  }, [rows, psDir]);
+  }, [rows, psDir, catIdx]);
   // KH vừa thêm nhưng chưa có sản phẩm nào -> chỉ nằm ở client (xem NewCustomerCard).
   const [newCusts, setNewCusts] = useState([]);
   const pendingCusts = useMemo(
