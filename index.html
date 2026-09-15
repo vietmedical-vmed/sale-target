@@ -3863,8 +3863,9 @@ function ProductPickerForm({ catIdx, groupsByPs, psOptions, existing, priceOf, o
   };
   const fmtTr = (vnd) => (vnd ? String(vnd / 1e6).replace('.', ',') : '');
 
-  // Nhóm SP được phép chọn = nhóm PS đó ĐANG phụ trách (lấy từ dữ liệu kế hoạch, vốn
-  // đã lọc theo team đang xem) ∩ danh mục. Không cho PS thêm sang nhóm không phải của mình.
+  // Nhóm SP được phép chọn = mọi nhóm trong BU của PS (suy từ rows trong view +
+  // dm_ps.bu_code, xem groupsByPs ở AppInner) ∩ danh mục. Nới hơn so với "chỉ nhóm
+  // PS đã có plan" để đỡ chặn admin/PS khi BU vừa mở nhóm mới.
   const groups = useMemo(() => {
     if (!ps) return [];
     const allowed = groupsByPs.get(ps);
@@ -5827,22 +5828,40 @@ function App() {
   // Dùng cho: panel thêm KH tự điền miền, và form thêm SP giới hạn nhóm SP theo PS.
   const { regionsByPs, groupsByPs } = useMemo(() => {
     const reg = new Map();
-    const grp = new Map();
+    const grpPs = new Map();      // ps → nhóm PS đã có plan (giữ để tương thích)
+    const grpBu = new Map();      // bu → mọi nhóm từng xuất hiện trong BU
     const bump = (m, k, v) => {
       let s = m.get(k);
       if (!s) { s = new Set(); m.set(k, s); }
       s.add(v);
     };
     rows.forEach(r => {
+      if (r.grp && r.bu) bump(grpBu, r.bu, r.grp);
       if (!r.ps) return;
       if (r.region) bump(reg, r.ps, r.region);
-      if (r.grp) bump(grp, r.ps, r.grp);
+      if (r.grp) bump(grpPs, r.ps, r.grp);
     });
     const regions = new Map(Array.from(reg, ([k, v]) => [k, Array.from(v).sort()]));
     // dm_ps.area là miền chính thức của PS → đè lên phần suy từ kế hoạch (dữ liệu
     // cũ có thể để PS ở 2 miền, khi đó panel thêm KH đang bắt chọn tay).
     psDir.forEach(p => { if (p.ps && p.mien) regions.set(p.ps, [p.mien]); });
-    return { regionsByPs: regions, groupsByPs: grp };
+    // Nới nhóm SP: mỗi PS được phép chọn TẤT CẢ nhóm trong BU của họ (suy từ
+    // dm_ps.bu_code), không chỉ nhóm PS đã từng có plan. Case: BU có nhóm SP
+    // mới nhưng PS chưa gán KH nào → nhóm vẫn hiện để admin/PS thêm được.
+    const psToBu = new Map();
+    psDir.forEach(p => { if (p.ps && p.bu) psToBu.set(p.ps, p.bu); });
+    const groups = new Map();
+    const psSet = new Set([...grpPs.keys(), ...psToBu.keys()]);
+    psSet.forEach(ps => {
+      const bu = psToBu.get(ps);
+      const pool = bu ? grpBu.get(bu) : null;
+      // Union: nhóm BU + nhóm PS đã có (phòng khi PS chưa mapping BU trong dm_ps).
+      const s = new Set(pool || []);
+      const own = grpPs.get(ps);
+      if (own) own.forEach(g => s.add(g));
+      if (s.size) groups.set(ps, s);
+    });
+    return { regionsByPs: regions, groupsByPs: groups };
   }, [rows, psDir]);
   // KH vừa thêm nhưng chưa có sản phẩm nào -> chỉ nằm ở client (xem NewCustomerCard).
   const [newCusts, setNewCusts] = useState([]);
