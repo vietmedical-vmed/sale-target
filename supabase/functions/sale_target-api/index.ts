@@ -164,14 +164,25 @@ function readScopeParams(sess, payload = {}) {
 // 1 nhóm SP có thể có nhiều đợt thầu bổ sung trong cùng năm, và quota gắn với
 // từng MỨC GIÁ (mỗi mức giá là một gói thầu).
 async function fetchQuotaThau(db, sess, payload = {}) {
-  const { data, error } = await db.rpc("get_quota_thau", {
+  const params = {
     p_fy: payload && payload.fy ? payload.fy : null,
     ...readScopeParams(sess, payload),
-  });
-  if (error) throw new Error(error.message);
+  };
+  // PHẢI phân trang: PostgREST cắt ở max_rows (1000) kể cả với RPC. Hai bảng này
+  // đã vượt 1000 dòng, đọc một phát thì quota ghi sau nằm ngoài trang đầu và app
+  // không thấy — lưu xong mà ô vẫn trống. get_quota_thau đã ORDER BY cố định nên
+  // .range() cho kết quả ổn định giữa các trang.
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.rpc("get_quota_thau", params).range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const r of data) rows.push(r);
+    if (data.length < PAGE) break;
+  }
   const dots = [];
   const quotas = [];
-  for (const r of data || []) {
+  for (const r of rows) {
     if (r.kind === "dot") {
       dots.push({
         fy: r.fy, ps: r.ps, custId: r.cust_id ?? "", grp: r.grp ?? "",
@@ -453,7 +464,7 @@ Deno.serve(async (req) => {
       const seen = new Set();
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await db.schema("shared").from("dm_bo_vat_tu_mapping")
-          .select("nhom_san_pham, bo_vat_tu, san_pham, ma_bo_vat_tu, ma_san_pham")
+          .select("bu, nhom_san_pham, bo_vat_tu, san_pham, ma_bo_vat_tu, ma_san_pham")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
@@ -463,6 +474,7 @@ Deno.serve(async (req) => {
           if (seen.has(key)) continue;
           seen.add(key);
           catalog.push({
+            bu: c.bu || '',
             grp: c.nhom_san_pham, mset: c.bo_vat_tu, prod: c.san_pham,
             maBvt: c.ma_bo_vat_tu || '', maSp: c.ma_san_pham || '',
           });
