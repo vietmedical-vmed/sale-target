@@ -35,16 +35,18 @@ jobs:
         uses: actions/configure-pages@v5
       # Ghi version.json = commit SHA + thời điểm build. Client fetch file này khi
       # focus lại tab để phát hiện có bản mới rồi reload — không phụ thuộc cache HTML.
-      - name: Write version.json
+      - name: Prepare deploy directory
         run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp favicon.svg _site/
+          cp logo.png _site/
           printf '{"version":"%s","builtAt":"%s"}\n' \
-            "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > version.json
-          cat version.json
+            "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/version.json
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          path: '_site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

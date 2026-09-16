@@ -5,7 +5,7 @@
 // Deploy:  supabase functions deploy login --no-verify-jwt
 // Cần secret: supabase secrets set TOKEN_SECRET=<chuoi_bi_mat_dai>  (CHUẨN CHUNG mọi app)
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

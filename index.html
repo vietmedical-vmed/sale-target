@@ -15,8 +15,8 @@ tailwind.config = { theme: { extend: { colors: {
   red: {50:'#fdecee',100:'#fad3d6',200:'#f5aab0',300:'#ef7d85',400:'#f9525c',500:'#fa383e',600:'#e41e3f',700:'#c81f3d',800:'#9f1830',900:'#7a1225'}
 }}}};
 </script>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
@@ -123,7 +123,8 @@ const {
   useMemo,
   useRef,
   useCallback,
-  useContext
+  useContext,
+  useDeferredValue
 } = React;
 console.log('[boot] script start');
 
@@ -2048,7 +2049,8 @@ function CustomerCard({
   canEdit,
   isAdmin,
   onDeleteProduct,
-  defaultOpen,
+  open,
+  onToggle,
   showBasePlan,
   onToggleBasePlan,
   catIdx,
@@ -2057,7 +2059,6 @@ function CustomerCard({
   onAddProduct,
   onDeleteCustomer
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   const [adding, setAdding] = useState(false);
   // Khoá chống thêm trùng — chỉ tính khi form thêm SP đang mở (tránh chạy cho mọi thẻ).
   const existingKeys = useMemo(() => {
@@ -2112,7 +2113,7 @@ function CustomerCard({
     // các sản phẩm của chính KH này (giới hạn bởi chiều cao thẻ).
     className: "flex items-stretch sticky-cust"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setOpen(!open),
+    onClick: onToggle,
     className: "flex-1 min-w-0 flex items-stretch text-left"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-[#1877f2] text-white px-3 py-3 flex flex-col items-center justify-center min-w-[88px]"
@@ -2163,7 +2164,7 @@ function CustomerCard({
   }), "Thêm SP"),
   // Xóa cả khách hàng (mọi sản phẩm, mọi tháng) — chỉ admin.
   isAdmin && onDeleteCustomer && /*#__PURE__*/React.createElement("button", {
-    onClick: () => onDeleteCustomer(customer),
+    onClick: () => onDeleteCustomer(custId, customer),
     title: "Xóa toàn bộ kế hoạch của khách hàng này",
     className: "p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200"
   }, /*#__PURE__*/React.createElement(Trash2, {
@@ -4914,7 +4915,8 @@ function App() {
   // Chuyển giữa các team thật (CHCS/CTTM/THNK/Tất cả) = instant (client-side), không reload.
   const loadScope = viewBu === 'test' ? 'test' : '';
   useEffect(() => { window.__app_auth = auth; }, [auth]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [rows, setRows] = useState([]);
   // Đợt thầu + quota thầu (shared.dot_thau / shared.quota_thau) — nguồn riêng,
@@ -4929,6 +4931,7 @@ function App() {
   const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'audit'
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   // Bộ lọc đa lựa chọn: mảng rỗng = tất cả (không lọc).
   const [psFilter, setPsFilter] = useState([]);
   const [regionFilter, setRegionFilter] = useState([]);
@@ -4954,6 +4957,7 @@ function App() {
   const [exportFn, setExportFn] = useState(null);
   const [diaBanToolbar, setDiaBanToolbar] = useState(null);
   const [addCustOpen, setAddCustOpen] = useState(false); // popup Thêm khách hàng
+  const [openCards, setOpenCards] = useState(new Set());
   const setExporter = useCallback(fn => setExportFn(() => fn), []);
   const setDiaBanTb = useCallback(fn => setDiaBanToolbar(() => fn), []);
   MASK_MONEY = maskMoney;
@@ -5044,7 +5048,7 @@ function App() {
   }, [rows]);
   // Nạp lại riêng đợt + quota (không đụng tới rows) và trả về danh sách quota mới.
   const napLaiQuota = useCallback(async () => {
-    const r = await api('getData', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
+    const r = await api('getQuotaThau', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
     const ds = Array.isArray(r.dots) ? r.dots : [];
     const qs = Array.isArray(r.quotas) ? r.quotas : [];
     setDots(ds);
@@ -5090,12 +5094,13 @@ function App() {
         setAuthed(true);
       }).catch(() => {
         sessionStorage.removeItem(TOK_KEY);
-        setLoading(false);
+        setInitialLoading(false);
       });
-    } else setLoading(false);
+    } else setInitialLoading(false);
   }, []);
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (isInitial) => {
+    if (isInitial) setInitialLoading(true);
+    else setRefreshing(true);
     setError('');
     try {
       // admin/manager: gửi kèm loadScope ('' = tất cả team thật, 'test' = chỉ test)
@@ -5171,10 +5176,11 @@ function App() {
     } catch (err) {
       setError('Không tải được dữ liệu: ' + err.message);
     }
-    setLoading(false);
+    setInitialLoading(false);
+    setRefreshing(false);
   }, [auth.role, loadScope]);
   useEffect(() => {
-    if (authed) loadData();
+    if (authed) loadData(true);
   }, [authed, loadData]);
 
   // tải danh mục (Catalog) + danh mục khách hàng (dm_khach_hang) để thêm sản phẩm
@@ -5548,6 +5554,33 @@ function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [drafts]);
 
+  // Persist drafts vào localStorage để không mất khi reload/token hết hạn.
+  const draftStorageKey = 'sp_drafts_' + (auth.username || '');
+  useEffect(() => {
+    try {
+      if (draftCount > 0) localStorage.setItem(draftStorageKey, JSON.stringify(drafts));
+      else localStorage.removeItem(draftStorageKey);
+    } catch {}
+  }, [drafts, draftCount, draftStorageKey]);
+  // Khôi phục drafts khi vừa tải xong dữ liệu lần đầu.
+  const [draftRestored, setDraftRestored] = useState(false);
+  useEffect(() => {
+    if (draftRestored || initialLoading || !authed) return;
+    setDraftRestored(true);
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      const keys = Object.keys(saved);
+      if (keys.length === 0) return;
+      if (confirm(`Có ${keys.length} thay đổi chưa lưu từ phiên trước. Khôi phục?`)) {
+        setDrafts(saved);
+      } else {
+        localStorage.removeItem(draftStorageKey);
+      }
+    } catch { localStorage.removeItem(draftStorageKey); }
+  }, [initialLoading, authed, draftRestored, draftStorageKey]);
+
   // Poll phát hiện dữ liệu thay đổi từ user khác (45s/lần) + version web app mới.
   const revRef = useRef(0);
   useEffect(() => {
@@ -5591,13 +5624,13 @@ function App() {
     }
     // 2) Dữ liệu có thay đổi từ user khác?
     try {
-      const r = await api('getRev');
+      const r = await api('getRev', canSwitchTeam(auth.role) ? { bu: loadScope } : {});
       if (typeof r.rev === 'number' && r.rev !== revRef.current) {
         if (draftRef.current === 0) loadData();
         else setStale(true);
       }
     } catch {}
-  }, [fetchAppVersion, loadData]);
+  }, [fetchAppVersion, loadData, auth.role, loadScope]);
   useEffect(() => {
     if (!authed) return;
     const onFocus = () => checkForUpdates();
@@ -5650,11 +5683,14 @@ function App() {
 
   // Xóa TOÀN BỘ kế hoạch của 1 khách hàng — admin. Gom id từ rows (kể cả phần đang bị
   // bộ lọc ẩn) để xóa đúng những gì thẻ KH đại diện, không đoán theo tên/mã ở backend.
-  const deleteCustomer = useCallback(async customer => {
+  const deleteCustomer = useCallback(async (targetCustId, customer) => {
     const ids = [];
     const prods = new Set();
     rows.forEach(r => {
-      if (r.cust !== customer) return;
+      const match = targetCustId
+        ? (r.custId === targetCustId)
+        : (r.cust === customer || r.custRaw === customer);
+      if (!match) return;
       if (Number.isFinite(r._row)) ids.push(r._row);
       if (r.prod) prods.add(`${r.grp}||${r.mset}||${r.prod}`);
     });
@@ -5756,18 +5792,17 @@ function App() {
   // effective rows overlay drafts
   const effectiveRows = useMemo(() => {
     if (draftCount === 0) return rows;
+    const patchByRow = new Map();
+    for (const [k, v] of Object.entries(drafts)) {
+      const i = k.indexOf(':');
+      const id = Number(k.slice(0, i));
+      let p = patchByRow.get(id);
+      if (!p) patchByRow.set(id, (p = {}));
+      p[k.slice(i + 1)] = v;
+    }
     return rows.map(r => {
-      let out = r;
-      Object.entries(drafts).forEach(([k, v]) => {
-        const [rowNum, key] = k.split(':');
-        if (Number(rowNum) === r._row) {
-          if (out === r) out = {
-            ...r
-          };
-          out[key] = v;
-        }
-      });
-      return out;
+      const p = patchByRow.get(r._row);
+      return p ? { ...r, ...p } : r;
     });
   }, [rows, drafts, draftCount]);
   // Client-side team filter: chuyển team thật = instant, không reload.
@@ -5973,17 +6008,17 @@ function App() {
   const closeAddCust = useCallback(() => setAddCustOpen(false), []);
   useEffect(() => { setAddCustOpen(false); }, [tab]); // đổi tab thì đóng popup, khỏi bật lại lúc quay về
   const tree = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = deaccent(deferredSearch.trim());
     const byCust = new Map();
     for (const r of teamRows) {
       if (!inSel(regionFilter, r.region)) continue;
       if (!inSel(psFilter, r.ps)) continue;
       if (!inSel(custFilter, r.cust)) continue;
       if (!inSel(groupFilter, r.grp)) continue;
-      if (q && !(r.cust?.toLowerCase().includes(q) || r.prod?.toLowerCase().includes(q) || r.custId?.toLowerCase().includes(q) || r.mset?.toLowerCase().includes(q))) continue;
-      const cKey = r.cust || '—';
+      if (q && !(deaccent(r.cust).includes(q) || deaccent(r.prod).includes(q) || deaccent(r.custId).includes(q) || deaccent(r.mset).includes(q))) continue;
+      const cKey = r.custId || r.custRaw || r.cust || '—';
       if (!byCust.has(cKey)) byCust.set(cKey, {
-        customer: cKey,
+        customer: r.cust || '—',
         custId: r.custId,
         region: r.region,
         psSet: new Set(),
@@ -6115,11 +6150,11 @@ function App() {
       if (ha !== hb) return ha - hb;
       return ha === 0 ? b._dtUpd - a._dtUpd : b._thYtd - a._thYtd;
     });
-  }, [teamRows, search, psFilter, regionFilter, custFilter, groupFilter]);
+  }, [teamRows, deferredSearch, psFilter, regionFilter, custFilter, groupFilter]);
   // Đo sau khi đã đăng nhập + tải xong (trước đó App return sớm, chưa có thanh
   // tiêu đề/bộ lọc trong DOM) và đo lại khi danh sách KH đổi từ rỗng sang có
   // (thẻ KH đầu tiên mới xuất hiện thì mới đo được chiều cao của nó).
-  useStickyBars(authed && !loading && tab === 'detail', tree.length > 0);
+  useStickyBars(authed && !initialLoading && tab === 'detail', tree.length > 0);
   const stats = useMemo(() => {
     let plan = 0,
       dt = 0,
@@ -6345,7 +6380,7 @@ function App() {
       setAuthed(true);
     }
   });
-  if (loading) return /*#__PURE__*/React.createElement("div", {
+  if (initialLoading) return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen flex items-center justify-center bg-slate-50"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-center text-slate-500"
@@ -6519,7 +6554,9 @@ function App() {
       }
     },
     className: "ml-auto px-2.5 py-1 text-[12px] font-medium bg-sky-500 hover:bg-sky-600 text-white rounded-md"
-  }, "Tải lại ngay"))), /*#__PURE__*/React.createElement("div", {
+  }, "Tải lại ngay")), refreshing && /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-1.5 bg-blue-50 border-t border-blue-200 text-[12px] text-blue-700 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(Loader2, { size: 12, className: "animate-spin" }), "Đang cập nhật dữ liệu…")), /*#__PURE__*/React.createElement("div", {
     className: "px-6 pt-4"
   }, canSwitchTeam(auth.role) && /*#__PURE__*/React.createElement(TeamSummaryBar, {
     rows: effectiveRows,
@@ -6720,15 +6757,18 @@ function App() {
   })), tree.length === 0 ? pendingCusts.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg border border-slate-200 px-4 py-12 text-center text-slate-400 text-sm"
   }, rows.length === 0 ? 'Sheet trống' : 'Không có khách hàng nào khớp với bộ lọc') : (() => {
+    const cardKey = c => c.custId || c.customer;
+    const toggleCard = k => setOpenCards(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
     const renderCards = list => list.map((c, i) => /*#__PURE__*/React.createElement(CustomerCard, {
-      key: (c.custId || c.customer) + i,
+      key: cardKey(c),
       ...c,
       pendingKeys: draftKeys,
       onCommit: commit,
       canEdit: canEdit,
       isAdmin: isAdmin,
       onDeleteProduct: deleteProduct,
-      defaultOpen: false,
+      open: openCards.has(cardKey(c)),
+      onToggle: () => toggleCard(cardKey(c)),
       showBasePlan: showBasePlan,
       onToggleBasePlan: () => setShowBasePlan(v => !v),
       catIdx: catalog.length > 0 ? catIdx : null,

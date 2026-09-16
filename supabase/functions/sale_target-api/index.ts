@@ -5,7 +5,7 @@
 // Deploy:  supabase functions deploy api --no-verify-jwt
 // Cần secret: supabase secrets set TOKEN_SECRET=<chuoi_bi_mat_dai>  (GIỐNG login, CHUẨN CHUNG mọi app)
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -207,9 +207,11 @@ function admin() {
   );
 }
 
-async function getRev(db) {
-  const { data } = await db.schema("shared").from("sale_target")
-    .select("updated_at").order("updated_at", { ascending: false }).limit(1);
+async function getRev(db, sess, payload) {
+  let q = db.schema("shared").from("sale_target").select("updated_at");
+  if (sess) q = applyScope(q, sess, payload);
+  q = q.order("updated_at", { ascending: false }).limit(1);
+  const { data } = await q;
   if (data && data[0] && data[0].updated_at) return Date.parse(data[0].updated_at);
   return 0;
 }
@@ -342,39 +344,6 @@ async function fetchOopClassify(db) {
 // "Ngoài kế hoạch" (nhận biết qua mảng oopRows riêng), bên dưới tách theo từng KH.
 const OOP_CUST = "Ngoài kế hoạch";
 
-async function fetchOutOfPlan(db, sess, payload) {
-  const out = [];
-  for (let from = 0; ; from += PAGE) {
-    let q = db.schema("app_sale").from("v_actual_ngoai_ke_hoach")
-      .select("thang_ke_hoach,mien,ps,ma_khach_hang,khach_hang,bu,nhom_san_pham,bo_vat_tu,san_pham,sl_thuc_hien,don_gia,ly_do,ps_dia_ban")
-      .range(from, from + PAGE - 1);
-    q = applyScope(q, sess, payload); // cùng phân quyền như sale_target
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
-    out.push(...(data || []));
-    if (!data || data.length < PAGE) break;
-  }
-  // Trả 2 mảng SONG SONG: rows (chuẩn theo FIELDS) + meta (ngoài FIELDS).
-  // ly_do/ps_dia_ban không nằm trong FIELDS — nhét vào FIELDS sẽ làm mọi chỗ đọc
-  // theo index bị đẩy; app tự đọc oopMeta[i] theo đúng chỉ số i của oopRows.
-  const rows = out.map((r) => {
-    const o = {
-      mo: r.thang_ke_hoach, region: r.mien, ps: r.ps,
-      cust: r.khach_hang || OOP_CUST, custId: r.ma_khach_hang,
-      grp: r.nhom_san_pham, prod: r.san_pham,
-      mset: r.bo_vat_tu, act: r.sl_thuc_hien,
-      dtAct: (r.sl_thuc_hien || 0) * (r.don_gia || 0),
-      price: r.don_gia, bu: r.bu,
-    };
-    return FIELDS.map((f) => (o[f] === null || o[f] === undefined ? "" : o[f]));
-  });
-  const meta = out.map((r) => ({
-    ly_do: r.ly_do || "",
-    ps_dia_ban: r.ps_dia_ban || "",
-  }));
-  return { rows, meta };
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "method" }, 405);
@@ -408,7 +377,7 @@ Deno.serve(async (req) => {
       const [allRows, classMap, rev, cfgRows, quotaThau] = await Promise.all([
         fetchAll(db, sess, payload),
         fetchOopClassify(db).catch(() => new Map()),
-        getRev(db),
+        getRev(db, sess, payload),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
         // Bảng quota mới còn đang chạy song song với các cột quota cũ trên
         // sale_target: lỗi ở đây không được làm gãy cả màn hình kế hoạch.
@@ -444,7 +413,12 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getRev") {
-      return json({ ok: true, rev: await getRev(db) });
+      return json({ ok: true, rev: await getRev(db, sess, payload) });
+    }
+
+    if (action === "getQuotaThau") {
+      const { dots, quotas } = await fetchQuotaThau(db, sess, payload);
+      return json({ ok: true, dots, quotas });
     }
 
     // Danh mục cho form thêm SP: đọc từ dm_bo_vat_tu_mapping.
@@ -592,7 +566,7 @@ Deno.serve(async (req) => {
         const c = classMap.get(r.id);
         return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
       });
-      return json({ ok: true, oopRows, oopMeta, rev: await getRev(db) });
+      return json({ ok: true, oopRows, oopMeta, rev: await getRev(db, sess, payload) });
     }
 
     // Sửa PS hàng loạt trong hoá đơn theo PS địa bàn — chỉ admin. Dùng cho nút
@@ -617,7 +591,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
-      return json({ ok: true, stats: data, rev: await getRev(db) });
+      return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
 
     // Sửa PS trong hoá đơn theo PS địa bàn — chỉ admin. Dùng cho action ở modal
@@ -643,7 +617,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thieu_du_lieu"))    return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
-      return json({ ok: true, stats: data, rev: await getRev(db) });
+      return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
 
     if (action === "updateCells") {
@@ -703,7 +677,7 @@ Deno.serve(async (req) => {
           changes,
         });
       }
-      return json({ ok: true, rev: await getRev(db) });
+      return json({ ok: true, rev: await getRev(db, sess, payload) });
     }
 
     // --- Đợt thầu & quota thầu (shared.dot_thau / shared.quota_thau) ---------
@@ -786,7 +760,7 @@ Deno.serve(async (req) => {
       const { error } = await db.schema("shared").from("sale_target").delete().in("id", ids);
       if (error) throw new Error(error.message);
       await writeAuditLog(db, sess, "deleteProduct", ids.length, { ids: ids.slice(0, 50) });
-      return json({ ok: true, rev: await getRev(db) });
+      return json({ ok: true, rev: await getRev(db, sess, payload) });
     }
 
     if (action === "deleteCustomer") {
@@ -803,7 +777,7 @@ Deno.serve(async (req) => {
         if (error) throw new Error(error.message);
       }
       await writeAuditLog(db, sess, "deleteCustomer", ids.length, { ids: ids.slice(0, 50) });
-      return json({ ok: true, deleted: ids.length, rev: await getRev(db) });
+      return json({ ok: true, deleted: ids.length, rev: await getRev(db, sess, payload) });
     }
 
     if (action === "addProduct") {
@@ -883,7 +857,7 @@ Deno.serve(async (req) => {
           })
         ),
         rowNums: inserted.map((r) => r.id),
-        rev: await getRev(db),
+        rev: await getRev(db, sess, payload),
       });
     }
 
@@ -1012,7 +986,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thang_khong_hop_le")) return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
-      return json({ ok: true, stats: data, rev: await getRev(db) });
+      return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
 
     if (action === "deleteDiaBan") {
@@ -1029,15 +1003,6 @@ Deno.serve(async (req) => {
       return json({ ok: true, stats: data });
     }
 
-    if (action === "applyDiaBan") {
-      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
-      const ids = (payload.ids || []).map(Number).filter((n) => Number.isFinite(n));
-      if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
-      // Không còn tham số tháng: mỗi bản khai báo chỉ ghi vào các tháng nó phủ.
-      const { data, error } = await db.rpc("apply_dia_ban_to_plan", { p_ids: ids });
-      if (error) throw new Error(error.message);
-      return json({ ok: true, stats: data, rev: await getRev(db) });
-    }
 
     // ---- LỊCH SỬ CẬP NHẬT & CẤU HÌNH ----
     if (action === "getAuditLog") {
@@ -1082,10 +1047,20 @@ Deno.serve(async (req) => {
     // ---- Giải trình (append-only log) ----
 
     if (action === "getGiaiTrinh") {
-      const ps = String(payload.ps || "").trim();
+      let ps = String(payload.ps || "").trim();
       const custId = String(payload.customer_id || "").trim();
       const grp = String(payload.grp || "").trim();
       if (!ps || !custId) return json({ ok: false, error: "missing_params" }, 400);
+      if (sess.r === "ps") ps = sess.s;
+      else if (sess.r === "area_manager") {
+        const info = await psInfo(db, ps);
+        if (!info || info.area !== sess.s) return json({ ok: false, error: "out_of_scope" }, 403);
+      } else if (sess.r === "product_manager") {
+        if (grp) {
+          const groups = String(sess.s || "").split(",").map(x => x.trim()).filter(Boolean);
+          if (groups.length && !groups.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
+        }
+      }
       let q = db.schema("shared").from("giai_trinh")
         .select("id, content, created_by, created_at")
         .eq("ps", ps).eq("customer_id", custId);
@@ -1098,11 +1073,21 @@ Deno.serve(async (req) => {
 
     if (action === "saveGiaiTrinh") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
-      const ps = String(payload.ps || "").trim();
+      let ps = String(payload.ps || "").trim();
       const custId = String(payload.customer_id || "").trim();
       const grp = String(payload.grp || "").trim();
       const content = String(payload.content || "").trim();
       if (!ps || !custId || !content) return json({ ok: false, error: "missing_params" }, 400);
+      if (sess.r === "ps") ps = sess.s;
+      else if (sess.r === "area_manager") {
+        const info = await psInfo(db, ps);
+        if (!info || info.area !== sess.s) return json({ ok: false, error: "out_of_scope" }, 403);
+      } else if (sess.r === "product_manager") {
+        if (grp) {
+          const groups = String(sess.s || "").split(",").map(x => x.trim()).filter(Boolean);
+          if (groups.length && !groups.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
+        }
+      }
       const { data, error } = await db.schema("shared").from("giai_trinh")
         .insert({ ps, customer_id: custId, grp, content, created_by: sess.n || sess.u })
         .select("id, content, created_by, created_at")
