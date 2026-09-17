@@ -149,7 +149,7 @@ export function AuditLogView({ auth, viewBu }) {
         setDeadlineDay(Number(r.config.deadline_day) || 5);
         setDeadlineInput(String(Number(r.config.deadline_day) || 5));
       }
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
   }, []);
 
   const loadLogs = useCallback(
@@ -200,7 +200,7 @@ export function AuditLogView({ auth, viewBu }) {
       setDeadlineInput(String(v));
       setEditingDeadline(false);
       loadLogs(page);
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
   };
 
   const fmtTime = (iso) => {

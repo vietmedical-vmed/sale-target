@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Filter } from './icons.jsx';
 import {
   MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, isYtdMonth,
@@ -7,6 +7,9 @@ import { fmtInt } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
 import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
 import { exportProductSummary } from '../lib/excel.js';
+
+const chCls = (v) =>
+  v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
 
 export function ProductSummaryView({
   rows,
