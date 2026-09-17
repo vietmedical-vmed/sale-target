@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { fmtFull, fmtInt, fmtM, parseNum, moneyPrice } from '../lib/format.js';
 import { MASK_MONEY } from '../config/constants.js';
 
-export function EditableCell({
+export const EditableCell = React.memo(function EditableCell({
   value,
   pending,
   onCommit,
@@ -88,9 +88,9 @@ export function EditableCell({
       )}
     </td>
   );
-}
+});
 
-export function PriceCell({ value, pending, onCommit, locked, width = 85 }) {
+export const PriceCell = React.memo(function PriceCell({ value, pending, onCommit, locked, width = 85 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef(null);
@@ -167,4 +167,4 @@ export function PriceCell({ value, pending, onCommit, locked, width = 85 }) {
       )}
     </td>
   );
-}
+});

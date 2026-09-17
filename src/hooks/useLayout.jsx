@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 
 export function useFitHeight() {
   const ref = useRef(null);
@@ -67,8 +67,12 @@ export function useStickyBars(active, hasCards) {
   }, [active, hasCards]);
 }
 
-export function DetailScrollBox({ children }) {
+export function DetailScrollBox({ children, scrollRef }) {
   const boxRef = useRef(null);
+  const setBoxRef = useCallback((node) => {
+    boxRef.current = node;
+    if (scrollRef) scrollRef.current = node;
+  }, [scrollRef]);
   const coverRef = useRef(null);
   const coverLRef = useRef(null);
   useEffect(() => {
@@ -170,7 +174,7 @@ export function DetailScrollBox({ children }) {
   return (
     <div
       className="detail-box pl-6"
-      ref={boxRef}
+      ref={setBoxRef}
       style={{
         maxHeight: 'calc(100vh - var(--app-header-h) - var(--app-filter-h))',
         marginTop: -4,

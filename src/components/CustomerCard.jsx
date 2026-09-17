@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from './icons.jsx';
 import { CURRENT_MONTH, MASK_MONEY, MONTHS, NO_MSET } from '../config/constants.js';
 import { fmtTy3, moneyTy3 } from '../lib/format.js';
@@ -8,7 +8,7 @@ import { ProductPickerForm } from './AddProduct.jsx';
 
 
 // ============ CUSTOMER CARD ============
-export function CustomerCard({
+export const CustomerCard = React.memo(function CustomerCard({
   customer,
   custId,
   psList,
@@ -28,6 +28,8 @@ export function CustomerCard({
   priceOf,
   onAddProduct,
   onDeleteCustomer,
+  conflicts,
+  onResolveConflict,
 }) {
   const [adding, setAdding] = useState(false);
   // Khoá chống thêm trùng — chỉ tính khi form thêm SP đang mở (tránh chạy cho mọi thẻ).
@@ -214,13 +216,15 @@ export function CustomerCard({
               showBasePlan={showBasePlan}
               onToggleBasePlan={onToggleBasePlan}
               catIdx={catIdx}
+              conflicts={conflicts}
+              onResolveConflict={onResolveConflict}
             />
           ))}
         </div>
       )}
     </div>
   );
-}
+});
 
 // Khung bảng cao gần trọn màn hình → chỉ có bảng cuộn dọc, nhờ đó header dính
 // (.sticky-head) luôn nằm trong tầm nhìn.

@@ -58,7 +58,7 @@ function StickyEdit({ value, onSave, className = '', title }) {
 }
 
 // monthly[i] = { rev, dt, revUpd, hasUpd, rows: [...] }
-function ProductRow({
+const ProductRow = React.memo(function ProductRow({
   product,
   mset,
   showMset,
@@ -70,6 +70,8 @@ function ProductRow({
   onDeleteProduct,
   showBasePlan,
   productCode,
+  conflicts,
+  onResolveConflict,
 }) {
   const allRows = useMemo(() => monthly.flatMap((c) => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
@@ -231,6 +233,12 @@ function ProductRow({
       onDeleteProduct(allRows.map((r) => r._row));
     }
   };
+  const conflictIds = useMemo(() => {
+    if (!conflicts || !conflicts.length) return null;
+    const ids = new Set(conflicts.map((c) => c.id));
+    const matched = allRows.filter((r) => ids.has(r._row));
+    return matched.length ? ids : null;
+  }, [conflicts, allRows]);
   const pend = (key) =>
     allRows.some((r) => pendingKeys.has(`${r._row}:${key}`));
   const pendUpd = (cell) =>
@@ -238,7 +246,8 @@ function ProductRow({
   const pendDauNam = (cell) =>
     cell.rows.some((r) => pendingKeys.has(`${r._row}:rev`));
   return (
-    <tr className="group hover:bg-slate-50/40">
+    <>
+    <tr className={`group hover:bg-slate-50/40${conflictIds ? ' ring-2 ring-inset ring-red-400' : ''}`}>
       <td
         className="px-3 py-1.5 text-[11.5px] text-slate-500 border-r border-b border-slate-100 sticky left-0 bg-white group-hover:bg-slate-50/40 z-[1]"
         style={{
@@ -428,12 +437,37 @@ function ProductRow({
             : (stats.chenh > 0 ? '+' : '') + fmtTy3(stats.chenh)}
       </td>
     </tr>
+    {conflictIds && onResolveConflict && (
+      <tr className="bg-red-50">
+        <td colSpan={99} className="px-4 py-2 text-[12px]">
+          <span className="text-red-700 font-semibold mr-3">Xung đột</span>
+          <span className="text-red-600 mr-4">Người khác đã sửa dòng này trước bạn.</span>
+          {allRows.filter((r) => conflictIds.has(r._row)).map((r) => (
+            <span key={r._row} className="inline-flex gap-1.5 mr-3">
+              <button
+                className="px-2 py-0.5 text-[11px] font-semibold rounded bg-blue-600 text-white hover:bg-blue-700"
+                onClick={() => onResolveConflict(r._row, 'keep-mine')}
+              >
+                Giữ của tôi
+              </button>
+              <button
+                className="px-2 py-0.5 text-[11px] font-semibold rounded bg-slate-200 text-slate-700 hover:bg-slate-300"
+                onClick={() => onResolveConflict(r._row, 'take-server')}
+              >
+                Lấy bản mới
+              </button>
+            </span>
+          ))}
+        </td>
+      </tr>
+    )}
+    </>
   );
-}
+});
 
 
 // ============ PRODUCT GROUP (Nhóm SP) — 1 bảng, Bộ vật tư là cột ============
-export function ProductGroupSection({
+export const ProductGroupSection = React.memo(function ProductGroupSection({
   groupName,
   ps,
   custId,
@@ -447,6 +481,8 @@ export function ProductGroupSection({
   showBasePlan,
   onToggleBasePlan,
   catIdx,
+  conflicts,
+  onResolveConflict,
 }) {
   const [open, setOpen] = useState(false);
   const [noteModal, setNoteModal] = useState(false);
@@ -989,6 +1025,8 @@ export function ProductGroupSection({
                           ? catIdx.codeOf(groupName, p.mset, p.product)
                           : ''
                       }
+                      conflicts={conflicts}
+                      onResolveConflict={onResolveConflict}
                     />
                   );
                 })}
@@ -999,4 +1037,4 @@ export function ProductGroupSection({
       )}
     </div>
   );
-}
+});

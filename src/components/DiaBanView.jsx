@@ -682,16 +682,48 @@ export function DiaBanView({
                     setSyncResult(null);
                     try {
                       const r = await api('syncThucHien');
-                      const d = r.result || {};
-                      setSyncResult({
-                        ok: true,
-                        matched: d.matched_keys || 0,
-                        unmatched: d.unmatched_keys || 0,
-                        set: d.set_rows || 0,
-                      });
+                      const jobId = r.jobId;
+                      if (!jobId) {
+                        setSyncResult({ ok: false, msg: 'Không nhận được jobId' });
+                        setSyncing(false);
+                        return;
+                      }
+                      if (r.running) {
+                        setSyncResult({ ok: false, msg: 'Đang chạy job #' + jobId });
+                      }
+                      const poll = async () => {
+                        for (let i = 0; i < 100; i++) {
+                          await new Promise((r) => setTimeout(r, 3000));
+                          try {
+                            const s = await api('syncJobStatus', { jobId });
+                            const job = s.job;
+                            if (!job) continue;
+                            if (job.status === 'done') {
+                              const d = job.result || {};
+                              setSyncResult({
+                                ok: true,
+                                matched: d.matched_keys || 0,
+                                unmatched: d.unmatched_keys || 0,
+                                set: d.set_rows || 0,
+                              });
+                              setSyncing(false);
+                              return;
+                            }
+                            if (job.status === 'error') {
+                              setSyncResult({ ok: false, msg: job.error || 'Lỗi không xác định' });
+                              setSyncing(false);
+                              return;
+                            }
+                          } catch {
+                            // keep polling
+                          }
+                        }
+                        setSyncResult({ ok: false, msg: 'Timeout — job vẫn chạy ở server' });
+                        setSyncing(false);
+                      };
+                      poll();
                     } catch (e) {
                       setSyncResult({ ok: false, msg: e.message });
-                    } finally {
                       setSyncing(false);
                     }
                   }}
@@ -712,7 +744,7 @@ export function DiaBanView({
                     </span>
                   ) : (
                     <span className="text-[11px] text-red-600">
-                      Lỗi: {syncResult.msg}
+                      {syncResult.msg}
                     </span>
                   ))}
               </div>

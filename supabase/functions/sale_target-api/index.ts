@@ -6,6 +6,7 @@ import {
   admin, getRev, writeAuditLog, diaBanErr,
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau,
+  applyScopeTombstone,
 } from "./helpers.ts";
 
 Deno.serve(async (req) => {
@@ -34,7 +35,7 @@ Deno.serve(async (req) => {
     if (action === "getData") {
       const [allRows, classMap, rev, cfgRows, quotaThau] = await Promise.all([
         fetchAll(db, sess, payload),
-        fetchOopClassify(db).catch(() => new Map()),
+        fetchOopClassify(db, sess, payload).catch(() => new Map()),
         getRev(db, sess, payload),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
         fetchQuotaThau(db, sess, payload).catch(() => ({ dots: [], quotas: [] })),
@@ -53,14 +54,17 @@ Deno.serve(async (req) => {
       });
       const rows = dbRows.map(mapRow);
       const rowNums = dbRows.map((r) => r.id);
+      const rowRevs = dbRows.map((r) => Number(r._rev) || 0);
       const oopRows = oopDbRows.map(mapRow);
       const oopMeta = oopDbRows.map((r) => {
         const c = classMap.get(r.id);
         return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
       });
+      const oopRowNums = oopDbRows.map((r) => r.id);
+      const oopRowRevs = oopDbRows.map((r) => Number(r._rev) || 0);
       return json({
-        ok: true, fields: FIELDS, rows, rowNums,
-        oopRows, oopMeta, rev,
+        ok: true, fields: FIELDS, rows, rowNums, rowRevs,
+        oopRows, oopMeta, oopRowNums, oopRowRevs, rev,
         dots: quotaThau.dots, quotas: quotaThau.quotas,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
         config: cfg,
@@ -69,6 +73,60 @@ Deno.serve(async (req) => {
 
     if (action === "getRev") {
       return json({ ok: true, rev: await getRev(db, sess, payload) });
+    }
+
+    if (action === "getChanges") {
+      const sinceRev = Number(payload.sinceRev) || 0;
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
+      const changed: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = db.schema("shared").from("sale_target").select(cols)
+          .gt("_rev", sinceRev)
+          .order("_rev", { ascending: true })
+          .range(from, from + PAGE - 1);
+        q = applyScope(q, sess, payload);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        changed.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
+      const deleted: number[] = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = db.schema("shared").from("sale_target_tombstone")
+          .select("id, _rev")
+          .gt("_rev", sinceRev)
+          .order("_rev", { ascending: true })
+          .range(from, from + PAGE - 1);
+        q = applyScopeTombstone(q, sess, payload);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        deleted.push(...(data || []).map((d: Record<string, unknown>) => d.id as number));
+        if (!data || data.length < PAGE) break;
+      }
+      const classMap = changed.some((r) => r[COL.oop])
+        ? await fetchOopClassify(db, sess, payload).catch(() => new Map())
+        : new Map();
+      const mapRow = (r: Record<string, unknown>) => FIELDS.map((f) => {
+        const v = r[COL[f]];
+        return v === null || v === undefined ? "" : v;
+      });
+      const dbRows = changed.filter((r) => !r[COL.oop]);
+      const oopDbRows = changed.filter((r) => r[COL.oop]);
+      return json({
+        ok: true,
+        rows: dbRows.map(mapRow),
+        rowNums: dbRows.map((r) => r.id),
+        rowRevs: dbRows.map((r) => Number(r._rev) || 0),
+        oopRows: oopDbRows.map(mapRow),
+        oopMeta: oopDbRows.map((r) => {
+          const c = classMap.get(r.id);
+          return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
+        }),
+        oopRowNums: oopDbRows.map((r) => r.id),
+        oopRowRevs: oopDbRows.map((r) => Number(r._rev) || 0),
+        deleted,
+        maxRev: await getRev(db, sess, payload),
+      });
     }
 
     if (action === "getQuotaThau") {
@@ -168,8 +226,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getOop") {
-      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
-      const classMap = await fetchOopClassify(db).catch(() => new Map());
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
+      const classMap = await fetchOopClassify(db, sess, payload).catch(() => new Map());
       const out: Record<string, unknown>[] = [];
       for (let from = 0; ; from += PAGE) {
         let q = db.schema("shared").from("sale_target").select(cols)
@@ -241,6 +299,7 @@ Deno.serve(async (req) => {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const isAdmin = sess.r === "admin";
       const updates = payload.updates || [];
+      const rowRevs: Record<number, number> = payload.rowRevs || {};
       const byRow = new Map<number, Record<string, unknown>>();
       for (const u of updates) {
         const allowed = EDITABLE.has(u.key) || (isAdmin && ADMIN_EDITABLE.has(u.key));
@@ -251,6 +310,7 @@ Deno.serve(async (req) => {
         if (!patch) { patch = {}; byRow.set(id, patch); }
         patch[COL[u.key]] = u.value === "" ? null : u.value;
       }
+      let conflicts: Record<string, unknown>[] = [];
       if (byRow.size > 0) {
         const rowIds = [...byRow.keys()];
         const changedDbCols = new Set<string>();
@@ -261,8 +321,11 @@ Deno.serve(async (req) => {
         const oldMap = new Map<number, Record<string, unknown>>();
         if (oldRows) for (const r of oldRows) oldMap.set(r.id, r);
 
-        const p_updates = Array.from(byRow, ([id, patch]) => ({ id, patch }));
-        const { error } = await db.rpc("update_sale_target_cells", {
+        const p_updates = Array.from(byRow, ([id, patch]) => {
+          const rev = rowRevs[id];
+          return rev ? { id, patch, _rev: rev } : { id, patch };
+        });
+        const { data: rpcResult, error } = await db.rpc("update_sale_target_cells", {
           p_updates, ...scopeParams(sess),
         });
         if (error) {
@@ -270,6 +333,19 @@ Deno.serve(async (req) => {
             return json({ ok: false, error: "forbidden_rows" }, 403);
           }
           throw new Error(error.message);
+        }
+        if (rpcResult && Array.isArray(rpcResult.conflicts)) {
+          const COL_INV: Record<string, string> = {};
+          for (const [k, v] of Object.entries(COL)) COL_INV[v as string] = k;
+          conflicts = rpcResult.conflicts.map((c: Record<string, unknown>) => {
+            const vals = (c.values || {}) as Record<string, unknown>;
+            const mapped: Record<string, unknown> = {};
+            for (const [dbCol, val] of Object.entries(vals)) {
+              const field = COL_INV[dbCol];
+              if (field) mapped[field] = val;
+            }
+            return { id: c.id, _rev: c._rev, values: mapped };
+          });
         }
         const cols = new Set<string>();
         for (const u of updates) if (EDITABLE.has(u.key) || ADMIN_EDITABLE.has(u.key)) cols.add(u.key);
@@ -288,7 +364,8 @@ Deno.serve(async (req) => {
           changes,
         });
       }
-      return json({ ok: true, rev: await getRev(db, sess, payload) });
+      const rev = await getRev(db, sess, payload);
+      return json({ ok: true, rev, conflicts });
     }
 
     if (action === "saveDotThau") {
@@ -411,6 +488,18 @@ Deno.serve(async (req) => {
         const t = String(v || "").trim();
         return /^\d{4}-\d{2}$/.test(t) ? t : null;
       };
+      let dupQ = db.schema("shared").from("sale_target")
+        .select("id", { count: "exact", head: true })
+        .eq("nam_tai_chinh", fy).eq("thang_ke_hoach", MONTHS[0])
+        .eq("ps", psName).eq("ma_khach_hang", s.custId || "")
+        .eq("nhom_san_pham", s.grp || "").eq("bo_vat_tu", s.mset || "")
+        .eq("san_pham", s.prod || "");
+      if (price !== null) dupQ = dupQ.eq("don_gia", price);
+      else dupQ = dupQ.is("don_gia", null);
+      const { count: dupCount } = await dupQ;
+      if (dupCount && dupCount > 0) {
+        return json({ ok: false, error: "duplicate", message: "Sản phẩm đã tồn tại trong kế hoạch" }, 409);
+      }
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
         thang_thau_chinh: thangThau(s.mMain), thang_thau_bo_sung: thangThau(s.mAdd),
@@ -419,7 +508,7 @@ Deno.serve(async (req) => {
         bu,
         sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
       }));
-      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
       const { data: ins, error } = await db.schema("shared").from("sale_target").insert(rowsIns).select(cols);
       if (error) throw new Error(error.message);
       const inserted = ins || [];
@@ -435,6 +524,129 @@ Deno.serve(async (req) => {
           })
         ),
         rowNums: inserted.map((r: Record<string, unknown>) => r.id),
+        rev: await getRev(db, sess, payload),
+      });
+    }
+
+    if (action === "addProducts") {
+      if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
+      const items = payload.items;
+      if (!Array.isArray(items) || items.length === 0)
+        return json({ ok: false, error: "items required" }, 400);
+      if (items.length > 200)
+        return json({ ok: false, error: "max 200 items per batch" }, 400);
+
+      const { data: any1 } = await db.schema("shared").from("sale_target")
+        .select("nam_tai_chinh").limit(1);
+      const fy = any1 && any1[0] ? any1[0].nam_tai_chinh : "FY26";
+      const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
+        "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
+      const thangThau = (v: unknown) => {
+        const t = String(v || "").trim();
+        return /^\d{4}-\d{2}$/.test(t) ? t : null;
+      };
+
+      const psInfoCache = new Map<string, { bu: string; mien: string } | null>();
+      for (const s of items) {
+        const ps = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
+        if (!ps || psInfoCache.has(ps)) continue;
+        try {
+          const psBu = await buForPs(db, ps, sess.b);
+          let psMien = "";
+          if (sess.r === "area_manager") {
+            const m = await mienForPs(db, ps);
+            if (psBu !== sess.b || (m && m !== sess.s)) {
+              psInfoCache.set(ps, null);
+              continue;
+            }
+            psMien = sess.s;
+          } else {
+            psMien = await mienForPs(db, ps) || "";
+          }
+          psInfoCache.set(ps, { bu: psBu, mien: psMien });
+        } catch {
+          psInfoCache.set(ps, null);
+        }
+      }
+
+      const candidates: {
+        ps: string; bu: string; mien: string; custId: string; cust: string;
+        grp: string; mset: string; prod: string; price: number | null;
+        mMain: unknown; mAdd: unknown; key: string;
+      }[] = [];
+      const seenKeys = new Set<string>();
+      for (const s of items) {
+        const ps = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
+        const info = psInfoCache.get(ps);
+        if (!info) continue;
+        const priceNum = Number(s.price);
+        const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
+        const custId = String(s.custId || "");
+        const grp = String(s.grp || "");
+        const mset = String(s.mset || "");
+        const prod = String(s.prod || "");
+        const key = `${ps}\0${custId}\0${grp}\0${mset}\0${prod}\0${price}`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        candidates.push({
+          ps, bu: info.bu, mien: s.region || info.mien, custId, cust: String(s.cust || ""),
+          grp, mset, prod, price, mMain: s.mMain, mAdd: s.mAdd, key,
+        });
+      }
+
+      const existSet = new Set<string>();
+      const uniquePs = [...new Set(candidates.map(c => c.ps))];
+      if (uniquePs.length && candidates.length) {
+        for (let from = 0; ; from += PAGE) {
+          const { data } = await db.schema("shared").from("sale_target")
+            .select("ps, ma_khach_hang, nhom_san_pham, bo_vat_tu, san_pham, don_gia")
+            .eq("nam_tai_chinh", fy)
+            .eq("thang_ke_hoach", MONTHS[0])
+            .in("ps", uniquePs)
+            .range(from, from + PAGE - 1);
+          if (!data || data.length === 0) break;
+          for (const r of data) {
+            existSet.add(`${r.ps}\0${r.ma_khach_hang}\0${r.nhom_san_pham}\0${r.bo_vat_tu}\0${r.san_pham}\0${r.don_gia}`);
+          }
+          if (data.length < PAGE) break;
+        }
+      }
+
+      const toInsert = candidates.filter(c => !existSet.has(c.key));
+      const skipped = items.length - toInsert.length;
+
+      if (toInsert.length === 0) {
+        return json({ ok: true, rows: [], rowNums: [], rowRevs: [], skipped, rev: await getRev(db, sess, payload) });
+      }
+
+      const allRowsIns = toInsert.flatMap(c =>
+        MONTHS.map(mo => ({
+          nam_tai_chinh: fy, thang_ke_hoach: mo, mien: c.mien, ps: c.ps,
+          thang_thau_chinh: thangThau(c.mMain), thang_thau_bo_sung: thangThau(c.mAdd),
+          khach_hang: c.cust, ma_khach_hang: c.custId, nhom_san_pham: c.grp,
+          san_pham: c.prod, bo_vat_tu: c.mset, don_gia: c.price,
+          bu: c.bu, sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
+        }))
+      );
+
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
+      const inserted: Record<string, unknown>[] = [];
+      for (let i = 0; i < allRowsIns.length; i += PAGE) {
+        const batch = allRowsIns.slice(i, i + PAGE);
+        const { data: ins, error } = await db.schema("shared").from("sale_target").insert(batch).select(cols);
+        if (error) throw new Error(error.message);
+        inserted.push(...(ins || []));
+      }
+
+      await writeAuditLog(db, sess, "addProduct", inserted.length, {
+        batch: items.length, inserted: toInsert.length, skipped,
+      });
+      return json({
+        ok: true,
+        rows: inserted.map((r) => FIELDS.map((f) => { const v = r[COL[f]]; return v === null || v === undefined ? "" : v; })),
+        rowNums: inserted.map((r) => r.id),
+        rowRevs: inserted.map((r) => Number(r._rev) || 0),
+        skipped,
         rev: await getRev(db, sess, payload),
       });
     }
@@ -655,17 +867,28 @@ Deno.serve(async (req) => {
 
     if (action === "syncThucHien") {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
-      const { data, error } = await db.rpc("cap_nhat_thuc_hien");
+      const { data: jobId, error } = await db.rpc("start_sync_job", { p_actor: sess.u || null });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("sync_already_running")) {
+          const match = msg.match(/job (\d+)/);
+          return json({ ok: true, jobId: match ? Number(match[1]) : null, running: true });
+        }
+        throw new Error(msg);
+      }
+      await writeAuditLog(db, sess, "syncThucHien", 0, { jobId });
+      return json({ ok: true, jobId });
+    }
+
+    if (action === "syncJobStatus") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const jid = payload.jobId;
+      if (!jid) return json({ ok: false, error: "jobId required" }, 400);
+      const { data, error } = await db.schema("shared").from("sync_job")
+        .select("id, status, started_at, finished_at, result, error")
+        .eq("id", jid).single();
       if (error) throw new Error(error.message);
-      const d = data || {};
-      await writeAuditLog(db, sess, "syncThucHien", d.set_rows || 0, {
-        matched_keys: d.matched_keys || 0,
-        unmatched_keys: d.unmatched_keys || 0,
-        set_rows: d.set_rows || 0,
-        zeroed: d.zeroed || 0,
-        months: d.months || 0,
-      });
-      return json({ ok: true, result: data });
+      return json({ ok: true, job: data });
     }
 
     return json({ ok: false, error: "unknown_action" }, 400);

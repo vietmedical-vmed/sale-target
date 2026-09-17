@@ -36,8 +36,40 @@ import { TabBtn, OopReasonBanner, FixBoVatTuModal, OopDetailModal, DmpsForm, Sta
 import { QuotaThauCtx, grpKey, prodKey } from './components/QuotaThau.jsx';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
+const VIRTUAL_THRESHOLD = 30;
 
+function VirtualCardList({ items, scrollRef, cardKey, renderCard }) {
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 72,
+    overscan: 5,
+  });
+
+  return (
+    <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+      {virtualizer.getVirtualItems().map((vItem) => (
+        <div
+          key={cardKey(items[vItem.index])}
+          ref={virtualizer.measureElement}
+          data-index={vItem.index}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            overflow: 'hidden',
+            transform: `translateY(${vItem.start}px)`,
+          }}
+        >
+          {renderCard(items[vItem.index])}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function App() {
   const [authed, setAuthed] = useState(false);
@@ -85,6 +117,9 @@ export function App() {
   const [diaBan, setDiaBan] = useState([]); // cấu hình địa bàn (dm_dia_ban)
   const [diaBanBusy, setDiaBanBusy] = useState(false);
   const [dataRev, setDataRev] = useState(0);
+  const rowRevsRef = useRef(new Map());
+  const scrollContainerRef = useRef(null);
+  const checkForUpdatesRef = useRef(null);
   const [stale, setStale] = useState(false);
   // Bản mới của web app đã deploy nhưng user đang có bản nháp chưa lưu → không
   // reload ngay, chờ user lưu/huỷ rồi mới reload để không mất bản nháp.
@@ -139,72 +174,7 @@ export function App() {
     }
     return m;
   }, [quotas]);
-  // Ghi số tổng của 1 sản phẩm ngược về sale_target: dồn vào dòng đầu, các dòng
-  // còn lại về 0 — đúng cách commitProductField đang làm, nên tổng không đổi.
-  // Ghi số tổng quota ngược về sale_target cho từng sản phẩm: dồn vào dòng đầu,
-  // các dòng còn lại về 0 — đúng cách commitProductField vẫn làm, nên tổng không đổi.
-  // `pham_vi` giới hạn những sản phẩm cần đồng bộ: 1 sản phẩm khi lưu quota, cả
-  // nhóm SP khi xoá đợt (xoá đợt kéo theo quota của mọi sản phẩm trong nhóm).
-  const syncQuotaVeSaleTarget = useCallback(
-    async (danhSachQuota, phamVi) => {
-      const thuoc = (r) =>
-        r.fy === phamVi.fy &&
-        r.ps === phamVi.ps &&
-        (r.custId || '') === (phamVi.custId || '') &&
-        (r.grp || '') === (phamVi.grp || '') &&
-        (phamVi.mset === undefined || (r.mset || '') === (phamVi.mset || '')) &&
-        (phamVi.prod === undefined || (r.prod || '') === (phamVi.prod || ''));
-      const idsByProd = new Map();
-      for (const r of rows) {
-        if (!thuoc(r)) continue;
-        const k = prodKey(r.fy, r.ps, r.custId, r.grp, r.mset, r.prod);
-        if (!idsByProd.has(k)) idsByProd.set(k, []);
-        idsByProd.get(k).push(r._row);
-      }
-      if (!idsByProd.size) return;
-      const tongByProd = new Map();
-      for (const q of danhSachQuota) {
-        const k = prodKey(q.fy, q.ps, q.custId, q.grp, q.mset, q.prod);
-        if (!idsByProd.has(k)) continue;
-        if (!tongByProd.has(k))
-          tongByProd.set(k, { cu: 0, chinh: 0, bo_sung: 0 });
-        const t = tongByProd.get(k);
-        t[q.loai] = (t[q.loai] || 0) + (Number(q.qty) || 0);
-      }
-      const updates = [];
-      for (const [k, ids] of idsByProd) {
-        const t = tongByProd.get(k) || { cu: 0, chinh: 0, bo_sung: 0 };
-        for (const key of ['qOld', 'qMain', 'qAdd']) {
-          const val =
-            key === 'qOld' ? t.cu : key === 'qMain' ? t.chinh : t.bo_sung;
-          ids.forEach((id, i) =>
-            updates.push({ row: id, key, value: i === 0 ? val : 0 }),
-          );
-        }
-      }
-      if (!updates.length) return;
-      await api('updateCells', { updates });
-      // Vá tại chỗ thay vì gọi lại getData: tải lại cả bộ dữ liệu làm mọi nhóm SP
-      // đang mở bị đóng lại, người dùng mất chỗ đang nhập.
-      const patchByRow = new Map();
-      for (const u of updates) {
-        let p = patchByRow.get(u.row);
-        if (!p) {
-          p = {};
-          patchByRow.set(u.row, p);
-        }
-        p[u.key] = u.value;
-      }
-      setRows((prev) =>
-        prev.map((r) => {
-          const p = patchByRow.get(r._row);
-          return p ? { ...r, ...p } : r;
-        }),
-      );
-    },
-    [rows],
-  );
-  // Nạp lại riêng đợt + quota (không đụng tới rows) và trả về danh sách quota mới.
+  // Nạp lại riêng đợt + quota (không đụng tới rows).
   const napLaiQuota = useCallback(async () => {
     const r = await api(
       'getQuotaThau',
@@ -226,25 +196,18 @@ export function App() {
   const deleteDot = useCallback(
     async (info) => {
       await api('deleteDotThau', info);
-      const qs = await napLaiQuota();
-      // Xoá đợt là xoá luôn quota của đợt đó, nên cột quota cũ trên sale_target phải
-      // hạ theo — nếu không, hai màn tổng hợp vẫn cộng số của đợt đã xoá.
-      await syncQuotaVeSaleTarget(qs, {
-        fy: info.fy,
-        ps: info.ps,
-        custId: info.custId,
-        grp: info.grp,
-      });
+      await napLaiQuota();
+      await checkForUpdatesRef.current?.();
     },
-    [napLaiQuota, syncQuotaVeSaleTarget],
+    [napLaiQuota],
   );
   const saveQuota = useCallback(
-    async (rowsIn, info) => {
+    async (rowsIn) => {
       await api('saveQuotaThau', { rows: rowsIn });
-      const qs = await napLaiQuota();
-      if (info) await syncQuotaVeSaleTarget(qs, info);
+      await napLaiQuota();
+      await checkForUpdatesRef.current?.();
     },
-    [napLaiQuota, syncQuotaVeSaleTarget],
+    [napLaiQuota],
   );
   const quotaThauCtx = useMemo(
     () => ({
@@ -298,9 +261,12 @@ export function App() {
         setFields(fields);
         const arr = r.rows || [];
         const rowNums = r.rowNums || [];
+        const rowRevs = r.rowRevs || [];
+        const revMap = new Map();
         const objs = new Array(arr.length);
         for (let i = 0; i < arr.length; i++) {
           const row = arr[i];
+          if (rowNums[i] && rowRevs[i]) revMap.set(rowNums[i], rowRevs[i]);
           const o = {
             _row: rowNums[i],
           };
@@ -325,9 +291,12 @@ export function App() {
         // Không đặt _row → mọi thao tác sửa/xoá theo id đều không đụng tới các dòng này.
         const oopArr = r.oopRows || [];
         const oopMeta = r.oopMeta || [];
+        const oopRowNums = r.oopRowNums || [];
+        const oopRowRevs = r.oopRowRevs || [];
         const oopObjs = new Array(oopArr.length);
         for (let i = 0; i < oopArr.length; i++) {
           const row = oopArr[i];
+          if (oopRowNums[i] && oopRowRevs[i]) revMap.set(oopRowNums[i], oopRowRevs[i]);
           const o = { _oop: true };
           for (let j = 0; j < fields.length; j++) {
             const v = row[j];
@@ -349,6 +318,7 @@ export function App() {
           oopObjs[i] = o;
         }
         setOopRows(oopObjs);
+        rowRevsRef.current = revMap;
         if (
           r.config &&
           r.config.current_month &&
@@ -826,32 +796,50 @@ export function App() {
       )
         return;
       setOopFixBusy(true);
-      let ok = 0,
-        fail = 0;
-      for (const r of uniq) {
-        const raw = custRawRef.current.get(r.custId || r.cust);
-        const sel = {
-          ps: r._psDiaBan || r.ps,
-          grp: r.grp,
-          mset: r.mset || '',
-          prod: r.prod,
-          price: Number(r.price) || null,
-          custId: r.custId || '',
-          cust: raw || r.cust,
-          region: r.region || '',
-        };
-        try {
-          if (await addProduct(sel)) ok++;
-          else fail++;
-        } catch {
-          fail++;
+      try {
+        const items = uniq.map((r) => {
+          const raw = custRawRef.current.get(r.custId || r.cust);
+          return {
+            ps: r._psDiaBan || r.ps,
+            grp: r.grp,
+            mset: r.mset || '',
+            prod: r.prod,
+            price: Number(r.price) || null,
+            custId: r.custId || '',
+            cust: raw || r.cust,
+            region: r.region || '',
+          };
+        });
+        const res = await api('addProducts', { items });
+        const flds = fieldsRef.current;
+        if (res && Array.isArray(res.rows) && Array.isArray(res.rowNums) && flds.length) {
+          const objs = res.rows.map((row, i) => {
+            const o = { _row: res.rowNums[i] };
+            for (let j = 0; j < flds.length; j++) {
+              const v = row[j];
+              if (v !== '' && v !== null && v !== undefined) o[flds[j]] = v;
+            }
+            if (o.cust) {
+              o.custRaw = o.cust;
+              o.cust = custLabel(o.custId, o.cust);
+            }
+            return o;
+          });
+          if (objs.length) setRows((prev) => prev.concat(objs));
+          if (typeof res.rev === 'number') setDataRev(res.rev);
+        } else {
+          await loadData();
         }
+        const inserted = res?.rows?.length || 0;
+        const skipped = res?.skipped || 0;
+        if (skipped) setError(`Thêm SP thiếu: ${inserted / 12} mới, ${skipped} đã tồn tại`);
+        if (inserted) await reloadOop();
+      } catch (err) {
+        setError('Thêm SP thiếu thất bại: ' + err.message);
       }
       setOopFixBusy(false);
-      if (fail) setError(`Thêm SP thiếu: ${ok}/${n} thành công, ${fail} lỗi`);
-      if (ok) await reloadOop();
     },
-    [addProduct],
+    [loadData],
   );
 
   // Warn on leaving with unsaved drafts
@@ -939,8 +927,54 @@ export function App() {
   // Kiểm tra cả version web app + rev dữ liệu trong 1 lượt. Không có draft →
   // reload ngay; có draft → cắm cờ chờ, sẽ reload sau khi user lưu/huỷ để
   // không mất bản nháp.
+  const parseChangedRows = useCallback(
+    (r, fieldsArr) => {
+      const arr = r.rows || [];
+      const rowNums = r.rowNums || [];
+      const rowRevs = r.rowRevs || [];
+      const objs = [];
+      for (let i = 0; i < arr.length; i++) {
+        const row = arr[i];
+        const o = { _row: rowNums[i] };
+        for (let j = 0; j < fieldsArr.length; j++) {
+          const v = row[j];
+          if (v !== '' && v !== null && v !== undefined) o[fieldsArr[j]] = v;
+        }
+        if (o.cust) {
+          o.custRaw = o.cust;
+          o.cust = custLabel(o.custId, o.cust);
+        }
+        objs.push(o);
+        if (rowNums[i] && rowRevs[i]) rowRevsRef.current.set(rowNums[i], rowRevs[i]);
+      }
+      return objs;
+    },
+    [],
+  );
+  const patchRowsFromChanges = useCallback(
+    (changed, deletedIds) => {
+      if (!changed.length && !deletedIds.length) return;
+      const changedMap = new Map();
+      for (const r of changed) if (r._row) changedMap.set(r._row, r);
+      const delSet = new Set(deletedIds);
+      setRows((prev) => {
+        let next = prev;
+        if (delSet.size) next = next.filter((r) => !delSet.has(r._row));
+        if (changedMap.size) {
+          const seen = new Set();
+          next = next.map((r) => {
+            const upd = changedMap.get(r._row);
+            if (upd) { seen.add(r._row); return upd; }
+            return r;
+          });
+          for (const [id, r] of changedMap) if (!seen.has(id)) next.push(r);
+        }
+        return next;
+      });
+    },
+    [],
+  );
   const checkForUpdates = useCallback(async () => {
-    // 1) Bản web app mới đã deploy?
     const v = await fetchAppVersion();
     if (v && currentVersionRef.current && v !== currentVersionRef.current) {
       if (draftRef.current === 0) {
@@ -949,18 +983,39 @@ export function App() {
       }
       setPendingReload(true);
     }
-    // 2) Dữ liệu có thay đổi từ user khác?
     try {
-      const r = await api(
-        'getRev',
-        canSwitchTeam(auth.role) ? { bu: loadScope } : {},
-      );
-      if (typeof r.rev === 'number' && r.rev !== revRef.current) {
-        if (draftRef.current === 0) loadData();
-        else setStale(true);
+      const scopePayload = canSwitchTeam(auth.role) ? { bu: loadScope } : {};
+      const r = await api('getChanges', {
+        sinceRev: revRef.current,
+        ...scopePayload,
+      });
+      const hasChanges =
+        (r.rows && r.rows.length) ||
+        (r.oopRows && r.oopRows.length) ||
+        (r.deleted && r.deleted.length);
+      if (hasChanges) {
+        if (draftRef.current === 0) {
+          const changedRows = parseChangedRows(r, fields);
+          patchRowsFromChanges(changedRows, r.deleted || []);
+        } else {
+          setStale(true);
+        }
       }
-    } catch {}
-  }, [fetchAppVersion, loadData, auth.role, loadScope]);
+      if (typeof r.maxRev === 'number') setDataRev(r.maxRev);
+    } catch {
+      try {
+        const rc = await api(
+          'getRev',
+          canSwitchTeam(auth.role) ? { bu: loadScope } : {},
+        );
+        if (typeof rc.rev === 'number' && rc.rev !== revRef.current) {
+          if (draftRef.current === 0) loadData();
+          else setStale(true);
+        }
+      } catch {}
+    }
+  }, [fetchAppVersion, loadData, auth.role, loadScope, fields, parseChangedRows, patchRowsFromChanges]);
+  checkForUpdatesRef.current = checkForUpdates;
   useEffect(() => {
     if (!authed) return;
     const onFocus = () => checkForUpdates();
@@ -1053,12 +1108,14 @@ export function App() {
     [rows],
   );
 
+  const [conflicts, setConflicts] = useState([]);
   // Save all drafts to Sheet in one batch
   const saveDrafts = useCallback(async () => {
     const entries = Object.entries(drafts);
     if (entries.length === 0) return;
     setSaving(true);
     setError('');
+    setConflicts([]);
     const batch = entries.map(([k, value]) => {
       const [row, key] = k.split(':');
       return {
@@ -1067,60 +1124,74 @@ export function App() {
         value,
       };
     });
+    const affectedRowIds = [...new Set(batch.map((u) => u.row))];
+    const revMap = {};
+    for (const id of affectedRowIds) {
+      const rev = rowRevsRef.current.get(id);
+      if (rev) revMap[id] = rev;
+    }
     try {
-      // Guard chống ghi đè: kiểm tra rev NGAY TRƯỚC khi ghi (khoảng cách với
-      // lần poll trước có thể là 45s — đủ để 1 user khác kịp lưu). rev khác
-      // local = có người vừa lưu → hỏi user muốn tải lại hay vẫn ghi đè.
-      try {
-        const rc = await api('getRev');
-        if (typeof rc.rev === 'number' && rc.rev !== revRef.current) {
-          const reload = confirm(
-            'Người khác vừa cập nhật dữ liệu.\n\n' +
-              '• OK  = TẢI LẠI bản mới (mất các thay đổi chưa lưu của bạn).\n' +
-              '• Cancel = VẪN GHI ĐÈ bằng bản nháp của bạn (có thể đè lên phần vừa cập nhật).',
-          );
-          if (reload) {
-            setDrafts({});
-            loadData();
-            setSaving(false);
-            return;
-          }
-        }
-      } catch {}
       const res = await api('updateCells', {
         updates: batch,
+        rowRevs: revMap,
       });
-      // Gom patch theo _row trước (Map) thay vì filter cả batch cho từng dòng:
-      // với ~23k dòng và vài trăm ô sửa, cách cũ là hàng chục triệu phép so sánh.
-      const patchByRow = new Map();
-      batch.forEach((u) => {
-        let p = patchByRow.get(u.row);
-        if (!p) {
-          p = {};
-          patchByRow.set(u.row, p);
+      const serverConflicts = res.conflicts || [];
+      if (serverConflicts.length > 0) {
+        setConflicts(serverConflicts);
+        const conflictIds = new Set(serverConflicts.map((c) => c.id));
+        const resolved = {};
+        for (const [k, v] of entries) {
+          const rowId = Number(k.split(':')[0]);
+          if (conflictIds.has(rowId)) resolved[k] = v;
         }
-        p[u.key] = u.value;
-      });
-      setRows((prev) =>
-        prev.map((r) => {
-          const p = patchByRow.get(r._row);
-          return p ? { ...r, ...p } : r;
-        }),
-      );
-      setDrafts({});
+        setDrafts(resolved);
+        const patchByRow = new Map();
+        batch.forEach((u) => {
+          if (conflictIds.has(u.row)) return;
+          let p = patchByRow.get(u.row);
+          if (!p) { p = {}; patchByRow.set(u.row, p); }
+          p[u.key] = u.value;
+        });
+        if (patchByRow.size) {
+          setRows((prev) =>
+            prev.map((r) => {
+              const p = patchByRow.get(r._row);
+              return p ? { ...r, ...p } : r;
+            }),
+          );
+        }
+        for (const c of serverConflicts) {
+          if (c._rev) rowRevsRef.current.set(c.id, c._rev);
+        }
+        setError(
+          `${serverConflicts.length} dòng bị xung đột — người khác đã sửa trước bạn. ` +
+            'Chọn "Giữ của tôi" hoặc "Lấy bản mới" cho từng dòng, rồi Lưu lại.',
+        );
+      } else {
+        const patchByRow = new Map();
+        batch.forEach((u) => {
+          let p = patchByRow.get(u.row);
+          if (!p) { p = {}; patchByRow.set(u.row, p); }
+          p[u.key] = u.value;
+        });
+        setRows((prev) =>
+          prev.map((r) => {
+            const p = patchByRow.get(r._row);
+            return p ? { ...r, ...p } : r;
+          }),
+        );
+        setDrafts({});
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 2000);
+        if (pendingReloadRef.current) {
+          setTimeout(() => location.reload(), 600);
+          setSaving(false);
+          return;
+        }
+      }
       if (typeof res.rev === 'number') setDataRev(res.rev);
       setStale(false);
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 2000);
-      // Có bản web app mới đang chờ → giờ đã lưu xong, reload để lấy bản mới.
-      if (pendingReloadRef.current) {
-        setTimeout(() => location.reload(), 600);
-        setSaving(false);
-        return;
-      }
     } catch (err) {
-      // forbidden_rows: có dòng ngoài phạm vi quyền hoặc đã bị xóa ở nơi khác.
-      // Backend không ghi dòng nào trong trường hợp này -> bảo người dùng tải lại.
       setError(
         err.message === 'forbidden_rows'
           ? 'Lưu thất bại: có dòng không thuộc phạm vi của bạn hoặc đã bị xóa ở nơi khác. Chưa có thay đổi nào được ghi — hãy Reload rồi nhập lại.'
@@ -1134,9 +1205,30 @@ export function App() {
   const discardDrafts = () => {
     if (!confirm('Hủy tất cả thay đổi chưa lưu?')) return;
     setDrafts({});
-    // Đã huỷ hết bản nháp → không còn gì để mất, reload luôn để nhận bản web app mới.
+    setConflicts([]);
     if (pendingReloadRef.current) setTimeout(() => location.reload(), 100);
   };
+  const resolveConflict = useCallback(
+    (rowId, choice) => {
+      if (choice === 'take-server') {
+        const c = conflicts.find((x) => x.id === rowId);
+        if (c && c.values) {
+          setRows((prev) =>
+            prev.map((r) => (r._row === rowId ? { ...r, ...c.values } : r)),
+          );
+        }
+        setDrafts((prev) => {
+          const next = {};
+          for (const [k, v] of Object.entries(prev)) {
+            if (Number(k.split(':')[0]) !== rowId) next[k] = v;
+          }
+          return next;
+        });
+      }
+      setConflicts((prev) => prev.filter((x) => x.id !== rowId));
+    },
+    [conflicts],
+  );
 
   // effective rows overlay drafts
   const effectiveRows = useMemo(() => {
@@ -2516,7 +2608,7 @@ export function App() {
           />
         ) : (
           <React.Fragment>
-            <DetailScrollBox>
+            <DetailScrollBox scrollRef={scrollContainerRef}>
               {canEdit &&
                 pendingCusts.map((c) => (
                   <NewCustomerCard
@@ -2551,27 +2643,29 @@ export function App() {
                         n.has(k) ? n.delete(k) : n.add(k);
                         return n;
                       });
-                    const renderCards = (list) =>
-                      list.map((c, i) => (
-                        <CustomerCard
-                          key={cardKey(c)}
-                          {...c}
-                          pendingKeys={draftKeys}
-                          onCommit={commit}
-                          canEdit={canEdit}
-                          isAdmin={isAdmin}
-                          onDeleteProduct={deleteProduct}
-                          open={openCards.has(cardKey(c))}
-                          onToggle={() => toggleCard(cardKey(c))}
-                          showBasePlan={showBasePlan}
-                          onToggleBasePlan={() => setShowBasePlan((v) => !v)}
-                          catIdx={catalog.length > 0 ? catIdx : null}
-                          groupsByPs={groupsByPs}
-                          priceOf={priceOf}
-                          onAddProduct={addProduct}
-                          onDeleteCustomer={deleteCustomer}
-                        />
-                      ));
+                    const renderOneCard = (c) => (
+                      <CustomerCard
+                        key={cardKey(c)}
+                        {...c}
+                        pendingKeys={draftKeys}
+                        onCommit={commit}
+                        canEdit={canEdit}
+                        isAdmin={isAdmin}
+                        onDeleteProduct={deleteProduct}
+                        open={openCards.has(cardKey(c))}
+                        onToggle={() => toggleCard(cardKey(c))}
+                        showBasePlan={showBasePlan}
+                        onToggleBasePlan={() => setShowBasePlan((v) => !v)}
+                        catIdx={catalog.length > 0 ? catIdx : null}
+                        groupsByPs={groupsByPs}
+                        priceOf={priceOf}
+                        onAddProduct={addProduct}
+                        onDeleteCustomer={deleteCustomer}
+                        conflicts={conflicts}
+                        onResolveConflict={resolveConflict}
+                      />
+                    );
+                    const renderCards = (list) => list.map(renderOneCard);
                     if (!viewBu && canSwitchTeam(auth.role)) {
                       const realTeams = Object.keys(TEAMS).filter(
                         (k) => k !== 'test',
@@ -2630,6 +2724,16 @@ export function App() {
                           </div>
                         );
                       });
+                    }
+                    if (tree.length > VIRTUAL_THRESHOLD) {
+                      return (
+                        <VirtualCardList
+                          items={tree}
+                          scrollRef={scrollContainerRef}
+                          cardKey={cardKey}
+                          renderCard={renderOneCard}
+                        />
+                      );
                     }
                     return renderCards(tree);
                   })()}

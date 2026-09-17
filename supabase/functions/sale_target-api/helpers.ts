@@ -29,12 +29,41 @@ export async function getRev(
   sess: Session | null,
   payload?: Record<string, unknown>,
 ) {
-  let q = db.schema("shared").from("sale_target").select("updated_at");
+  let q = db.schema("shared").from("sale_target").select("_rev");
   if (sess) q = applyScope(q, sess, payload);
-  q = q.order("updated_at", { ascending: false }).limit(1);
+  q = q.order("_rev", { ascending: false }).limit(1);
   const { data } = await q;
-  if (data && data[0] && data[0].updated_at) return Date.parse(data[0].updated_at);
-  return 0;
+  const saleRev = data && data[0] ? Number(data[0]._rev) || 0 : 0;
+
+  let tq = db.schema("shared").from("sale_target_tombstone").select("_rev")
+    .order("_rev", { ascending: false }).limit(1);
+  if (sess) tq = applyScopeTombstone(tq, sess, payload);
+  const { data: tData } = await tq;
+  const tombRev = tData && tData[0] ? Number(tData[0]._rev) || 0 : 0;
+
+  return Math.max(saleRev, tombRev);
+}
+
+export function applyScopeTombstone(
+  query: ReturnType<SupabaseClient["from"]>,
+  sess: Session,
+  payload: Record<string, unknown> = {},
+) {
+  const role = String(sess.r || "").toLowerCase();
+  let q = query;
+  if (role === "admin" || role === "manager") {
+    if (payload && payload.bu) q = q.eq("bu", payload.bu as string);
+  } else if (role === "product_manager") {
+    const groups = String(sess.s || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (groups.length === 0) return q.eq("nhom_san_pham", "__none__");
+    return groups.length > 1 ? q.in("nhom_san_pham", groups) : q.eq("nhom_san_pham", groups[0]);
+  } else {
+    q = q.eq("bu", sess.b);
+    if (role === "area_manager") return q.eq("mien", sess.s);
+    if (role === "ps") return q.eq("ps", sess.s);
+    return q.eq("ps", sess.s);
+  }
+  return q;
 }
 
 export async function writeAuditLog(
@@ -106,7 +135,7 @@ export async function fetchAll(
   sess: Session,
   payload: Record<string, unknown>,
 ) {
-  const cols = FIELDS.map((f) => COL[f]).join(",") + ",id";
+  const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
   let countQ = db.schema("shared").from("sale_target").select("id", { count: "exact", head: true });
   countQ = applyScope(countQ, sess, payload);
   const { count, error: cErr } = await countQ;
@@ -135,10 +164,15 @@ export async function fetchAll(
   return out.filter(Boolean);
 }
 
-export async function fetchOopClassify(db: ReturnType<typeof createClient>) {
+export async function fetchOopClassify(
+  db: ReturnType<typeof createClient>,
+  sess: Session,
+  payload: Record<string, unknown> = {},
+) {
+  const scope = readScopeParams(sess, payload);
   const out: Record<string, unknown>[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.rpc("classify_oop_sale_target")
+    const { data, error } = await db.rpc("classify_oop_sale_target", scope)
       .range(from, from + PAGE - 1);
     if (error) break;
     out.push(...(data || []));
