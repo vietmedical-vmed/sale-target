@@ -6,11 +6,69 @@ const SUPABASE_ANON_KEY =
 const FN_LOGIN = SUPABASE_URL + '/functions/v1/sale_target-login';
 const FN_API = SUPABASE_URL + '/functions/v1/sale_target-api';
 
+const EXP_KEY = TOK_KEY + '_exp';
+const REFRESH_MARGIN_SEC = 10 * 60;
+
+let _onSessionExpired = null;
+
+export function onSessionExpired(cb) {
+  _onSessionExpired = cb;
+}
+
+export function getTokenExpiry() {
+  const v = sessionStorage.getItem(EXP_KEY);
+  return v ? Number(v) : 0;
+}
+
+export function setTokenData(token, expiresAt) {
+  sessionStorage.setItem(TOK_KEY, token);
+  if (expiresAt) sessionStorage.setItem(EXP_KEY, String(expiresAt));
+}
+
+function clearTokenData() {
+  sessionStorage.removeItem(TOK_KEY);
+  sessionStorage.removeItem(EXP_KEY);
+}
+
+async function tryRefresh() {
+  const token = sessionStorage.getItem(TOK_KEY);
+  if (!token) return false;
+  try {
+    const res = await fetch(FN_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ action: 'refreshToken', token, payload: {} }),
+    });
+    const data = await res.json();
+    if (data && data.ok && data.token) {
+      setTokenData(data.token, data.expiresAt);
+      return true;
+    }
+  } catch {
+    /* refresh failed — will trigger re-login */
+  }
+  return false;
+}
+
 export async function api(action, payload = {}) {
   const token = sessionStorage.getItem(TOK_KEY) || '';
   const isLogin = action === 'login';
   const url = isLogin ? FN_LOGIN : FN_API;
-  const bodyObj = isLogin ? payload : { action, token, payload };
+
+  if (!isLogin && token) {
+    const exp = getTokenExpiry();
+    const now = Math.floor(Date.now() / 1000);
+    if (exp && exp - now < REFRESH_MARGIN_SEC && exp - now > 0) {
+      await tryRefresh();
+    }
+  }
+
+  const currentToken = sessionStorage.getItem(TOK_KEY) || token;
+  const bodyObj = isLogin ? payload : { action, token: currentToken, payload };
   let res;
   try {
     res = await fetch(url, {
@@ -33,9 +91,21 @@ export async function api(action, payload = {}) {
   }
   if (!res.ok || (data && data.ok === false)) {
     const err = (data && data.error) || 'HTTP ' + res.status;
-    if (err === 'unauthorized') sessionStorage.removeItem(TOK_KEY);
+    if (err === 'unauthorized' || err === 'expired') {
+      const refreshed = await tryRefresh();
+      if (!refreshed) {
+        clearTokenData();
+        if (_onSessionExpired) _onSessionExpired();
+      }
+    }
+    if (err === 'account_locked') {
+      throw new Error(data.message || 'Tài khoản tạm khoá');
+    }
     throw new Error(err);
   }
   if (!data) throw new Error('Máy chủ trả về dữ liệu rỗng');
+  if (isLogin && data.token) {
+    setTokenData(data.token, data.expiresAt);
+  }
   return data;
 }

@@ -4,17 +4,17 @@ import { json } from "../_shared/cors.ts";
 import { COL, FIELDS, PAGE, CONCURRENCY } from "./config.ts";
 import { applyScope, readScopeParams } from "./scope.ts";
 
-export function diaBanErr(error: { message?: string }) {
+export function diaBanErr(error: { message?: string }, req?: Request) {
   const msg = String(error && error.message || "");
-  if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
-  if (msg.includes("dup_dia_ban")) return json({ ok: false, error: "dup_dia_ban" }, 409);
-  if (msg.includes("khoang_trong")) return json({ ok: false, error: msg }, 409);
-  if (msg.includes("khong_ton_tai")) return json({ ok: false, error: "khong_ton_tai" }, 404);
+  if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403, req);
+  if (msg.includes("dup_dia_ban")) return json({ ok: false, error: "dup_dia_ban" }, 409, req);
+  if (msg.includes("khoang_trong")) return json({ ok: false, error: msg }, 409, req);
+  if (msg.includes("khong_ton_tai")) return json({ ok: false, error: "khong_ton_tai" }, 404, req);
   if (msg.includes("thang_khong_hop_le") || msg.includes("trung_ps")) {
-    return json({ ok: false, error: msg }, 400);
+    return json({ ok: false, error: msg }, 400, req);
   }
-  if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: "thieu_du_lieu" }, 400);
-  return json({ ok: false, error: msg }, 500);
+  if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: "thieu_du_lieu" }, 400, req);
+  return json({ ok: false, error: msg }, 500, req);
 }
 
 export function admin() {

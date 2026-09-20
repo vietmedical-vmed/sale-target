@@ -19,7 +19,8 @@ import {
   setMaskMoney as setGlobalMaskMoney, ALIAS_MAP, setAliasMap,
 } from './config/constants.js';
 import { deaccent, fmtCust, custLabel, inSel, planCustKeys, matchSearch } from './lib/text.js';
-import { api } from './api/client.js';
+import { api, onSessionExpired } from './api/client.js';
+import { setUser as setSentryUser } from './lib/sentry.js';
 import { LoginGate } from './components/LoginGate.jsx';
 import { Modal } from './components/Modal.jsx';
 import { MultiSelect } from './components/MultiSelect.jsx';
@@ -220,8 +221,10 @@ export function App() {
     [dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota],
   );
   useEffect(() => {
-    // Bypass đăng nhập khi vào từ portal: nếu có token dùng chung (vmed_token) mà tab
-    // chưa có phiên riêng -> nạp token chung vào sessionStorage để api() dùng.
+    onSessionExpired(() => {
+      setAuthed(false);
+      setInitialLoading(false);
+    });
     const shared = localStorage.getItem('vmed_token');
     if (shared && !sessionStorage.getItem(TOK_KEY))
       sessionStorage.setItem(TOK_KEY, shared);
@@ -235,9 +238,8 @@ export function App() {
             bu: r.bu,
             ho_ten: r.ho_ten || r.hoTen || '',
           });
-          // admin/manager mặc định xem TẤT CẢ team (viewBu=''); role khác giữ bu của họ.
-          // (Trước đây set = r.bu khiến manager bị lọc theo bu cá nhân -> 0 dòng.)
           setViewBu(canSwitchTeam(r.role) ? '' : r.bu || '');
+          setSentryUser(r.username, r.role);
           setAuthed(true);
         })
         .catch(() => {
@@ -2064,6 +2066,7 @@ export function App() {
       <LoginGate
         onAuth={(a) => {
           setAuth(a);
+          setSentryUser(a.username, a.role);
           setAuthed(true);
         }}
       />

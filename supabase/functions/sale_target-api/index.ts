@@ -1,5 +1,5 @@
-import { cors, json } from "../_shared/cors.ts";
-import { verifyToken } from "../_shared/auth.ts";
+import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
+import { verifyToken, signToken } from "../_shared/auth.ts";
 import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, PAGE } from "./config.ts";
 import { applyScope, scopeParams } from "./scope.ts";
 import {
@@ -10,19 +10,37 @@ import {
 } from "./helpers.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const _origin = getAllowedOrigin(req);
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const t0 = Date.now();
+  let _action = "";
+  let _user = "";
+  let _role = "";
+  const json = (body: Record<string, unknown>, status = 200) => {
+    if (_action) {
+      console.log(JSON.stringify({
+        requestId, action: _action, user: _user, role: _role,
+        status, duration: Date.now() - t0,
+      }));
+    }
+    return _json({ ...body, requestId }, status, req);
+  };
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(_origin) });
   if (req.method !== "POST") return json({ ok: false, error: "method" }, 405);
 
   const secret = Deno.env.get("TOKEN_SECRET");
-  if (!secret) return json({ ok: false, error: "TOKEN_SECRET chua duoc set" }, 500);
+  if (!secret) return json({ ok: false, error: "config_error" }, 500);
 
-  let body;
+  let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ ok: false, error: "bad_body" }, 400); }
 
   const { action, token, payload = {} } = body;
-  const sess = await verifyToken(token, secret);
+  _action = String(action || "");
+  const sess = await verifyToken(token as string, secret);
   if (!sess) return json({ ok: false, error: "unauthorized" }, 401);
   sess.r = String(sess.r || "").toLowerCase();
+  _user = sess.u;
+  _role = sess.r;
 
   const db = admin();
   const canEdit = ["admin", "ps", "manager", "area_manager"].includes(sess.r);
@@ -30,6 +48,18 @@ Deno.serve(async (req) => {
   try {
     if (action === "ping") {
       return json({ ok: true, role: sess.r, scope: sess.s, bu: sess.b, username: sess.u });
+    }
+
+    if (action === "refreshToken") {
+      const remaining = sess.exp - Math.floor(Date.now() / 1000);
+      if (remaining < 0) return json({ ok: false, error: "expired" }, 401);
+      const exp = Math.floor(Date.now() / 1000) + 2 * 60 * 60;
+      const newToken = await signToken({
+        username: sess.u, ho_ten: sess.n, role: sess.r,
+        mien: sess.m, bu: sess.b, scope: sess.s,
+        nhom_san_pham: sess.g, exp,
+      }, secret);
+      return json({ ok: true, token: newToken, expiresAt: exp });
     }
 
     if (action === "getData") {
@@ -222,6 +252,7 @@ Deno.serve(async (req) => {
           return json({ ok: false, error: "dup_ps" }, 409);
         return json({ ok: false, error: msg }, 500);
       }
+      await writeAuditLog(db, sess, "savePs", 1, { ten_ps: ten, ps });
       return json({ ok: true });
     }
 
@@ -269,6 +300,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
+      await writeAuditLog(db, sess, "suaPsHoaDonBulk", p_rows.length, { stats: data });
       return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
 
@@ -292,6 +324,9 @@ Deno.serve(async (req) => {
         if (msg.includes("thieu_du_lieu"))    return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
+      await writeAuditLog(db, sess, "suaPsHoaDon", 1, {
+        thang: p.thang, maKh: p.maKh, psCu: p.psCu, psMoi: p.psMoi,
+      });
       return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
 
@@ -360,7 +395,7 @@ Deno.serve(async (req) => {
         });
         await writeAuditLog(db, sess, "updateCells", byRow.size, {
           columns: [...cols],
-          ids: rowIds.slice(0, 50),
+          ids: rowIds,
           changes,
         });
       }
@@ -731,7 +766,7 @@ Deno.serve(async (req) => {
       const { data, error } = await db.rpc("upsert_dm_dia_ban", {
         p_rows, ...scopeParams(sess),
       });
-      if (error) return diaBanErr(error);
+      if (error) return diaBanErr(error, req);
       await writeAuditLog(db, sess, "saveDiaBan", p_rows.length, { count: p_rows.length });
       return json({ ok: true, stats: data });
     }
@@ -755,7 +790,8 @@ Deno.serve(async (req) => {
         p_ps_scope: sc.p_ps,
         p_groups: sc.p_groups,
       });
-      if (error) return diaBanErr(error);
+      if (error) return diaBanErr(error, req);
+      await writeAuditLog(db, sess, "chuyenDiaBan", 1, { id, psMoi, tuThang });
       return json({ ok: true, stats: data });
     }
 
@@ -771,6 +807,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thang_khong_hop_le")) return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
+      await writeAuditLog(db, sess, "dopChongLan", Number(data) || 0, { thang });
       return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
 
@@ -781,7 +818,7 @@ Deno.serve(async (req) => {
       const { data, error } = await db.rpc("delete_dm_dia_ban", {
         p_ids: ids, ...scopeParams(sess),
       });
-      if (error) return diaBanErr(error);
+      if (error) return diaBanErr(error, req);
       await writeAuditLog(db, sess, "deleteDiaBan", ids.length, { ids: ids.slice(0, 50) });
       return json({ ok: true, stats: data });
     }
@@ -908,6 +945,11 @@ Deno.serve(async (req) => {
 
     return json({ ok: false, error: "unknown_action" }, 400);
   } catch (err) {
-    return json({ ok: false, error: String(err && (err as Error).message || err) }, 500);
+    const msg = String(err && (err as Error).message || err);
+    console.error(JSON.stringify({
+      level: "error", requestId, action: _action, user: _user, role: _role,
+      error: msg, duration: Date.now() - t0,
+    }));
+    return json({ ok: false, error: "internal_error" }, 500);
   }
 });

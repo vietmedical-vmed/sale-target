@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { AlertCircle } from './icons.jsx';
-import { TOK_KEY } from '../config/constants.js';
-import { api } from '../api/client.js';
+import { api, setTokenData } from '../api/client.js';
 
 export function LoginGate({ onAuth }) {
   const [mode, setMode] = useState('login');
@@ -23,6 +22,7 @@ export function LoginGate({ onAuth }) {
       same_password_client: 'Mật khẩu mới phải khác mật khẩu hiện tại',
       mismatch: 'Xác nhận mật khẩu không khớp',
       update_failed: 'Không cập nhật được mật khẩu, thử lại sau',
+      account_locked: 'Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau 15 phút.',
     })[m] || m;
   const switchMode = (m) => {
     setMode(m);
@@ -78,7 +78,7 @@ export function LoginGate({ onAuth }) {
       });
       const u = res.user || res;
       if (!res.token) throw new Error('Response thiếu token');
-      sessionStorage.setItem(TOK_KEY, res.token);
+      setTokenData(res.token, res.expiresAt);
       onAuth({
         role: String(u.role || '').toLowerCase(),
         scope: u.scope ?? u.mien ?? '',

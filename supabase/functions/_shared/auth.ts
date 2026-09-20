@@ -27,11 +27,20 @@ export interface Session {
   exp: number;
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
+
 export async function verifyToken(token: string, secret: string): Promise<Session | null> {
   if (!token || token.indexOf(".") < 0) return null;
   const [p, sig] = token.split(".");
   const expect = b64url(await hmac(secret, p));
-  if (sig !== expect) return null;
+  if (!timingSafeEqual(sig, expect)) return null;
   let payload: Record<string, unknown>;
   try {
     const bin = atob(p.replace(/-/g, "+").replace(/_/g, "/"));
