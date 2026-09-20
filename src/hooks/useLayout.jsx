@@ -157,6 +157,10 @@ export function DetailScrollBox({ children, scrollRef }) {
     };
     const onScroll = () => pinHoriz();
     measure();
+    // Parent useStickyBars sets CSS vars AFTER this child effect (React
+    // fires child layout effects first). Re-measure once all layout
+    // effects finish so maxHeight/clientWidth reflect final CSS vars.
+    queueMicrotask(measure);
     box.addEventListener('scroll', onScroll);
     const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(box);
