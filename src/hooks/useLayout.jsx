@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 
 export function useFitHeight() {
   const ref = useRef(null);
@@ -30,7 +30,7 @@ export function useFitHeight() {
 }
 
 export function useStickyBars(active, hasCards) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     const measure = () => {
       const head = document.querySelector('header.sticky');
@@ -75,7 +75,7 @@ export function DetailScrollBox({ children, scrollRef }) {
   }, [scrollRef]);
   const coverRef = useRef(null);
   const coverLRef = useRef(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const box = boxRef.current;
     const cover = coverRef.current;
     const coverL = coverLRef.current;
