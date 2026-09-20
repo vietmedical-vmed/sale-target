@@ -475,12 +475,21 @@ Deno.serve(async (req) => {
       }
       if (sess.r === "area_manager") {
         const psMien = await mienForPs(db, psName);
-        if (bu !== sess.b || (psMien && psMien !== sess.s)) {
+        if (bu !== sess.b || !psMien || psMien !== sess.s) {
           return json({
             ok: false,
-            error: `PS "${psName}" không thuộc phạm vi của bạn (${sess.b} / ${sess.s})`,
+            error: !psMien
+              ? `PS "${psName}" chưa xác định được miền (chưa có trong dm_ps và chưa có dữ liệu sale_target). Nhờ admin thêm PS vào dm_ps trước.`
+              : `PS "${psName}" không thuộc phạm vi của bạn (${sess.b} / ${sess.s})`,
           }, 403);
         }
+      }
+      const gLimit = String(sess.g || "").trim();
+      if (gLimit && String(s.grp || "").trim() !== gLimit) {
+        return json({
+          ok: false,
+          error: `Nhóm SP "${s.grp || ""}" không thuộc phạm vi của bạn (${gLimit})`,
+        }, 403);
       }
       let mien = sess.r === "area_manager" ? sess.s : String(s.region || "").trim();
       if (!mien) mien = await mienForPs(db, psName) || "";
@@ -555,7 +564,7 @@ Deno.serve(async (req) => {
           let psMien = "";
           if (sess.r === "area_manager") {
             const m = await mienForPs(db, ps);
-            if (psBu !== sess.b || (m && m !== sess.s)) {
+            if (psBu !== sess.b || !m || m !== sess.s) {
               psInfoCache.set(ps, null);
               continue;
             }
@@ -569,6 +578,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      const gLimit = String(sess.g || "").trim();
       const candidates: {
         ps: string; bu: string; mien: string; custId: string; cust: string;
         grp: string; mset: string; prod: string; price: number | null;
@@ -579,10 +589,11 @@ Deno.serve(async (req) => {
         const ps = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
         const info = psInfoCache.get(ps);
         if (!info) continue;
+        const grp = String(s.grp || "");
+        if (gLimit && grp !== gLimit) continue;
         const priceNum = Number(s.price);
         const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
         const custId = String(s.custId || "");
-        const grp = String(s.grp || "");
         const mset = String(s.mset || "");
         const prod = String(s.prod || "");
         const key = `${ps}\0${custId}\0${grp}\0${mset}\0${prod}\0${price}`;
@@ -829,6 +840,8 @@ Deno.serve(async (req) => {
           if (groups.length && !groups.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
         }
       }
+      const gLimit = String(sess.g || "").trim();
+      if (gLimit && grp && grp !== gLimit) return json({ ok: false, error: "out_of_scope" }, 403);
       let q = db.schema("shared").from("giai_trinh")
         .select("id, content, created_by, created_at")
         .eq("ps", ps).eq("customer_id", custId);
@@ -856,6 +869,8 @@ Deno.serve(async (req) => {
           if (groups.length && !groups.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
         }
       }
+      const gLimit = String(sess.g || "").trim();
+      if (gLimit && grp && grp !== gLimit) return json({ ok: false, error: "out_of_scope" }, 403);
       const { data, error } = await db.schema("shared").from("giai_trinh")
         .insert({ ps, customer_id: custId, grp, content, created_by: sess.n || sess.u })
         .select("id, content, created_by, created_at")

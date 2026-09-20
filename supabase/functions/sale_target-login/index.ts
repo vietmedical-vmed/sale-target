@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
 
   const { data: user, error } = await admin
     .schema("shared").from("users")
-    .select("username, password_hash, salt, role, scope, bu, mien, ho_va_ten")
+    .select("username, password_hash, salt, role, scope, bu, mien, nhom_san_pham, ho_va_ten")
     .eq("username", username)
     .maybeSingle();
 
@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
       mien: user.mien || "MB",
       bu: user.bu ?? "",
       scope: user.scope ?? "",
+      nhom_san_pham: user.nhom_san_pham ?? "",
       exp,
     },
     secret,
@@ -71,5 +72,6 @@ Deno.serve(async (req) => {
     role: user.role,
     scope: user.scope,
     bu: user.bu,
+    nhom_san_pham: user.nhom_san_pham,
   });
 });

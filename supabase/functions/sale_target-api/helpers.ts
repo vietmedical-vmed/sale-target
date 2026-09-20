@@ -50,19 +50,23 @@ export function applyScopeTombstone(
   payload: Record<string, unknown> = {},
 ) {
   const role = String(sess.r || "").toLowerCase();
+  const nhom = String(sess.g || "").trim();
   let q = query;
+
   if (role === "admin" || role === "manager") {
     if (payload && payload.bu) q = q.eq("bu", payload.bu as string);
   } else if (role === "product_manager") {
-    const groups = String(sess.s || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const raw = String(sess.s || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const groups = nhom ? (raw.length ? raw.filter((g) => g === nhom) : [nhom]) : raw;
     if (groups.length === 0) return q.eq("nhom_san_pham", "__none__");
     return groups.length > 1 ? q.in("nhom_san_pham", groups) : q.eq("nhom_san_pham", groups[0]);
   } else {
     q = q.eq("bu", sess.b);
-    if (role === "area_manager") return q.eq("mien", sess.s);
-    if (role === "ps") return q.eq("ps", sess.s);
-    return q.eq("ps", sess.s);
+    if (role === "area_manager") q = q.eq("mien", sess.s);
+    else q = q.eq("ps", sess.s);
   }
+
+  if (nhom && role !== "product_manager") q = q.eq("nhom_san_pham", nhom);
   return q;
 }
 

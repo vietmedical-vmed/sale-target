@@ -22,6 +22,8 @@ export interface Session {
   r: string;
   s: string;
   b: string;
+  m: string;
+  g: string;
   exp: number;
 }
 
@@ -44,6 +46,8 @@ export async function verifyToken(token: string, secret: string): Promise<Sessio
     r: (payload.role ?? payload.r) as string,
     s: (payload.scope ?? payload.s) as string,
     b: (payload.bu ?? payload.b) as string,
+    m: (payload.mien ?? payload.m ?? "") as string,
+    g: (payload.nhom_san_pham ?? payload.g ?? "") as string,
     exp: payload.exp as number,
   };
 }
