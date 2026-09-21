@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Trash2 } from './icons.jsx';
 import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
-import { GroupMonthField, QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey } from './QuotaThau.jsx';
+import { GroupMonthField, QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
 
 // ============ PRODUCT ROW ============
@@ -75,17 +75,22 @@ const ProductRow = React.memo(function ProductRow({
 }) {
   const allRows = useMemo(() => monthly.flatMap((c) => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
-  // Quota nay đọc từ shared.quota_thau (tách theo mức giá và theo đợt). Chừng nào
-  // sản phẩm chưa có dòng nào bên bảng mới thì vẫn hiện số cũ trên sale_target,
-  // nhờ vậy màn hình không rỗng trong lúc hai nguồn còn chạy song song.
+  // Quota nay đọc từ shared.quota_thau (tách theo mức giá và theo đợt).
+  // Nhóm SP đã khai báo đợt thầu (dot_thau) coi như đã transition sang bảng mới
+  // → tin quota_thau tuyệt đối, sản phẩm không có row bên đó thì hiện 0.
+  // Nhóm SP chưa khai đợt thầu → fallback số cũ trên sale_target để không phá
+  // dữ liệu legacy chưa migrate.
   const quotaCtx = useContext(QuotaThauCtx);
   const [quotaOpen, setQuotaOpen] = useState(false);
   const qInfo = useMemo(() => {
     if (!quotaCtx || !anchor) return null;
+    const groupHasDot = (quotaCtx.dotsByGroup.get(
+      grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp),
+    ) || []).length > 0;
     const list = quotaCtx.quotasByProduct.get(
       prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product),
-    );
-    if (!list || !list.length) return null;
+    ) || [];
+    if (!groupHasDot && !list.length) return null;
     let cu = 0,
       chinh = 0,
       bo_sung = 0;
