@@ -84,6 +84,9 @@ export function DetailScrollBox({ children, scrollRef }) {
     let stickyIndent = 0;
     let rightPad = 0;
     let leftPad = 0;
+    let pinEls = [];
+    let teamEls = [];
+    let lastSl = -1;
     const measure = () => {
       const hasOverflow = box.scrollWidth > box.clientWidth;
       const custEl = box.querySelector('.sticky-cust');
@@ -119,6 +122,23 @@ export function DetailScrollBox({ children, scrollRef }) {
         coverL.style.width = stickyIndent + 'px';
         coverL.style.height = box.clientHeight + 'px';
       }
+      pinEls = Array.from(
+        box.querySelectorAll(
+          '.sticky-cust, .sticky-grp, .meta-sticky-l, .fake-scrollbar-wrap',
+        ),
+      );
+      teamEls = Array.from(box.querySelectorAll('.sticky-team'));
+      const w = box.clientWidth - stickyIndent - rightPad + 'px';
+      pinEls.forEach((el) => {
+        el.style.width = w;
+        el.style.maxWidth = w;
+      });
+      const tw = box.clientWidth - leftPad - rightPad + 'px';
+      teamEls.forEach((el) => {
+        el.style.width = tw;
+        el.style.maxWidth = tw;
+      });
+      lastSl = -1;
       pinHoriz();
     };
     const scheduleMeasure = () => {
@@ -127,23 +147,12 @@ export function DetailScrollBox({ children, scrollRef }) {
     };
     const pinHoriz = () => {
       const sl = box.scrollLeft;
-      const tx = 'translateX(' + sl + 'px)';
-      const w = box.clientWidth - stickyIndent - rightPad + 'px';
-      box
-        .querySelectorAll(
-          '.sticky-cust, .sticky-grp, .meta-sticky-l, .fake-scrollbar-wrap',
-        )
-        .forEach((el) => {
-          el.style.transform = tx;
-          el.style.width = w;
-          el.style.maxWidth = w;
-        });
-      const tw = box.clientWidth - leftPad - rightPad + 'px';
-      box.querySelectorAll('.sticky-team').forEach((el) => {
-        el.style.transform = tx;
-        el.style.width = tw;
-        el.style.maxWidth = tw;
-      });
+      if (sl !== lastSl) {
+        lastSl = sl;
+        const tx = 'translateX(' + sl + 'px)';
+        for (const el of pinEls) el.style.transform = tx;
+        for (const el of teamEls) el.style.transform = tx;
+      }
       if (cover)
         cover.style.transform =
           'translate(' +

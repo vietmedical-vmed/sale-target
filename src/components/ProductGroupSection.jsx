@@ -498,46 +498,59 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
     const box = sb.closest('.detail-box');
     if (!box) return;
     const spacer = sb.firstElementChild;
-    let syncing = false;
+    // Chỉ đồng bộ theo chiều người dùng đang kéo; đồng bộ 2 chiều cùng lúc làm
+    // sự kiện scroll trễ 1 frame của bên kia kéo ngược về vị trí cũ -> giật.
+    let driver = 'box';
+    const onInput = (e) => {
+      driver = sb.contains(e.target) ? 'sb' : 'box';
+    };
     const syncFromBox = () => {
-      if (syncing) return;
-      syncing = true;
-      sb.scrollLeft = box.scrollLeft;
-      requestAnimationFrame(() => {
-        syncing = false;
-      });
+      if (driver === 'sb') return;
+      if (sb.scrollLeft !== box.scrollLeft) sb.scrollLeft = box.scrollLeft;
     };
     const syncToBox = () => {
-      if (syncing) return;
-      syncing = true;
-      box.scrollLeft = sb.scrollLeft;
-      requestAnimationFrame(() => {
-        syncing = false;
-      });
+      if (driver !== 'sb') return;
+      if (box.scrollLeft !== sb.scrollLeft) box.scrollLeft = sb.scrollLeft;
     };
     const measure = () => {
-      if (spacer)
-        spacer.style.width =
-          box.scrollWidth - box.clientWidth + sb.clientWidth + 'px';
-      const sbH = Math.ceil(sb.getBoundingClientRect().height);
-      box.style.setProperty('--detail-sb-h', sbH + 'px');
-      syncFromBox();
+      const w = box.scrollWidth - box.clientWidth + sb.clientWidth + 'px';
+      if (spacer && spacer.style.width !== w) spacer.style.width = w;
+      const sbH = Math.ceil(sb.getBoundingClientRect().height) + 'px';
+      if (box.style.getPropertyValue('--detail-sb-h') !== sbH)
+        box.style.setProperty('--detail-sb-h', sbH);
+      if (sb.scrollLeft !== box.scrollLeft) sb.scrollLeft = box.scrollLeft;
+    };
+    let raf = 0;
+    const schedule = () => {
+      if (!raf)
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          measure();
+        });
     };
     measure();
-    box.addEventListener('scroll', syncFromBox);
-    sb.addEventListener('scroll', syncToBox);
-    const ro = new ResizeObserver(measure);
+    const inputOpts = { capture: true, passive: true };
+    ['pointerdown', 'wheel', 'touchstart', 'keydown'].forEach((t) =>
+      box.addEventListener(t, onInput, inputOpts),
+    );
+    box.addEventListener('scroll', syncFromBox, { passive: true });
+    sb.addEventListener('scroll', syncToBox, { passive: true });
+    const ro = new ResizeObserver(schedule);
     ro.observe(box);
     ro.observe(sb);
-    const mo = new MutationObserver(() => requestAnimationFrame(measure));
-    mo.observe(box, { childList: true, subtree: true, attributes: true });
-    window.addEventListener('resize', measure);
+    const mo = new MutationObserver(schedule);
+    mo.observe(box, { childList: true, subtree: true });
+    window.addEventListener('resize', schedule);
     return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ['pointerdown', 'wheel', 'touchstart', 'keydown'].forEach((t) =>
+        box.removeEventListener(t, onInput, inputOpts),
+      );
       box.removeEventListener('scroll', syncFromBox);
       sb.removeEventListener('scroll', syncToBox);
       ro.disconnect();
       mo.disconnect();
-      window.removeEventListener('resize', measure);
+      window.removeEventListener('resize', schedule);
     };
   }, [open]);
   // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).

@@ -37,14 +37,25 @@ import { TabBtn, OopReasonBanner, FixBoVatTuModal, OopDetailModal, DmpsForm, Sta
 import { QuotaThauCtx, grpKey, prodKey } from './components/QuotaThau.jsx';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useVirtualizer, observeElementOffset } from '@tanstack/react-virtual';
 
 const VIRTUAL_THRESHOLD = 30;
+
+// Cuộn ngang không đổi scrollTop nhưng vẫn bật isScrolling -> re-render mọi thẻ.
+const observeVerticalOffset = (instance, cb) => {
+  let last = null;
+  return observeElementOffset(instance, (offset, isScrolling) => {
+    if (isScrolling && offset === last) return;
+    last = offset;
+    cb(offset, isScrolling);
+  });
+};
 
 function VirtualCardList({ items, scrollRef, cardKey, renderCard }) {
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
+    observeElementOffset: observeVerticalOffset,
     estimateSize: () => 72,
     overscan: 5,
   });
