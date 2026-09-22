@@ -111,12 +111,19 @@ const ProductRow = React.memo(function ProductRow({
     let q14 = 0,
       qMain = 0,
       qAdd = 0,
+      onHand = 0,
       price = 0;
     allRows.forEach((r) => {
-      q14 += Number(r.qOld) || 0;
-      qMain += Number(r.qMain) || 0;
-      qAdd += Number(r.qAdd) || 0;
-      if (!price && r.price) price = Number(r.price) || 0; // hiển thị đơn giá đại diện
+      const rQOld = Number(r.qOld) || 0;
+      const rQMain = Number(r.qMain) || 0;
+      const rQAdd = Number(r.qAdd) || 0;
+      q14 += rQOld;
+      qMain += rQMain;
+      qAdd += rQAdd;
+      const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
+      const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
+      onHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
+      if (!price && r.price) price = Number(r.price) || 0;
     });
     let revBase = 0,
       khLeft = 0, // KH còn lại YTD = SL KH update các tháng SAU tháng hiện tại
@@ -147,17 +154,22 @@ const ProductRow = React.memo(function ProductRow({
       q14 = qInfo.cu;
       qMain = qInfo.chinh;
       qAdd = qInfo.bo_sung;
+      const r0 = allRows[0];
+      const mainOn = r0 && r0.mMain && r0.mMain <= CURRENT_MONTH;
+      const addOn = r0 && r0.mAdd && r0.mAdd <= CURRENT_MONTH;
+      onHand = q14 + (mainOn ? qMain : 0) + (addOn ? qAdd : 0);
     }
     const totalQuota = q14 + qMain + qAdd;
     return {
       q14,
       qMain,
       qAdd,
+      onHand,
       ytd,
       khLeft,
       price,
       totalQuota,
-      quotaAvailable: totalQuota - ytd,
+      quotaAvailable: onHand - ytd,
       dtBase,
       dtUpd,
       chenh: dtUpd - dtBase,
@@ -579,6 +591,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
     let q14M = 0,
       qMainM = 0,
       qAddM = 0,
+      onHandM = 0,
       ytdM = 0;
     const mDtBase = Array(12).fill(0);
     const mDtUpd = Array(12).fill(0);
@@ -587,16 +600,24 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       let pQ14 = 0,
         pQMain = 0,
         pQAdd = 0,
+        pOnHand = 0,
         pPrice = 0;
       allR.forEach((r) => {
-        pQ14 += Number(r.qOld) || 0;
-        pQMain += Number(r.qMain) || 0;
-        pQAdd += Number(r.qAdd) || 0;
+        const rQOld = Number(r.qOld) || 0;
+        const rQMain = Number(r.qMain) || 0;
+        const rQAdd = Number(r.qAdd) || 0;
+        pQ14 += rQOld;
+        pQMain += rQMain;
+        pQAdd += rQAdd;
+        const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
+        const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
+        pOnHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
         if (!pPrice && r.price) pPrice = Number(r.price) || 0;
       });
       q14M += pQ14 * pPrice;
       qMainM += pQMain * pPrice;
       qAddM += pQAdd * pPrice;
+      onHandM += pOnHand * pPrice;
       p.monthly.forEach((c, i) => {
         plan += c.rev;
         c.rows.forEach((r) => {
@@ -630,9 +651,10 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       q14M,
       qMainM,
       qAddM,
+      onHandM,
       totalQuotaM,
       ytdM,
-      quotaAvailM: totalQuotaM - ytdM,
+      quotaAvailM: onHandM - ytdM,
       mDtBase,
       mDtUpd,
     };

@@ -95,7 +95,7 @@ export async function exportSummaryPS(data) {
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
-    const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.quotaFYDt || 0) - dtYtd);
+    const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.q14Dt || 0) - dtYtd);
     row.push(tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.quotaFYDt || 0), tr(dtYtd), quotaRemain);
     row.push(tr(dt), tr(dtUpd), tr(ch));
     aoa.push(row);
@@ -205,7 +205,7 @@ export async function exportProductSummary(data) {
       upcoming = Number(d.upcoming) || 0;
     row.push(
       Math.round(onHand), Math.round(upcoming), Math.round(quota),
-      Math.round(thYtd), d.oop ? '-' : Math.round(quota - thYtd),
+      Math.round(thYtd), d.oop ? '-' : Math.round(onHand - thYtd),
     );
     aoa.push(row);
     levels.push(level);

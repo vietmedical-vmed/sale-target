@@ -390,7 +390,7 @@ export function ProductSummaryView({
 
   const qBg = 'bg-indigo-50/40';
   const quotaCells = (node, extra) => {
-    const khaDung = node.oop ? null : (node.quota || 0) - node.thYtd;
+    const khaDung = node.oop ? null : (node.onHand || 0) - node.thYtd;
     return [
       <td
         key="qoh"
@@ -740,7 +740,7 @@ export function ProductSummaryView({
                   {fmtInt(data.grand.thYtd)}
                 </td>,
                 <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
-                  {fmtInt((data.grand.quota || 0) - data.grand.thYtd)}
+                  {fmtInt((data.grand.onHand || 0) - data.grand.thYtd)}
                 </td>,
               )}
             </tbody>

@@ -80,6 +80,7 @@ export function SummaryView({
         dtUpd: 0,
         quotaFY: 0,
         quotaFYDt: 0,
+        q14: 0,
         q14Dt: 0,
         qUpcomingDt: 0,
         ytd: 0,
@@ -142,6 +143,7 @@ export function SummaryView({
         o.dtUpd += dDtUpd;
         o.quotaFY += dQuota;
         o.quotaFYDt += dQuotaDt;
+        o.q14 += dQ14;
         o.q14Dt += dQ14Dt;
         o.qUpcomingDt += dQUpcomingDt;
         o.ytd += dYtd;
@@ -177,6 +179,7 @@ export function SummaryView({
           dtUpd: 0,
           quotaFY: 0,
           quotaFYDt: 0,
+          q14: 0,
           q14Dt: 0,
           qUpcomingDt: 0,
           ytd: 0,
@@ -200,6 +203,7 @@ export function SummaryView({
           dtUpd: 0,
           quotaFY: 0,
           quotaFYDt: 0,
+          q14: 0,
           q14Dt: 0,
           qUpcomingDt: 0,
           ytd: 0,
@@ -217,6 +221,7 @@ export function SummaryView({
       dtUpd: 0,
       quotaFY: 0,
       quotaFYDt: 0,
+      q14: 0,
       q14Dt: 0,
       qUpcomingDt: 0,
       ytd: 0,
@@ -234,6 +239,7 @@ export function SummaryView({
       a.dtUpd += c.dtUpd;
       a.quotaFY += c.quotaFY;
       a.quotaFYDt += c.quotaFYDt;
+      a.q14 += c.q14;
       a.q14Dt += c.q14Dt;
       a.qUpcomingDt += c.qUpcomingDt;
       a.ytd += c.ytd;
@@ -265,9 +271,9 @@ export function SummaryView({
         // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
         const buildCust = (c) => {
           // KH ngoài kế hoạch: quotaAvail = null → hiển thị "—" (không tính, không để âm)
-          const avail = (o) => (c.oop ? null : o.quotaFY - (o.ytd + o.khLeft));
+          const avail = (o) => (c.oop ? null : o.q14 - o.ytd);
           const availDt = (o) =>
-            c.oop ? null : o.quotaFYDt - (o.dtYtd + o.khLeftDt);
+            c.oop ? null : o.q14Dt - o.dtYtd;
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
           const grps = Array.from(c.grpMap.values()).map((gp) => {
             const prods = Array.from(gp.prodMap.values()).map((pp) => ({
@@ -306,8 +312,8 @@ export function SummaryView({
           ps: ps.ps,
           custs,
           ...tot,
-          quotaAvail: tot.quotaFY - (tot.ytd + tot.khLeft),
-          quotaAvailDt: tot.quotaFYDt - (tot.dtYtd + tot.khLeftDt),
+          quotaAvail: tot.q14 - tot.ytd,
+          quotaAvailDt: tot.q14Dt - tot.dtYtd,
         };
       });
       psList.sort(orderByUpd);
@@ -320,8 +326,8 @@ export function SummaryView({
         region: reg.region,
         psList,
         ...tot,
-        quotaAvail: tot.quotaFY - (tot.ytd + tot.khLeft),
-        quotaAvailDt: tot.quotaFYDt - (tot.dtYtd + tot.khLeftDt),
+        quotaAvail: tot.q14 - tot.ytd,
+        quotaAvailDt: tot.q14Dt - tot.dtYtd,
       };
     });
     regions.sort((a, b) => b.dt - a.dt);
@@ -330,8 +336,8 @@ export function SummaryView({
       a.custCount += rg.custCount;
       return a;
     }, fold());
-    grand.quotaAvail = grand.quotaFY - (grand.ytd + grand.khLeft);
-    grand.quotaAvailDt = grand.quotaFYDt - (grand.dtYtd + grand.khLeftDt);
+    grand.quotaAvail = grand.q14 - grand.ytd;
+    grand.quotaAvailDt = grand.q14Dt - grand.dtYtd;
     return {
       regions,
       grand,
@@ -748,7 +754,7 @@ function StatCells({ d, size, dark }) {
   // --- Quota group: On hand · Upcoming · Tổng quota · TH YTD · Khả dụng ---
   const qbg = dark ? '' : 'bg-teal-50/30';
   const quotaRemain =
-    d.quotaAvailDt == null ? null : (d.quotaFYDt || 0) - (d.dtYtd || 0);
+    d.quotaAvailDt == null ? null : (d.q14Dt || 0) - (d.dtYtd || 0);
   cells.push(
     <td
       key="q14"
