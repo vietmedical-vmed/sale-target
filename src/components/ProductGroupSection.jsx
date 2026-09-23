@@ -522,7 +522,9 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
     };
     const syncToBox = () => {
       if (driver !== 'sb') return;
-      if (box.scrollLeft !== sb.scrollLeft) box.scrollLeft = sb.scrollLeft;
+      if (box.scrollLeft === sb.scrollLeft) return;
+      box.scrollLeft = sb.scrollLeft;
+      if (box.__pinHoriz) box.__pinHoriz();
     };
     const measure = () => {
       const w = box.scrollWidth - box.clientWidth + sb.clientWidth + 'px';
@@ -530,7 +532,8 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       const sbH = Math.ceil(sb.getBoundingClientRect().height) + 'px';
       if (box.style.getPropertyValue('--detail-sb-h') !== sbH)
         box.style.setProperty('--detail-sb-h', sbH);
-      if (sb.scrollLeft !== box.scrollLeft) sb.scrollLeft = box.scrollLeft;
+      if (driver !== 'sb' && sb.scrollLeft !== box.scrollLeft)
+        sb.scrollLeft = box.scrollLeft;
     };
     let raf = 0;
     const schedule = () => {

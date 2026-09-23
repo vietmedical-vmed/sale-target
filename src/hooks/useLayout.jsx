@@ -165,6 +165,9 @@ export function DetailScrollBox({ children, scrollRef }) {
           'translate(' + sl + 'px,' + box.scrollTop + 'px)';
     };
     const onScroll = () => pinHoriz();
+    // Thanh cuộn giả đặt scrollLeft của box rồi phải ghim lại ngay: sự kiện
+    // scroll của box chỉ bắn ở frame sau, chờ nó thì header lệch 1 frame.
+    box.__pinHoriz = pinHoriz;
     measure();
     // Parent useStickyBars sets CSS vars AFTER this child effect (React
     // fires child layout effects first). Re-measure once all layout
@@ -178,6 +181,7 @@ export function DetailScrollBox({ children, scrollRef }) {
     window.addEventListener('resize', measure);
     return () => {
       clearTimeout(measureId);
+      delete box.__pinHoriz;
       box.removeEventListener('scroll', onScroll);
       ro.disconnect();
       mo.disconnect();
