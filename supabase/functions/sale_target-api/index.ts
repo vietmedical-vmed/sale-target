@@ -1,7 +1,7 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
 import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, PAGE } from "./config.ts";
-import { applyScope, scopeParams } from "./scope.ts";
+import { applyScope, scopeParams, parseGroups } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr,
   psInfo, buForPs, mienForPs,
@@ -519,11 +519,11 @@ Deno.serve(async (req) => {
           }, 403);
         }
       }
-      const gLimit = String(sess.g || "").trim();
-      if (gLimit && String(s.grp || "").trim() !== gLimit) {
+      const gLimits = parseGroups(sess.g);
+      if (gLimits.length && !gLimits.includes(String(s.grp || "").trim())) {
         return json({
           ok: false,
-          error: `Nhóm SP "${s.grp || ""}" không thuộc phạm vi của bạn (${gLimit})`,
+          error: `Nhóm SP "${s.grp || ""}" không thuộc phạm vi của bạn (${gLimits.join(", ")})`,
         }, 403);
       }
       let mien = sess.r === "area_manager" ? sess.s : String(s.region || "").trim();
@@ -613,7 +613,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      const gLimit = String(sess.g || "").trim();
+      const gLimits = parseGroups(sess.g);
       const candidates: {
         ps: string; bu: string; mien: string; custId: string; cust: string;
         grp: string; mset: string; prod: string; price: number | null;
@@ -625,7 +625,7 @@ Deno.serve(async (req) => {
         const info = psInfoCache.get(ps);
         if (!info) continue;
         const grp = String(s.grp || "");
-        if (gLimit && grp !== gLimit) continue;
+        if (gLimits.length && !gLimits.includes(grp)) continue;
         const priceNum = Number(s.price);
         const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
         const custId = String(s.custId || "");
@@ -877,8 +877,8 @@ Deno.serve(async (req) => {
           if (groups.length && !groups.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
         }
       }
-      const gLimit = String(sess.g || "").trim();
-      if (gLimit && grp && grp !== gLimit) return json({ ok: false, error: "out_of_scope" }, 403);
+      const gLimits = parseGroups(sess.g);
+      if (gLimits.length && grp && !gLimits.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
       let q = db.schema("shared").from("giai_trinh")
         .select("id, content, created_by, created_at")
         .eq("ps", ps).eq("customer_id", custId);
@@ -906,8 +906,8 @@ Deno.serve(async (req) => {
           if (groups.length && !groups.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
         }
       }
-      const gLimit = String(sess.g || "").trim();
-      if (gLimit && grp && grp !== gLimit) return json({ ok: false, error: "out_of_scope" }, 403);
+      const gLimits = parseGroups(sess.g);
+      if (gLimits.length && grp && !gLimits.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
       const { data, error } = await db.schema("shared").from("giai_trinh")
         .insert({ ps, customer_id: custId, grp, content, created_by: sess.n || sess.u })
         .select("id, content, created_by, created_at")

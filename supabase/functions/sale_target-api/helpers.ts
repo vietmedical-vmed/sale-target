@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import type { Session } from "../_shared/auth.ts";
 import { json } from "../_shared/cors.ts";
 import { COL, FIELDS, PAGE, CONCURRENCY } from "./config.ts";
-import { applyScope, readScopeParams } from "./scope.ts";
+import { applyScope, readScopeParams, parseGroups } from "./scope.ts";
 
 export function diaBanErr(error: { message?: string }, req?: Request) {
   const msg = String(error && error.message || "");
@@ -50,14 +50,16 @@ export function applyScopeTombstone(
   payload: Record<string, unknown> = {},
 ) {
   const role = String(sess.r || "").toLowerCase();
-  const nhom = String(sess.g || "").trim();
+  const nhoms = parseGroups(sess.g);
   let q = query;
 
   if (role === "admin" || role === "manager") {
     if (payload && payload.bu) q = q.eq("bu", payload.bu as string);
   } else if (role === "product_manager") {
-    const raw = String(sess.s || "").split(",").map((x) => x.trim()).filter(Boolean);
-    const groups = nhom ? (raw.length ? raw.filter((g) => g === nhom) : [nhom]) : raw;
+    const raw = parseGroups(sess.s);
+    const groups = nhoms.length
+      ? (raw.length ? raw.filter((g) => nhoms.includes(g)) : nhoms)
+      : raw;
     if (groups.length === 0) return q.eq("nhom_san_pham", "__none__");
     return groups.length > 1 ? q.in("nhom_san_pham", groups) : q.eq("nhom_san_pham", groups[0]);
   } else {
@@ -66,7 +68,9 @@ export function applyScopeTombstone(
     else q = q.eq("ps", sess.s);
   }
 
-  if (nhom && role !== "product_manager") q = q.eq("nhom_san_pham", nhom);
+  if (nhoms.length && role !== "product_manager") {
+    q = nhoms.length > 1 ? q.in("nhom_san_pham", nhoms) : q.eq("nhom_san_pham", nhoms[0]);
+  }
   return q;
 }
 
