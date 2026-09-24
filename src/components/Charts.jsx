@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 
-export function WaterfallChart({ dt, dtUpd }) {
+export function WaterfallChart({ dt, dtUpd, dtYtd }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const chenh = dtUpd - dt;
@@ -8,6 +8,7 @@ export function WaterfallChart({ dt, dtUpd }) {
   const dauNamTy = dt / 1e9;
   const updTy = dtUpd / 1e9;
   const chenhTy = chenh / 1e9;
+  const conLaiTy = (dtUpd - (dtYtd || 0)) / 1e9;
   useEffect(() => {
     if (!canvasRef.current) return;
     let cancelled = false;
@@ -18,22 +19,30 @@ export function WaterfallChart({ dt, dtUpd }) {
       const colBlue = '#2a78d6';
       const colGreen = '#10b981';
       const colRed = '#e34948';
+      const colPurple = '#7c3aed';
+      const dataLabels = [
+        dauNamTy.toFixed(1),
+        updTy.toFixed(1),
+        (chenhPos ? '+' : '') + chenhTy.toFixed(1),
+        conLaiTy.toFixed(1),
+      ];
+      const labelColors = ['#1e293b', '#1e293b', chenhPos ? colGreen : colRed, colPurple];
       chartRef.current = new ChartJS(canvasRef.current, {
         type: 'bar',
         data: {
-          labels: ['Đầu năm', 'Update', 'Chênh lệch'],
+          labels: ['Đầu năm', 'Update', 'Chênh lệch', 'KH còn lại'],
           datasets: [
             {
               label: 'base',
-              data: [0, 0, chenhPos ? dauNamTy : updTy],
+              data: [0, 0, chenhPos ? dauNamTy : updTy, 0],
               backgroundColor: 'transparent',
               borderWidth: 0,
               barPercentage: 0.5,
             },
             {
               label: 'val',
-              data: [dauNamTy, updTy, Math.abs(chenhTy)],
-              backgroundColor: [colBlue, colBlue, chenhPos ? colGreen : colRed],
+              data: [dauNamTy, updTy, Math.abs(chenhTy), Math.max(0, conLaiTy)],
+              backgroundColor: [colBlue, colBlue, chenhPos ? colGreen : colRed, colPurple],
               borderWidth: 0,
               borderRadius: 3,
               barPercentage: 0.5,
@@ -64,27 +73,7 @@ export function WaterfallChart({ dt, dtUpd }) {
               },
             },
           },
-          animation: {
-            duration: 500,
-            onComplete: function () {
-              const ctx = this.ctx;
-              const meta = this.getDatasetMeta(1);
-              ctx.save();
-              ctx.font = '600 12px -apple-system,BlinkMacSystemFont,sans-serif';
-              ctx.textAlign = 'center';
-              const labels = [
-                dauNamTy.toFixed(1),
-                updTy.toFixed(1),
-                (chenhPos ? '+' : '') + chenhTy.toFixed(1),
-              ];
-              meta.data.forEach((bar, i) => {
-                ctx.fillStyle =
-                  i === 2 ? (chenhPos ? colGreen : colRed) : '#1e293b';
-                ctx.fillText(labels[i], bar.x, bar.y - 6);
-              });
-              ctx.restore();
-            },
-          },
+          animation: { duration: 500 },
         },
         plugins: [
           {
@@ -113,6 +102,21 @@ export function WaterfallChart({ dt, dtUpd }) {
               ctx.restore();
             },
           },
+          {
+            id: 'wfLabels',
+            afterDraw(chart) {
+              const ctx = chart.ctx;
+              const meta = chart.getDatasetMeta(1);
+              ctx.save();
+              ctx.font = '600 12px -apple-system,BlinkMacSystemFont,sans-serif';
+              ctx.textAlign = 'center';
+              meta.data.forEach((bar, i) => {
+                ctx.fillStyle = labelColors[i];
+                ctx.fillText(dataLabels[i], bar.x, bar.y - 6);
+              });
+              ctx.restore();
+            },
+          },
         ],
       });
     });
@@ -123,7 +127,7 @@ export function WaterfallChart({ dt, dtUpd }) {
         chartRef.current = null;
       }
     };
-  }, [dauNamTy, updTy, chenhTy]);
+  }, [dauNamTy, updTy, chenhTy, conLaiTy]);
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col">
       <div className="text-[11px] text-slate-400 mb-2 tracking-wide">

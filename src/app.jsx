@@ -2398,7 +2398,7 @@ export function App() {
               />
               <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
             </div>
-            <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} />
+            <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} />
           </div>
           {
             // Đối chiếu ngoài kế hoạch — chỉ admin thấy (mọi role khác không có action gì
