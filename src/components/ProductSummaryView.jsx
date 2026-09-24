@@ -452,16 +452,16 @@ export function ProductSummaryView({
         {fmtInt(slUpd)}
       </td>,
       <td
-        key="tkl"
-        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-purple-600 ${tBg} ${extra || ''}`}
-      >
-        {fmtInt(slUpd - node.thYtd)}
-      </td>,
-      <td
         key="tch"
-        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold border-r border-slate-200 ${tBg} ${chCls(ch)}`}
+        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold ${tBg} ${chCls(ch)}`}
       >
         {ch === 0 ? '—' : (ch > 0 ? '+' : '') + fmtInt(ch)}
+      </td>,
+      <td
+        key="tkl"
+        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 text-purple-600 ${tBg} ${extra || ''}`}
+      >
+        {fmtInt(slUpd - node.thYtd)}
       </td>,
     ];
   };
@@ -580,16 +580,16 @@ export function ProductSummaryView({
                   KH Update
                 </th>,
                 <th
-                  key="tkl"
-                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
-                >
-                  KH còn lại
-                </th>,
-                <th
                   key="tch"
-                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
                 >
                   Chênh lệch
+                </th>,
+                <th
+                  key="tkl"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  KH còn lại
                 </th>,
               )}
             </thead>
@@ -827,9 +827,6 @@ export function ProductSummaryView({
                 <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200">
                   {fmtInt(updAnnual(data.grand))}
                 </td>,
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-purple-200">
-                  {fmtInt(updAnnual(data.grand) - data.grand.thYtd)}
-                </td>,
                 (() => {
                   const dn = data.grand.moKhDauNam.reduce((s, v) => s + v, 0);
                   const ch = updAnnual(data.grand) - dn;
@@ -839,6 +836,9 @@ export function ProductSummaryView({
                     </td>
                   );
                 })(),
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-purple-200">
+                  {fmtInt(updAnnual(data.grand) - data.grand.thYtd)}
+                </td>,
               )}
             </tbody>
           </table>

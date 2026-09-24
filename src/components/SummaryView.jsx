@@ -619,16 +619,16 @@ function SummaryHead() {
           KH Update
         </th>,
         <th
-          key="tkl"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
-        >
-          KH còn lại
-        </th>,
-        <th
           key="tch"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
           Chênh lệch
+        </th>,
+        <th
+          key="tkl"
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          KH còn lại
         </th>,
       )}
     </React.Fragment>
@@ -827,6 +827,14 @@ function StatCells({ d, size, dark }) {
       {moneyTy3(d.dtUpd)}
     </td>,
   );
+  cells.push(
+    <td
+      key="ch"
+      className={`px-3 ${p} text-right tabular-nums font-semibold ${chCol} ${tbg}`}
+    >
+      {ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)}
+    </td>,
+  );
   const khConLai = (d.dtUpd || 0) - (d.dtYtd || 0);
   const klCol = dark
     ? 'text-purple-200'
@@ -834,17 +842,9 @@ function StatCells({ d, size, dark }) {
   cells.push(
     <td
       key="kl"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${klCol} ${tbg}`}
+      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${klCol} ${tbg}`}
     >
       {MASK_MONEY ? '•••' : moneyTy3(khConLai)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="ch"
-      className={`px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-100 ${chCol} ${tbg}`}
-    >
-      {ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)}
     </td>,
   );
   return React.createElement(React.Fragment, null, ...cells);

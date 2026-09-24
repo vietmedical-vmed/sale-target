@@ -59,7 +59,7 @@ export async function exportSummaryPS(data) {
   moneyCols.push(c, c + 1, c + 2, c + 3, c + 4);
   c += 5;
   H1.push('Target', '', '', '');
-  H2.push('KH đầu năm', 'KH Update', 'KH còn lại', 'Chênh lệch');
+  H2.push('KH đầu năm', 'KH Update', 'Chênh lệch', 'KH còn lại');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 });
   moneyCols.push(c, c + 1, c + 2, c + 3);
@@ -97,7 +97,7 @@ export async function exportSummaryPS(data) {
     );
     const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.q14Dt || 0) - dtYtd);
     row.push(tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.quotaFYDt || 0), tr(dtYtd), quotaRemain);
-    row.push(tr(dt), tr(dtUpd), tr(dtUpd - dtYtd), tr(ch));
+    row.push(tr(dt), tr(dtUpd), tr(ch), tr(dtUpd - dtYtd));
     aoa.push(row);
     levels.push(level);
   };
@@ -175,7 +175,7 @@ export async function exportProductSummary(data) {
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
   c += 5;
   H1.push('Target', '', '', '');
-  H2.push('KH đầu năm', 'KH Update', 'KH còn lại', 'Chênh lệch');
+  H2.push('KH đầu năm', 'KH Update', 'Chênh lệch', 'KH còn lại');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
   cols.push({ wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 });
   c += 4;
@@ -214,7 +214,7 @@ export async function exportProductSummary(data) {
     );
     const slDauNam = Math.round((d.moKhDauNam || []).reduce((s, v) => s + v, 0));
     const slUpd = Math.round(totKh);
-    row.push(slDauNam, slUpd, slUpd - Math.round(thYtd), slUpd - slDauNam);
+    row.push(slDauNam, slUpd, slUpd - slDauNam, slUpd - Math.round(thYtd));
     aoa.push(row);
     levels.push(level);
   };
