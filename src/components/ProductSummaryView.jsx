@@ -157,6 +157,7 @@ export function ProductSummaryView({
           custs,
           moKh: rg.moKh,
           moAct: rg.moAct,
+          moKhDauNam: rg.moKhDauNam,
           thYtd: rg.thYtd,
           khYtd: rg.khYtd,
           onHand: rg.onHand,
