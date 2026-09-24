@@ -169,12 +169,12 @@ export async function exportProductSummary(data) {
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
-  H1.push('Quota (SL)', '', '', '', '');
+  H1.push('Quota', '', '', '', '');
   H2.push('On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
   c += 5;
-  H1.push('Group Target (SL)', '', '');
+  H1.push('Target', '', '');
   H2.push('KH đầu năm', 'KH Update', 'Chênh lệch');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
   cols.push({ wch: 13 }, { wch: 13 }, { wch: 13 });
@@ -212,7 +212,7 @@ export async function exportProductSummary(data) {
       Math.round(onHand), Math.round(upcoming), Math.round(quota),
       Math.round(thYtd), d.oop ? '-' : Math.round(onHand - thYtd),
     );
-    const slDauNam = Math.round(d.slDauNam || 0);
+    const slDauNam = Math.round((d.moKhDauNam || []).reduce((s, v) => s + v, 0));
     const slUpd = Math.round(totKh);
     row.push(slDauNam, slUpd, slUpd - slDauNam);
     aoa.push(row);

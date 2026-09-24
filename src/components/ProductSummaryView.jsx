@@ -44,12 +44,12 @@ export function ProductSummaryView({
     const blank = () => ({
       moKh: MONTHS.map(() => 0),
       moAct: MONTHS.map(() => 0),
+      moKhDauNam: MONTHS.map(() => 0),
       thYtd: 0,
       khYtd: 0,
       onHand: 0,
       upcoming: 0,
       quota: 0,
-      slDauNam: 0,
     });
     // Tính trên TOÀN BỘ rows (không phải `filtered`): bộ lọc có thể đang ẩn dòng kế
     // hoạch của KH đó, không vì thế mà coi họ là KH lạ.
@@ -69,6 +69,7 @@ export function ProductSummaryView({
       const isPast = isYtdMonth(r.mo); // luỹ kế YTD gồm cả tháng hiện tại
       const act = Number(r.act) || 0;
       const dSlDauNam = Number(r.rev) || 0;
+      const dSlRevUpd = Number(r.revUpd) || 0;
       const planUpd =
         r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
           ? Number(r.revUpd) || 0
@@ -86,10 +87,10 @@ export function ProductSummaryView({
       const bump = (o) => {
         o.moKh[i] += planUpd;
         o.moAct[i] += act;
+        o.moKhDauNam[i] += dSlDauNam;
         o.onHand += dOnHand;
         o.upcoming += dUpcoming;
         o.quota += dQuota;
-        o.slDauNam += dSlDauNam;
         if (isPast) {
           o.thYtd += act;
           if (!isOop) o.khYtd += planUpd;
@@ -122,12 +123,12 @@ export function ProductSummaryView({
     const fold = () => ({
       moKh: MONTHS.map(() => 0),
       moAct: MONTHS.map(() => 0),
+      moKhDauNam: MONTHS.map(() => 0),
       thYtd: 0,
       khYtd: 0,
       onHand: 0,
       upcoming: 0,
       quota: 0,
-      slDauNam: 0,
     });
     const add = (a, c) => {
       for (let i = 0; i < 12; i++) {
@@ -139,7 +140,7 @@ export function ProductSummaryView({
       a.onHand += c.onHand;
       a.upcoming += c.upcoming;
       a.quota += c.quota;
-      a.slDauNam += c.slDauNam;
+      for (let i = 0; i < 12; i++) a.moKhDauNam[i] += c.moKhDauNam[i];
       return a;
     };
     const sumMo = (mo) => mo.reduce((s, v) => s + v, 0);
@@ -430,16 +431,18 @@ export function ProductSummaryView({
     ];
   };
 
+  const sumArr = (a) => a.reduce((s, v) => s + v, 0);
   const tBg = 'bg-emerald-50/40';
   const targetCells = (node, extra) => {
+    const slDauNam = sumArr(node.moKhDauNam);
     const slUpd = updAnnual(node);
-    const ch = slUpd - (node.slDauNam || 0);
+    const ch = slUpd - slDauNam;
     return [
       <td
         key="tdn"
         className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${tBg} ${extra || ''}`}
       >
-        {fmtInt(node.slDauNam)}
+        {fmtInt(slDauNam)}
       </td>,
       <td
         key="tup"
@@ -506,13 +509,13 @@ export function ProductSummaryView({
                   colSpan={5}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-indigo-800 border-r border-b border-slate-200 bg-indigo-50/60"
                 >
-                  Quota (SL)
+                  Quota
                 </th>,
                 <th
                   colSpan={3}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
                 >
-                  Group Target (SL)
+                  Target
                 </th>,
               )}
               {React.createElement(
@@ -800,14 +803,20 @@ export function ProductSummaryView({
                 <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
                   {fmtInt((data.grand.onHand || 0) - data.grand.thYtd)}
                 </td>,
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
-                  {fmtInt(data.grand.slDauNam)}
-                </td>,
+                (() => {
+                  const dn = data.grand.moKhDauNam.reduce((s, v) => s + v, 0);
+                  return (
+                    <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                      {fmtInt(dn)}
+                    </td>
+                  );
+                })(),
                 <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200">
                   {fmtInt(updAnnual(data.grand))}
                 </td>,
                 (() => {
-                  const ch = updAnnual(data.grand) - (data.grand.slDauNam || 0);
+                  const dn = data.grand.moKhDauNam.reduce((s, v) => s + v, 0);
+                  const ch = updAnnual(data.grand) - dn;
                   return (
                     <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
                       {ch === 0 ? '—' : (ch > 0 ? '+' : '') + fmtInt(ch)}
