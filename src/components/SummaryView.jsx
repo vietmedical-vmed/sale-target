@@ -554,7 +554,7 @@ function SummaryHead() {
           Quota
         </th>,
         <th
-          colSpan={3}
+          colSpan={4}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
         >
           Target
@@ -617,6 +617,12 @@ function SummaryHead() {
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
           KH Update
+        </th>,
+        <th
+          key="tkl"
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          KH còn lại
         </th>,
         <th
           key="tch"
@@ -819,6 +825,18 @@ function StatCells({ d, size, dark }) {
       className={`px-3 ${p} text-right tabular-nums font-medium ${blue} ${tbg}`}
     >
       {moneyTy3(d.dtUpd)}
+    </td>,
+  );
+  const khConLai = (d.dtUpd || 0) - (d.dtYtd || 0);
+  const klCol = dark
+    ? 'text-purple-200'
+    : 'text-purple-600';
+  cells.push(
+    <td
+      key="kl"
+      className={`px-3 ${p} text-right tabular-nums font-medium ${klCol} ${tbg}`}
+    >
+      {MASK_MONEY ? '•••' : moneyTy3(khConLai)}
     </td>,
   );
   cells.push(
