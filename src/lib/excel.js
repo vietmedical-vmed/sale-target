@@ -174,6 +174,11 @@ export async function exportProductSummary(data) {
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
   c += 5;
+  H1.push('Group Target (SL)', '', '');
+  H2.push('KH đầu năm', 'KH Update', 'Chênh lệch');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
+  cols.push({ wch: 13 }, { wch: 13 }, { wch: 13 });
+  c += 3;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -207,6 +212,9 @@ export async function exportProductSummary(data) {
       Math.round(onHand), Math.round(upcoming), Math.round(quota),
       Math.round(thYtd), d.oop ? '-' : Math.round(onHand - thYtd),
     );
+    const slDauNam = Math.round(d.slDauNam || 0);
+    const slUpd = Math.round(totKh);
+    row.push(slDauNam, slUpd, slUpd - slDauNam);
     aoa.push(row);
     levels.push(level);
   };

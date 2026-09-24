@@ -49,6 +49,7 @@ export function ProductSummaryView({
       onHand: 0,
       upcoming: 0,
       quota: 0,
+      slDauNam: 0,
     });
     // Tính trên TOÀN BỘ rows (không phải `filtered`): bộ lọc có thể đang ẩn dòng kế
     // hoạch của KH đó, không vì thế mà coi họ là KH lạ.
@@ -67,6 +68,7 @@ export function ProductSummaryView({
       const cell = p.regMap.get(rKey);
       const isPast = isYtdMonth(r.mo); // luỹ kế YTD gồm cả tháng hiện tại
       const act = Number(r.act) || 0;
+      const dSlDauNam = Number(r.rev) || 0;
       const planUpd =
         r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
           ? Number(r.revUpd) || 0
@@ -87,6 +89,7 @@ export function ProductSummaryView({
         o.onHand += dOnHand;
         o.upcoming += dUpcoming;
         o.quota += dQuota;
+        o.slDauNam += dSlDauNam;
         if (isPast) {
           o.thYtd += act;
           if (!isOop) o.khYtd += planUpd;
@@ -124,6 +127,7 @@ export function ProductSummaryView({
       onHand: 0,
       upcoming: 0,
       quota: 0,
+      slDauNam: 0,
     });
     const add = (a, c) => {
       for (let i = 0; i < 12; i++) {
@@ -135,6 +139,7 @@ export function ProductSummaryView({
       a.onHand += c.onHand;
       a.upcoming += c.upcoming;
       a.quota += c.quota;
+      a.slDauNam += c.slDauNam;
       return a;
     };
     const sumMo = (mo) => mo.reduce((s, v) => s + v, 0);
@@ -187,7 +192,7 @@ export function ProductSummaryView({
       ? [curIdx]
       : [];
   const N_COLS =
-    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + 5;
+    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + 5 + 3;
 
   const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
   const pctCls = (th, kh) => {
@@ -425,6 +430,32 @@ export function ProductSummaryView({
     ];
   };
 
+  const tBg = 'bg-emerald-50/40';
+  const targetCells = (node, extra) => {
+    const slUpd = updAnnual(node);
+    const ch = slUpd - (node.slDauNam || 0);
+    return [
+      <td
+        key="tdn"
+        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${tBg} ${extra || ''}`}
+      >
+        {fmtInt(node.slDauNam)}
+      </td>,
+      <td
+        key="tup"
+        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-blue-600 ${tBg} ${extra || ''}`}
+      >
+        {fmtInt(slUpd)}
+      </td>,
+      <td
+        key="tch"
+        className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold border-r border-slate-200 ${tBg} ${chCls(ch)}`}
+      >
+        {ch === 0 ? '—' : (ch > 0 ? '+' : '') + fmtInt(ch)}
+      </td>,
+    ];
+  };
+
   // Cột nhãn dính trái khi cuộn ngang — nền phải đục, không dùng màu trong suốt
   const stickyLabel = (bg) =>
     `sticky left-0 z-10 border-r border-slate-200 ${bg}`;
@@ -477,6 +508,12 @@ export function ProductSummaryView({
                 >
                   Quota (SL)
                 </th>,
+                <th
+                  colSpan={3}
+                  className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
+                >
+                  Group Target (SL)
+                </th>,
               )}
               {React.createElement(
                 'tr',
@@ -520,6 +557,24 @@ export function ProductSummaryView({
                 >
                   Khả dụng
                 </th>,
+                <th
+                  key="tdn"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  KH đầu năm
+                </th>,
+                <th
+                  key="tup"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  KH Update
+                </th>,
+                <th
+                  key="tch"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  Chênh lệch
+                </th>,
               )}
             </thead>
             <tbody>
@@ -558,6 +613,7 @@ export function ProductSummaryView({
                       ...moCells(p, 'font-medium'),
                       ...ytdCells(p, 'font-semibold'),
                       ...quotaCells(p, 'font-semibold'),
+                      ...targetCells(p, 'font-semibold'),
                     ),
                   ];
                   if (isOpen) {
@@ -588,6 +644,7 @@ export function ProductSummaryView({
                           ...moCells(rg),
                           ...ytdCells(rg),
                           ...quotaCells(rg),
+                          ...targetCells(rg),
                         ),
                       );
                       if (rOpen) {
@@ -632,6 +689,7 @@ export function ProductSummaryView({
                             ...moCells(cu),
                             ...ytdCells(cu),
                             ...quotaCells(cu),
+                            ...targetCells(cu),
                           );
                         for (const cu of rg.custs) {
                           const cKeyStr = rKey + '||' + cu.cust;
@@ -742,6 +800,20 @@ export function ProductSummaryView({
                 <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
                   {fmtInt((data.grand.onHand || 0) - data.grand.thYtd)}
                 </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                  {fmtInt(data.grand.slDauNam)}
+                </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200">
+                  {fmtInt(updAnnual(data.grand))}
+                </td>,
+                (() => {
+                  const ch = updAnnual(data.grand) - (data.grand.slDauNam || 0);
+                  return (
+                    <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                      {ch === 0 ? '—' : (ch > 0 ? '+' : '') + fmtInt(ch)}
+                    </td>
+                  );
+                })(),
               )}
             </tbody>
           </table>
