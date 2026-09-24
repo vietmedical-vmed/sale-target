@@ -1730,6 +1730,7 @@ export function App() {
     regionFilter,
     custFilter,
     groupFilter,
+    curMonth,
   ]);
   // Đo sau khi đã đăng nhập + tải xong (trước đó App return sớm, chưa có thanh
   // tiêu đề/bộ lọc trong DOM) và đo lại khi danh sách KH đổi từ rỗng sang có
@@ -1823,6 +1824,7 @@ export function App() {
     custFilter,
     groupFilter,
     search,
+    curMonth,
   ]);
 
   // Đối chiếu thực hiện: gom oopRows theo ly_do — cảnh báo tổng để người cấu hình
@@ -2077,7 +2079,9 @@ export function App() {
       <LoginGate
         onAuth={(a) => {
           setAuth(a);
+          setViewBu(canSwitchTeam(a.role) ? '' : a.bu || '');
           setSentryUser(a.username, a.role);
+          setInitialLoading(true);
           setAuthed(true);
         }}
       />
