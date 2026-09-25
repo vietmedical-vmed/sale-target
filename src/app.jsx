@@ -33,7 +33,7 @@ import { ProductSummaryView } from './components/ProductSummaryView.jsx';
 import { SummaryView } from './components/SummaryView.jsx';
 import { buildCatalogIndex, AddCustomerModal, NewCustomerCard } from './components/AddProduct.jsx';
 import { DiaBanView } from './components/DiaBanView.jsx';
-import { TabBtn, OopReasonBanner, FixBoVatTuModal, OopDetailModal, DmpsForm, StatCard } from './components/SupportComponents.jsx';
+import { TabBtn, OopReasonButton, FixBoVatTuModal, OopDetailModal, DmpsForm, StatCard } from './components/SupportComponents.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './components/QuotaThau.jsx';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
@@ -1868,7 +1868,6 @@ export function App() {
       ),
     [oopRows, regionFilter, psFilter, groupFilter, custFilter],
   );
-  const [oopOpen, setOopOpen] = useState(false);
   // Modal "Đối chiếu ngoài kế hoạch — chi tiết": null = đóng, 'all' = mọi lý do,
   // 'chua_co_dia_ban' | 'sai_ps' | ... = đúng 1 lý do (lọc sẵn).
   const [oopDetailReason, setOopDetailReason] = useState(null);
@@ -2404,60 +2403,6 @@ export function App() {
             </div>
             <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} />
           </div>
-          {
-            // Đối chiếu ngoài kế hoạch — chỉ admin thấy (mọi role khác không có action gì
-            // để sửa được, chỉ tăng nhiễu). Backend đã lọc dữ liệu theo phạm vi quyền nên
-            // OOP người khác thấy không rò rỉ; đây thuần là gate hiển thị.
-            isAdmin && oopTotal > 0 && (
-              <OopReasonBanner
-                total={oopTotal}
-                byReason={oopByReason}
-                open={oopOpen}
-                onToggle={() => setOopOpen((v) => !v)}
-                onOpenDetail={(ly) => setOopDetailReason(ly || 'all')}
-                onGoDiaBan={() => setTab('diaban')}
-                onQuickFixSaiPs={() => {
-                  const list = oopRowsFiltered.filter(
-                    (r) => r._lyDo === 'sai_ps' && r._psDiaBan,
-                  );
-                  if (list.length) suaPsHoaDonBulk(list);
-                }}
-                onQuickAddDiaBan={() => {
-                  const seen = new Set();
-                  const rows = [];
-                  for (const r of oopRowsFiltered) {
-                    if (r._lyDo !== 'chua_co_dia_ban') continue;
-                    if (!r.grp || !r.ps) continue;
-                    const k =
-                      (r.custId || r.cust || '') + '||' + r.grp + '||' + r.ps;
-                    if (seen.has(k)) continue;
-                    seen.add(k);
-                    rows.push({
-                      custId: r.custId || '',
-                      cust: r.custRaw || r.cust,
-                      grp: r.grp,
-                      ps: r.ps,
-                    });
-                  }
-                  if (!rows.length) return;
-                  if (
-                    !confirm(
-                      `Khai báo ${rows.length} bản địa bàn theo hoá đơn (tổ hợp KH × ngành hàng × PS chưa có địa bàn).\n\nSau khi lưu, kế hoạch tự apply cả năm cho các tổ hợp không chồng lấn.`,
-                    )
-                  )
-                    return;
-                  saveDiaBan(rows);
-                }}
-                onQuickAddThieu={() => {
-                  bulkAddProducts(
-                    oopRowsFiltered.filter(
-                      (r) => r._lyDo === 'thieu_dong_ke_hoach',
-                    ),
-                  );
-                }}
-              />
-            )
-          }
         </div>
         {
           // Modal chi tiết OOP + form dm_ps — treo ở root vì dùng fixed inset-0
@@ -2591,6 +2536,56 @@ export function App() {
             viewBu={viewBu}
             onToolbar={setDiaBanTb}
             curMonth={curMonth}
+            oopAction={
+              // Đối chiếu ngoài kế hoạch — chỉ admin thấy (mọi role khác không có action gì
+              // để sửa được, chỉ tăng nhiễu). Backend đã lọc dữ liệu theo phạm vi quyền.
+              isAdmin && (
+                <OopReasonButton
+                  total={oopTotal}
+                  byReason={oopByReason}
+                  onOpenDetail={(ly) => setOopDetailReason(ly || 'all')}
+                  onQuickFixSaiPs={() => {
+                    const list = oopRowsFiltered.filter(
+                      (r) => r._lyDo === 'sai_ps' && r._psDiaBan,
+                    );
+                    if (list.length) suaPsHoaDonBulk(list);
+                  }}
+                  onQuickAddDiaBan={() => {
+                    const seen = new Set();
+                    const rows = [];
+                    for (const r of oopRowsFiltered) {
+                      if (r._lyDo !== 'chua_co_dia_ban') continue;
+                      if (!r.grp || !r.ps) continue;
+                      const k =
+                        (r.custId || r.cust || '') + '||' + r.grp + '||' + r.ps;
+                      if (seen.has(k)) continue;
+                      seen.add(k);
+                      rows.push({
+                        custId: r.custId || '',
+                        cust: r.custRaw || r.cust,
+                        grp: r.grp,
+                        ps: r.ps,
+                      });
+                    }
+                    if (!rows.length) return;
+                    if (
+                      !confirm(
+                        `Khai báo ${rows.length} bản địa bàn theo hoá đơn (tổ hợp KH × ngành hàng × PS chưa có địa bàn).\n\nSau khi lưu, kế hoạch tự apply cả năm cho các tổ hợp không chồng lấn.`,
+                      )
+                    )
+                      return;
+                    saveDiaBan(rows);
+                  }}
+                  onQuickAddThieu={() => {
+                    bulkAddProducts(
+                      oopRowsFiltered.filter(
+                        (r) => r._lyDo === 'thieu_dong_ke_hoach',
+                      ),
+                    );
+                  }}
+                />
+              )
+            }
             isAdmin={isAdmin}
             onMonthChange={async (mo) => {
               try {

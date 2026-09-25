@@ -104,6 +104,9 @@ export function DiaBanView({
   curMonth,
   isAdmin,
   onMonthChange,
+  // Nút "Đối chiếu thực hiện" do app dựng sẵn (cần oopRows + handler ở app), đặt
+  // căn phải trong thẻ Cấu hình hệ thống.
+  oopAction,
 }) {
   // PS lạ = có trong kế hoạch/khai báo nhưng KHÔNG có trong danh mục dm_ps.
   // psKnown rỗng (chưa tải được danh mục) → không kiểm tra, tránh báo động nhầm.
@@ -748,6 +751,7 @@ export function DiaBanView({
                     </span>
                   ))}
               </div>
+              {oopAction && <div className="ml-auto">{oopAction}</div>}
             </div>
           </div>
         )

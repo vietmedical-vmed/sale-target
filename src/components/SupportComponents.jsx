@@ -15,21 +15,30 @@ export function TabBtn({ active, onClick, label }) {
     </button>
   );
 }
-// Banner "Đối chiếu thực hiện": gom oopRows theo ly_do. Đây là bước cảnh báo mức 1
-// theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động sửa. Không có UI
-// dm_ps nên ps_la chỉ hiển thị để nhận biết; các loại còn lại đều dẫn về màn Cấu
-// hình địa bàn (nơi có nút Áp dụng / Chuyển PS / Khai báo).
-export function OopReasonBanner({
+// Nút "Đối chiếu thực hiện": gom oopRows theo ly_do, bấm mở popup breakdown. Đây là
+// bước cảnh báo mức 1 theo yêu cầu người dùng — cho phép, không chặn, chỉ ra hành động
+// sửa. Không có UI dm_ps nên ps_la chỉ hiển thị để nhận biết. Nằm trong thẻ Cấu hình
+// hệ thống ở màn Cấu hình địa bàn. Mọi action đều đóng popup trước khi chạy.
+export function OopReasonButton({
   total,
   byReason,
-  open,
-  onToggle,
-  onGoDiaBan,
-  onOpenDetail,
-  onQuickFixSaiPs,
-  onQuickAddDiaBan,
-  onQuickAddThieu,
+  onOpenDetail: openDetail,
+  onQuickFixSaiPs: quickFixSaiPs,
+  onQuickAddDiaBan: quickAddDiaBan,
+  onQuickAddThieu: quickAddThieu,
 }) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  const wrap = (fn) =>
+    fn &&
+    ((...a) => {
+      close();
+      fn(...a);
+    });
+  const onOpenDetail = wrap(openDetail);
+  const onQuickFixSaiPs = wrap(quickFixSaiPs);
+  const onQuickAddDiaBan = wrap(quickAddDiaBan);
+  const onQuickAddThieu = wrap(quickAddThieu);
   const rows = Array.from(byReason.entries())
     .filter(([_, a]) => a.rows > 0)
     .sort((a, b) => b[1].rows - a[1].rows);
@@ -40,59 +49,45 @@ export function OopReasonBanner({
       amber: 'bg-amber-50 text-amber-700 border-amber-200',
     })[c] || 'bg-slate-50 text-slate-700 border-slate-200';
   return (
-    <div
-      className="col-span-full bg-white border border-red-200 rounded-xl shadow-sm mb-4"
-      role="region"
-      aria-label="Đối chiếu thực hiện ngoài kế hoạch"
-    >
+    <React.Fragment>
       <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-red-50/40 rounded-xl"
+        onClick={() => setOpen(true)}
+        disabled={total === 0}
+        title={total === 0 ? 'Không có dòng thực hiện ngoài kế hoạch' : undefined}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border rounded-md disabled:opacity-50 ${total > 0 ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : 'border-slate-200 bg-white text-slate-500'}`}
       >
-        <AlertCircle size={15} className="text-red-600 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-semibold text-slate-800">
-            Đối chiếu thực hiện —{' '}
-            <span className="text-red-600">{fmtInt(total)}</span>dòng ngoài kế
-            hoạch
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-            {rows.map(([ly, a]) => {
-              const lb = LY_DO_LABEL[ly] || { short: ly, color: 'slate' };
-              return (
-                <span key={ly} className="inline-flex items-center gap-1">
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full bg-${lb.color}-500`}
-                  />
-                  {lb.short}:{' '}
-                  <span className="font-semibold text-slate-700">
-                    {fmtInt(a.rows)}
-                  </span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenDetail('all');
-          }}
-          className="text-[11px] font-medium text-red-700 hover:bg-red-50 px-2 py-0.5 rounded cursor-pointer"
-        >
-          Xem tất cả
-        </span>
-        <span className="text-[11px] text-slate-400">
-          {open ? 'Thu gọn' : 'Breakdown'}
-        </span>
-        {open ? (
-          <ChevronDown size={14} className="text-slate-400" />
-        ) : (
-          <ChevronRight size={14} className="text-slate-400" />
+        <AlertCircle size={14} />
+        Đối chiếu thực hiện
+        {total > 0 && (
+          <span className="ml-0.5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-semibold tabular-nums">
+            {fmtInt(total)}
+          </span>
         )}
       </button>
-      {open && (
-        <div className="px-4 pb-4 pt-1 border-t border-slate-100">
+      <Modal
+        open={open}
+        onClose={close}
+        title={
+          <React.Fragment>
+            Đối chiếu thực hiện —{' '}
+            <span className="text-red-600">{fmtInt(total)}</span> dòng ngoài kế
+            hoạch
+          </React.Fragment>
+        }
+        icon={<AlertCircle size={16} className="text-red-600" />}
+        width={960}
+        footer={
+          <div className="flex justify-end px-4 py-3 border-t border-slate-100">
+            <button
+              onClick={() => onOpenDetail('all')}
+              className="px-3 py-1.5 text-[13px] font-medium border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 rounded-md"
+            >
+              Xem tất cả
+            </button>
+          </div>
+        }
+      >
+        <div className="p-4 max-h-[65vh] overflow-y-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {rows.map(([ly, a]) => {
               const lb = LY_DO_LABEL[ly] || {
@@ -185,8 +180,8 @@ export function OopReasonBanner({
             })}
           </div>
         </div>
-      )}
-    </div>
+      </Modal>
+    </React.Fragment>
   );
 }
 
