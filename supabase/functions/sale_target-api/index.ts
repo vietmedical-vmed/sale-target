@@ -544,11 +544,27 @@ Deno.serve(async (req) => {
       if (dupCount && dupCount > 0) {
         return json({ ok: false, error: "duplicate", message: "Sản phẩm đã tồn tại trong kế hoạch" }, 409);
       }
+      const prodTrim = String(s.prod || "").trim();
+      const msetTrim = String(s.mset || "").trim();
+      let maSp: string | null = null;
+      let maBvt: string | null = null;
+      if (prodTrim) {
+        const { data: dvt } = await db.schema("shared").from("dm_vat_tu")
+          .select("ma_san_pham").ilike("san_pham", prodTrim).limit(1);
+        if (dvt && dvt[0]) maSp = dvt[0].ma_san_pham || null;
+      }
+      if (msetTrim) {
+        const { data: dbvt } = await db.schema("shared").from("dm_bo_vat_tu")
+          .select("ma_bo_vat_tu").ilike("bo_vat_tu", msetTrim).limit(1);
+        if (dbvt && dbvt[0]) maBvt = dbvt[0].ma_bo_vat_tu || null;
+      }
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
         thang_thau_chinh: thangThau(s.mMain), thang_thau_bo_sung: thangThau(s.mAdd),
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
-        san_pham: s.prod, bo_vat_tu: s.mset, don_gia: price,
+        san_pham: s.prod, bo_vat_tu: s.mset,
+        ma_san_pham: maSp, ma_bo_vat_tu: maBvt,
+        don_gia: price,
         bu,
         sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
       }));
@@ -665,12 +681,35 @@ Deno.serve(async (req) => {
         return json({ ok: true, rows: [], rowNums: [], rowRevs: [], skipped, rev: await getRev(db, sess, payload) });
       }
 
+      const uniqProds = [...new Set(toInsert.map(c => c.prod).filter(Boolean))];
+      const uniqMsets = [...new Set(toInsert.map(c => c.mset).filter(Boolean))];
+      const maSpMap = new Map<string, string>();
+      const maBvtMap = new Map<string, string>();
+      if (uniqProds.length) {
+        const { data: dvt } = await db.schema("shared").from("dm_vat_tu")
+          .select("san_pham, ma_san_pham").in("san_pham", uniqProds);
+        for (const r of dvt || []) {
+          if (r.san_pham && r.ma_san_pham && !maSpMap.has(r.san_pham))
+            maSpMap.set(r.san_pham, r.ma_san_pham);
+        }
+      }
+      if (uniqMsets.length) {
+        const { data: dbvt } = await db.schema("shared").from("dm_bo_vat_tu")
+          .select("bo_vat_tu, ma_bo_vat_tu").in("bo_vat_tu", uniqMsets);
+        for (const r of dbvt || []) {
+          if (r.bo_vat_tu && r.ma_bo_vat_tu && !maBvtMap.has(r.bo_vat_tu))
+            maBvtMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
+        }
+      }
       const allRowsIns = toInsert.flatMap(c =>
         MONTHS.map(mo => ({
           nam_tai_chinh: fy, thang_ke_hoach: mo, mien: c.mien, ps: c.ps,
           thang_thau_chinh: thangThau(c.mMain), thang_thau_bo_sung: thangThau(c.mAdd),
           khach_hang: c.cust, ma_khach_hang: c.custId, nhom_san_pham: c.grp,
-          san_pham: c.prod, bo_vat_tu: c.mset, don_gia: c.price,
+          san_pham: c.prod, bo_vat_tu: c.mset,
+          ma_san_pham: maSpMap.get(c.prod) || null,
+          ma_bo_vat_tu: maBvtMap.get(c.mset) || null,
+          don_gia: c.price,
           bu: c.bu, sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,
         }))
       );
