@@ -558,6 +558,11 @@ Deno.serve(async (req) => {
           .select("ma_bo_vat_tu").ilike("bo_vat_tu", msetTrim).limit(1);
         if (dbvt && dbvt[0]) maBvt = dbvt[0].ma_bo_vat_tu || null;
       }
+      if (!maSp && prodTrim) {
+        const { data: dbvtSp } = await db.schema("shared").from("dm_bo_vat_tu")
+          .select("ma_bo_vat_tu").ilike("bo_vat_tu", prodTrim).limit(1);
+        if (dbvtSp && dbvtSp[0]) maSp = dbvtSp[0].ma_bo_vat_tu || null;
+      }
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
         thang_thau_chinh: thangThau(s.mMain), thang_thau_bo_sung: thangThau(s.mAdd),
@@ -699,6 +704,15 @@ Deno.serve(async (req) => {
         for (const r of dbvt || []) {
           if (r.bo_vat_tu && r.ma_bo_vat_tu && !maBvtMap.has(r.bo_vat_tu))
             maBvtMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
+        }
+      }
+      const prodsNeedFallback = uniqProds.filter(p => !maSpMap.has(p));
+      if (prodsNeedFallback.length) {
+        const { data: dbvtSp } = await db.schema("shared").from("dm_bo_vat_tu")
+          .select("bo_vat_tu, ma_bo_vat_tu").in("bo_vat_tu", prodsNeedFallback);
+        for (const r of dbvtSp || []) {
+          if (r.bo_vat_tu && r.ma_bo_vat_tu && !maSpMap.has(r.bo_vat_tu))
+            maSpMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
         }
       }
       const allRowsIns = toInsert.flatMap(c =>
