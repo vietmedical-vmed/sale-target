@@ -60,8 +60,9 @@ export function ProductSummaryView({
       if (i < 0) continue;
       const pKey = r.prod || '(Không rõ SP)';
       if (!prodMap.has(pKey))
-        prodMap.set(pKey, { prod: pKey, grp: r.grp, regMap: new Map() });
+        prodMap.set(pKey, { prod: pKey, grp: r.grp, mset: r.mset || '', regMap: new Map() });
       const p = prodMap.get(pKey);
+      if (!p.mset && r.mset) p.mset = r.mset;
       const rKey = r.region || '(Không rõ miền)';
       if (!p.regMap.has(rKey))
         p.regMap.set(rKey, { region: rKey, custMap: new Map(), ...blank() });
@@ -166,12 +167,15 @@ export function ProductSummaryView({
         };
       });
       regs.sort((a, b) => a.region.localeCompare(b.region, 'vi'));
-      return { prod: p.prod, grp: p.grp, regs, ...regs.reduce(add, fold()) };
+      return { prod: p.prod, grp: p.grp, mset: p.mset, regs, ...regs.reduce(add, fold()) };
     });
     prods.sort((a, b) => {
       const aUnk = a.prod === '(Không rõ SP)' ? 1 : 0;
       const bUnk = b.prod === '(Không rõ SP)' ? 1 : 0;
       if (aUnk !== bUnk) return aUnk - bUnk;
+      const aSet = a.mset ? 0 : 1;
+      const bSet = b.mset ? 0 : 1;
+      if (aSet !== bSet) return aSet - bSet;
       return a.prod.localeCompare(b.prod, 'vi');
     });
     return { prods, grand: prods.reduce(add, fold()) };
