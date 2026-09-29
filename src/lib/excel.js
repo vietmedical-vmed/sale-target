@@ -52,18 +52,18 @@ export async function exportSummaryPS(data) {
   moneyCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
+  H1.push('Target', '', '', '');
+  H2.push('Target đầu năm', 'DThu dự kiến', 'Chênh lệch', 'KH còn lại');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
+  cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
+  moneyCols.push(c, c + 1, c + 2, c + 3);
+  c += 4;
   H1.push('Quota', '', '', '', '');
   H2.push('On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
   moneyCols.push(c, c + 1, c + 2, c + 3, c + 4);
   c += 5;
-  H1.push('Target', '', '', '');
-  H2.push('KH đầu năm', 'KH Update', 'Chênh lệch', 'KH còn lại');
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
-  cols.push({ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 });
-  moneyCols.push(c, c + 1, c + 2, c + 3);
-  c += 4;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -95,9 +95,9 @@ export async function exportSummaryPS(data) {
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
+    row.push(tr(dt), tr(dtUpd), tr(ch), tr(dtUpd - dtYtd));
     const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.q14Dt || 0) - dtYtd);
     row.push(tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.quotaFYDt || 0), tr(dtYtd), quotaRemain);
-    row.push(tr(dt), tr(dtUpd), tr(ch), tr(dtUpd - dtYtd));
     aoa.push(row);
     levels.push(level);
   };
@@ -169,16 +169,16 @@ export async function exportProductSummary(data) {
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
+  H1.push('Target', '', '', '');
+  H2.push('Target đầu năm', 'DThu dự kiến', 'Chênh lệch', 'KH còn lại');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
+  cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
+  c += 4;
   H1.push('Quota', '', '', '', '');
   H2.push('On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
   c += 5;
-  H1.push('Target', '', '', '');
-  H2.push('KH đầu năm', 'KH Update', 'Chênh lệch', 'KH còn lại');
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
-  cols.push({ wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 });
-  c += 4;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -206,15 +206,15 @@ export async function exportProductSummary(data) {
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
+    const slDauNam = Math.round((d.moKhDauNam || []).reduce((s, v) => s + v, 0));
+    const slUpd = Math.round(totKh);
+    row.push(slDauNam, slUpd, slUpd - slDauNam, slUpd - Math.round(thYtd));
     const onHand = Number(d.onHand) || 0,
       upcoming = Number(d.upcoming) || 0;
     row.push(
       Math.round(onHand), Math.round(upcoming), Math.round(quota),
       Math.round(thYtd), d.oop ? '-' : Math.round(onHand - thYtd),
     );
-    const slDauNam = Math.round((d.moKhDauNam || []).reduce((s, v) => s + v, 0));
-    const slUpd = Math.round(totKh);
-    row.push(slDauNam, slUpd, slUpd - slDauNam, slUpd - Math.round(thYtd));
     aoa.push(row);
     levels.push(level);
   };

@@ -406,8 +406,8 @@ export function SummaryView({
           thầu cũ + quota chính đã tới tháng + quota BS đã tới tháng) × đơn giá;
           Upcoming = (quota chính + BS chưa tới tháng hoặc chưa điền tháng) ×
           đơn giá; Tổng quota = On hand + Upcoming; Khả dụng = Tổng quota − TH
-          YTD. Target: KH đầu năm = DThu kế hoạch đầu năm; KH Update = DThu
-          update cả năm; Chênh lệch = KH Update − KH đầu năm.
+          YTD. Target: Target đầu năm = DThu kế hoạch đầu năm; DThu dự kiến = DThu
+          update cả năm; Chênh lệch = DThu dự kiến − Target đầu năm.
         </p>
       </div>
     </React.Fragment>
@@ -548,16 +548,16 @@ function SummaryHead() {
           Luỹ kế YTD
         </th>,
         <th
-          colSpan={5}
-          className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
-        >
-          Quota
-        </th>,
-        <th
           colSpan={4}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
         >
           Target
+        </th>,
+        <th
+          colSpan={5}
+          className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
+        >
+          Quota
         </th>,
         <th
           rowSpan={2}
@@ -576,6 +576,30 @@ function SummaryHead() {
             : [],
         ),
         ...ytdSub,
+        <th
+          key="tdt"
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          Target đầu năm
+        </th>,
+        <th
+          key="tdu"
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          DThu dự kiến
+        </th>,
+        <th
+          key="tch"
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          Chênh lệch
+        </th>,
+        <th
+          key="tkl"
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          KH còn lại
+        </th>,
         <th
           key="qq14"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
@@ -606,36 +630,12 @@ function SummaryHead() {
         >
           Khả dụng
         </th>,
-        <th
-          key="tdt"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
-        >
-          KH đầu năm
-        </th>,
-        <th
-          key="tdu"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
-        >
-          KH Update
-        </th>,
-        <th
-          key="tch"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
-        >
-          Chênh lệch
-        </th>,
-        <th
-          key="tkl"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
-        >
-          KH còn lại
-        </th>,
       )}
     </React.Fragment>
   );
 }
 
-// Các ô số: [tháng] → Luỹ kế YTD → Quota (On hand · Upcoming · Tổng · TH YTD · Khả dụng) → Target (KH đầu năm · KH Update · CL).
+// Các ô số: [tháng] → Luỹ kế YTD → Target (Target đầu năm · DThu dự kiến · CL · KH còn lại) → Quota (On hand · Upcoming · Tổng · TH YTD · Khả dụng).
 function StatCells({ d, size, dark }) {
   const p =
     size === 'sm'
@@ -757,51 +757,7 @@ function StatCells({ d, size, dark }) {
       {clVal == null ? '—' : (clVal > 0 ? '+' : '') + clVal + '%'}
     </td>,
   );
-  // --- Quota group: On hand · Upcoming · Tổng quota · TH YTD · Khả dụng ---
-  const qbg = dark ? '' : 'bg-teal-50/30';
-  const quotaRemain =
-    d.quotaAvailDt == null ? null : (d.q14Dt || 0) - (d.dtYtd || 0);
-  cells.push(
-    <td
-      key="q14"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
-    >
-      {moneyTy3(d.q14Dt)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="qup"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
-    >
-      {moneyTy3(d.qUpcomingDt)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="q"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
-    >
-      {moneyTy3(d.quotaFYDt)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="qth"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${qbg}`}
-    >
-      {moneyTy3(d.dtYtd)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="qav"
-      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-200 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}
-    >
-      {quotaRemain == null ? '—' : moneyTy3(quotaRemain)}
-    </td>,
-  );
-  // --- Target group: KH đầu năm · KH Update · Chênh lệch ---
+  // --- Target group: Target đầu năm · DThu dự kiến · Chênh lệch · KH còn lại ---
   const tbg = dark ? '' : 'bg-emerald-50/30';
   const ch = (d.dtUpd || 0) - (d.dt || 0);
   const chCol = dark
@@ -842,9 +798,53 @@ function StatCells({ d, size, dark }) {
   cells.push(
     <td
       key="kl"
-      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${klCol} ${tbg}`}
+      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-200 ${klCol} ${tbg}`}
     >
       {MASK_MONEY ? '•••' : moneyTy3(khConLai)}
+    </td>,
+  );
+  // --- Quota group: On hand · Upcoming · Tổng quota · TH YTD · Khả dụng ---
+  const qbg = dark ? '' : 'bg-teal-50/30';
+  const quotaRemain =
+    d.quotaAvailDt == null ? null : (d.q14Dt || 0) - (d.dtYtd || 0);
+  cells.push(
+    <td
+      key="q14"
+      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
+    >
+      {moneyTy3(d.q14Dt)}
+    </td>,
+  );
+  cells.push(
+    <td
+      key="qup"
+      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
+    >
+      {moneyTy3(d.qUpcomingDt)}
+    </td>,
+  );
+  cells.push(
+    <td
+      key="q"
+      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
+    >
+      {moneyTy3(d.quotaFYDt)}
+    </td>,
+  );
+  cells.push(
+    <td
+      key="qth"
+      className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${qbg}`}
+    >
+      {moneyTy3(d.dtYtd)}
+    </td>,
+  );
+  cells.push(
+    <td
+      key="qav"
+      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}
+    >
+      {quotaRemain == null ? '—' : moneyTy3(quotaRemain)}
     </td>,
   );
   return React.createElement(React.Fragment, null, ...cells);

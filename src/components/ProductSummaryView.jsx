@@ -517,16 +517,16 @@ export function ProductSummaryView({
                   Luỹ kế YTD
                 </th>,
                 <th
-                  colSpan={5}
-                  className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-indigo-800 border-r border-b border-slate-200 bg-indigo-50/60"
-                >
-                  Quota
-                </th>,
-                <th
                   colSpan={4}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
                 >
                   Target
+                </th>,
+                <th
+                  colSpan={5}
+                  className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-indigo-800 border-r border-b border-slate-200 bg-indigo-50/60"
+                >
+                  Quota
                 </th>,
               )}
               {React.createElement(
@@ -541,6 +541,30 @@ export function ProductSummaryView({
                     : [],
                 ),
                 ...ytdSubHead,
+                <th
+                  key="tdn"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  Target đầu năm
+                </th>,
+                <th
+                  key="tup"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  DThu dự kiến
+                </th>,
+                <th
+                  key="tch"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  Chênh lệch
+                </th>,
+                <th
+                  key="tkl"
+                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
+                >
+                  KH còn lại
+                </th>,
                 <th
                   key="qoh"
                   className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap"
@@ -570,30 +594,6 @@ export function ProductSummaryView({
                   className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-r border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap"
                 >
                   Khả dụng
-                </th>,
-                <th
-                  key="tdn"
-                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
-                >
-                  KH đầu năm
-                </th>,
-                <th
-                  key="tup"
-                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
-                >
-                  KH Update
-                </th>,
-                <th
-                  key="tch"
-                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
-                >
-                  Chênh lệch
-                </th>,
-                <th
-                  key="tkl"
-                  className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap"
-                >
-                  KH còn lại
                 </th>,
               )}
             </thead>
@@ -632,8 +632,8 @@ export function ProductSummaryView({
                       </td>,
                       ...moCells(p, 'font-medium'),
                       ...ytdCells(p, 'font-semibold'),
-                      ...quotaCells(p, 'font-semibold'),
                       ...targetCells(p, 'font-semibold'),
+                      ...quotaCells(p, 'font-semibold'),
                     ),
                   ];
                   if (isOpen) {
@@ -663,8 +663,8 @@ export function ProductSummaryView({
                           </td>,
                           ...moCells(rg),
                           ...ytdCells(rg),
-                          ...quotaCells(rg),
                           ...targetCells(rg),
+                          ...quotaCells(rg),
                         ),
                       );
                       if (rOpen) {
@@ -708,8 +708,8 @@ export function ProductSummaryView({
                             </td>,
                             ...moCells(cu),
                             ...ytdCells(cu),
-                            ...quotaCells(cu),
                             ...targetCells(cu),
+                            ...quotaCells(cu),
                           );
                         for (const cu of rg.custs) {
                           const cKeyStr = rKey + '||' + cu.cust;
@@ -805,21 +805,6 @@ export function ProductSummaryView({
                     </td>
                   );
                 })(),
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
-                  {fmtInt(data.grand.onHand)}
-                </td>,
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
-                  {fmtInt(data.grand.upcoming)}
-                </td>,
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
-                  {fmtInt(data.grand.quota)}
-                </td>,
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200">
-                  {fmtInt(data.grand.thYtd)}
-                </td>,
-                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
-                  {fmtInt((data.grand.onHand || 0) - data.grand.thYtd)}
-                </td>,
                 (() => {
                   const dn = data.grand.moKhDauNam.reduce((s, v) => s + v, 0);
                   return (
@@ -842,6 +827,21 @@ export function ProductSummaryView({
                 })(),
                 <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-purple-200">
                   {fmtInt(updAnnual(data.grand) - data.grand.thYtd)}
+                </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                  {fmtInt(data.grand.onHand)}
+                </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                  {fmtInt(data.grand.upcoming)}
+                </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                  {fmtInt(data.grand.quota)}
+                </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200">
+                  {fmtInt(data.grand.thYtd)}
+                </td>,
+                <td className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+                  {fmtInt((data.grand.onHand || 0) - data.grand.thYtd)}
                 </td>,
               )}
             </tbody>
