@@ -30,7 +30,7 @@ export function WaterfallChart({ dt, dtUpd, dtYtd }) {
       chartRef.current = new ChartJS(canvasRef.current, {
         type: 'bar',
         data: {
-          labels: ['Đầu năm', 'Update', 'Chênh lệch', 'KH còn lại'],
+          labels: ['Target đầu năm', 'Dthu dự kiến', 'Chênh lệch', 'KH còn lại'],
           datasets: [
             {
               label: 'base',
