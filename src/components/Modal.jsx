@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { XIcon } from './icons.jsx';
 
 export function Modal({ open, onClose, title, icon, width = 560, children, footer }) {
@@ -11,7 +12,7 @@ export function Modal({ open, onClose, title, icon, width = 560, children, foote
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  return ReactDOM.createPortal(
     <div
       onClick={onClose}
       className="fixed inset-0 z-50 bg-slate-900/40 flex items-start justify-center p-4 pt-20 overflow-y-auto"
@@ -38,6 +39,7 @@ export function Modal({ open, onClose, title, icon, width = 560, children, foote
         {children}
         {footer}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
