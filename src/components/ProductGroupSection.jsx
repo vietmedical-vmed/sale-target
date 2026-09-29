@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useContext, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Trash2 } from './icons.jsx';
 import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
@@ -72,6 +72,7 @@ const ProductRow = React.memo(function ProductRow({
   productCode,
   conflicts,
   onResolveConflict,
+  onOpenQuota,
 }) {
   const allRows = useMemo(() => monthly.flatMap((c) => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
@@ -81,7 +82,6 @@ const ProductRow = React.memo(function ProductRow({
   // Nhóm SP chưa khai đợt thầu → fallback số cũ trên sale_target để không phá
   // dữ liệu legacy chưa migrate.
   const quotaCtx = useContext(QuotaThauCtx);
-  const [quotaOpen, setQuotaOpen] = useState(false);
   const qInfo = useMemo(() => {
     if (!quotaCtx || !anchor) return null;
     const gk = grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp);
@@ -91,13 +91,19 @@ const ProductRow = React.memo(function ProductRow({
       prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product),
     ) || [];
     if (!groupHasDot && !list.length) return null;
+    // Dòng trên lưới là MỘT mức giá (khoá sản phẩm gồm cả đơn giá), nên chỉ lấy
+    // quota của đúng mức giá đó. Cộng cả sản phẩm thì mọi dòng giá của sản phẩm
+    // đều hiện cùng một con số, nhìn như bị nhân đôi. Quota ở mức giá không còn
+    // trên kế hoạch chỉ thấy trong modal (có dấu ⚠), không lên lưới.
+    const giaDong = Number(anchor.price) || 0;
+    const cungGia = list.filter((q) => (Number(q.price) || 0) === giaDong);
     const dotMonth = new Map();
     for (const d of dots) dotMonth.set(`${d.loai}|${d.dot}`, d.thang || '');
     let cu = 0,
       chinh = 0,
       bo_sung = 0,
       onHand = 0;
-    for (const q of list) {
+    for (const q of cungGia) {
       const n = Number(q.qty) || 0;
       if (q.loai === 'cu') {
         cu += n;
@@ -328,7 +334,11 @@ const ProductRow = React.memo(function ProductRow({
         value={stats.q14}
         pending={pend('qOld')}
         width={72}
-        onOpen={quotaCtx && anchor ? () => setQuotaOpen(true) : null}
+        onOpen={
+          quotaCtx && anchor && onOpenQuota
+            ? () => onOpenQuota({ mset, prod: product, price: prices[0] || 0 })
+            : null
+        }
         fallbackLocked={!canEdit}
         onCommit={(v) => commitProductField('qOld', v)}
       />
@@ -336,7 +346,11 @@ const ProductRow = React.memo(function ProductRow({
         value={stats.qMain}
         pending={pend('qMain')}
         width={80}
-        onOpen={quotaCtx && anchor ? () => setQuotaOpen(true) : null}
+        onOpen={
+          quotaCtx && anchor && onOpenQuota
+            ? () => onOpenQuota({ mset, prod: product, price: prices[0] || 0 })
+            : null
+        }
         fallbackLocked={!canEdit}
         onCommit={(v) => commitProductField('qMain', v)}
       />
@@ -344,23 +358,14 @@ const ProductRow = React.memo(function ProductRow({
         value={stats.qAdd}
         pending={pend('qAdd')}
         width={72}
-        onOpen={quotaCtx && anchor ? () => setQuotaOpen(true) : null}
+        onOpen={
+          quotaCtx && anchor && onOpenQuota
+            ? () => onOpenQuota({ mset, prod: product, price: prices[0] || 0 })
+            : null
+        }
         fallbackLocked={!canEdit}
         onCommit={(v) => commitProductField('qAdd', v)}
       />
-      {quotaOpen && anchor && (
-        <QuotaThauModal
-          fy={anchor.fy}
-          ps={anchor.ps}
-          custId={anchor.custId}
-          grp={anchor.grp}
-          mset={mset}
-          prod={product}
-          prices={prices}
-          locked={!canEdit}
-          onClose={() => setQuotaOpen(false)}
-        />
-      )}
       <td
         className="px-2 py-1.5 text-[12px] text-right tabular-nums text-slate-700 font-medium border-r border-b border-slate-100 bg-slate-50/60"
         style={{
@@ -582,6 +587,20 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
   // Năm tài chính của nhóm, lấy từ chính dữ liệu đang hiển thị — khoá của đợt thầu.
   const quotaCtx = useContext(QuotaThauCtx);
   const grpFy = groupRows.length ? groupRows[0].fy : '';
+  // Modal quota ở CẤP NHÓM: bấm ô quota của sản phẩm nào cũng mở cùng một bảng,
+  // liệt kê mọi sản phẩm của nhóm -> nhập một lần, lưu một lần.
+  const [quotaFocus, setQuotaFocus] = useState(null);
+  const openQuota = useCallback((info) => setQuotaFocus(info), []);
+  const closeQuota = useCallback(() => setQuotaFocus(null), []);
+  const quotaItems = useMemo(
+    () =>
+      products.map((p) => ({
+        mset: p.mset,
+        prod: p.product,
+        price: Number(p.pPrice) || 0,
+      })),
+    [products],
+  );
   const readGroupField = (key) => {
     for (const r of groupRows) if (r[key]) return r[key];
     return '';
@@ -735,6 +754,18 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       </button>
       {open && (
         <React.Fragment>
+          {quotaCtx && grpFy && quotaFocus && (
+            <QuotaThauModal
+              fy={grpFy}
+              ps={ps}
+              custId={custId || ''}
+              grp={groupName}
+              items={quotaItems}
+              focus={quotaFocus}
+              locked={!canEdit}
+              onClose={closeQuota}
+            />
+          )}
           <div className="meta-sticky-l px-4 py-2 bg-blue-50/40 border-b border-blue-100 flex flex-wrap items-center gap-x-6 gap-y-2">
             {quotaCtx && grpFy ? (
               <DotThauPanel
@@ -1076,6 +1107,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                       }
                       conflicts={conflicts}
                       onResolveConflict={onResolveConflict}
+                      onOpenQuota={openQuota}
                     />
                   );
                 })}

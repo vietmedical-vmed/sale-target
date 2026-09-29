@@ -191,25 +191,23 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
   );
 }
 
-// Modal nhập quota của 1 sản phẩm: hàng = mức giá (mỗi mức giá là 1 gói thầu),
-// cột = thầu cũ + từng đợt thầu chính / bổ sung.
+// Modal nhập quota cho CẢ NHÓM SP: hàng = từng sản phẩm x mức giá (mỗi mức giá
+// là một gói thầu riêng), cột = thầu cũ + từng đợt thầu chính / bổ sung.
+// Bấm vào ô quota của sản phẩm nào thì mở đúng modal này, dòng của sản phẩm đó
+// được tô sáng — nhập cho cả nhóm trong một lần, lưu một lần.
 export function QuotaThauModal({
   fy,
   ps,
   custId,
   grp,
-  mset,
-  prod,
-  prices,
+  items,
+  focus,
   locked,
   onClose,
 }) {
   const ctx = useContext(QuotaThauCtx);
   const dots = ctx
     ? ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || []
-    : [];
-  const rowsQ = ctx
-    ? ctx.quotasByProduct.get(prodKey(fy, ps, custId, grp, mset, prod)) || []
     : [];
   // Cột: thầu cũ luôn có (không thuộc đợt nào), rồi tới từng đợt đã khai báo.
   const cols = useMemo(() => {
@@ -227,61 +225,104 @@ export function QuotaThauModal({
       })),
     );
   }, [dots]);
-  // Mức giá: gộp giá đang có trên kế hoạch với giá đã từng nhập quota.
-  const giaList = useMemo(() => {
-    const s = new Set((prices || []).map((p) => Number(p) || 0));
-    for (const q of rowsQ) s.add(Number(q.price) || 0);
-    if (s.size === 0) s.add(0);
-    return [...s].sort((a, b) => a - b);
-  }, [prices, rowsQ]);
-  const cell = (price, c) => {
-    const f = rowsQ.find(
+
+  // Một dòng = 1 sản phẩm ở 1 mức giá. Ngoài các mức giá đang có trên kế hoạch,
+  // thêm mức giá chỉ còn tồn tại bên quota để số đã nhập không bị giấu mất.
+  const lines = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    const push = (mset, prod, price, tuKeHoach) => {
+      const k = `${mset}||${prod}||${price}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push({ mset, prod, price, tuKeHoach });
+    };
+    for (const it of items || []) {
+      push(it.mset || '', it.prod || '', Number(it.price) || 0, true);
+    }
+    for (const it of items || []) {
+      const qs = ctx
+        ? ctx.quotasByProduct.get(
+            prodKey(fy, ps, custId, grp, it.mset, it.prod),
+          ) || []
+        : [];
+      for (const q of qs)
+        push(it.mset || '', it.prod || '', Number(q.price) || 0, false);
+    }
+    return out;
+  }, [items, ctx, fy, ps, custId, grp]);
+
+  const quotaCua = (mset, prod) =>
+    (ctx
+      ? ctx.quotasByProduct.get(prodKey(fy, ps, custId, grp, mset, prod))
+      : null) || [];
+  const cell = (line, c) => {
+    const f = quotaCua(line.mset, line.prod).find(
       (q) =>
-        (Number(q.price) || 0) === price &&
+        (Number(q.price) || 0) === line.price &&
         q.loai === c.loai &&
         q.dot === c.dot,
     );
     return f ? f.qty : '';
   };
-  const [draft, setDraft] = useState({}); // 'price|loai|dot' -> chuỗi đang nhập
+  const [draft, setDraft] = useState({}); // 'mset||prod||price|loai|dot' -> chuỗi đang nhập
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const key = (price, c) => `${price}|${c.loai}|${c.dot}`;
-  const val = (price, c) => {
-    const k = key(price, c);
+  const key = (line, c) =>
+    `${line.mset}||${line.prod}||${line.price}|${c.loai}|${c.dot}`;
+  const val = (line, c) => {
+    const k = key(line, c);
     return k in draft
       ? draft[k]
-      : cell(price, c) === ''
+      : cell(line, c) === ''
         ? ''
-        : String(cell(price, c));
+        : String(cell(line, c));
   };
+  const laDongDangXem = (line) =>
+    !!focus &&
+    (focus.mset || '') === line.mset &&
+    (focus.prod || '') === line.prod &&
+    (Number(focus.price) || 0) === line.price;
+
+  // Mọi ô của bảng, tra ngược từ khoá draft -> khỏi phải tách chuỗi khi lưu.
+  const oTheoKhoa = useMemo(() => {
+    const m = new Map();
+    for (const line of lines)
+      for (const c of cols) m.set(key(line, c), { line, c });
+    return m;
+  }, [lines, cols]);
+  const doiGiaTri = (k) => {
+    const o = oTheoKhoa.get(k);
+    if (!o) return null;
+    const raw = String(draft[k]).trim();
+    const qty = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(qty) || qty < 0) return { loi: raw, o };
+    if (qty === (Number(cell(o.line, o.c)) || 0)) return null;
+    return { qty, o };
+  };
+  const soODaSua = Object.keys(draft).filter((k) => doiGiaTri(k)).length;
 
   const luu = async () => {
     const rows = [];
-    for (const price of giaList) {
-      for (const c of cols) {
-        const k = key(price, c);
-        if (!(k in draft)) continue;
-        const raw = String(draft[k]).trim();
-        const qty = raw === '' ? 0 : Number(raw);
-        if (!Number.isFinite(qty) || qty < 0) {
-          setErr('Số lượng không hợp lệ: ' + raw);
-          return;
-        }
-        if (qty === (Number(cell(price, c)) || 0)) continue;
-        rows.push({
-          fy,
-          ps,
-          custId,
-          grp,
-          mset,
-          prod,
-          price,
-          loai: c.loai,
-          dot: c.dot,
-          qty,
-        });
+    for (const k of Object.keys(draft)) {
+      const d = doiGiaTri(k);
+      if (!d) continue;
+      if (d.loi !== undefined) {
+        setErr(`Số lượng không hợp lệ ở "${d.o.line.prod}": ${d.loi}`);
+        return;
       }
+      rows.push({
+        fy,
+        ps,
+        custId,
+        grp,
+        mset: d.o.line.mset,
+        prod: d.o.line.prod,
+        price: d.o.line.price,
+        loai: d.o.c.loai,
+        dot: d.o.c.dot,
+        qty: d.qty,
+      });
     }
     if (!rows.length) {
       onClose();
@@ -290,7 +331,7 @@ export function QuotaThauModal({
     setBusy(true);
     setErr('');
     try {
-      await ctx.saveQuota(rows, { fy, ps, custId, grp, mset, prod });
+      await ctx.saveQuota(rows, { fy, ps, custId, grp });
       onClose();
     } catch (e) {
       setErr(e.message || 'Lưu không được');
@@ -298,20 +339,19 @@ export function QuotaThauModal({
     setBusy(false);
   };
 
-  // Modal được mở từ trong <tr> nên phải portal ra body, không thì có <div> nằm
-  // trực tiếp trong <tr> — DOM sai chuẩn.
+  // Modal được mở từ trong bảng nên portal ra body cho khỏi bị khung cuộn cắt.
   return ReactDOM.createPortal(
     <Modal
       open
       onClose={onClose}
-      width={860}
-      title={`Quota thầu · ${prod}`}
+      width={1000}
+      title={`Quota thầu · ${grp}`}
       icon={<span className="text-[14px]">📦</span>}
     >
       <div className="px-4 py-3">
         <div className="text-[11.5px] text-slate-500 mb-2">
-          Mỗi mức giá là một gói thầu riêng. Để trống hoặc nhập 0 để xoá quota
-          của ô đó.
+          Nhập cho mọi sản phẩm của nhóm trong một lần. Mỗi mức giá là một gói
+          thầu riêng. Để trống hoặc nhập 0 để xoá quota của ô đó.
         </div>
         {cols.length === 1 && (
           <div className="text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2">
@@ -319,17 +359,20 @@ export function QuotaThauModal({
             trước, rồi mới nhập được quota thầu chính và bổ sung.
           </div>
         )}
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[60vh]">
           <table className="border-collapse text-[12px]">
-            <thead>
-              <tr>
-                <th className="px-2 py-1.5 text-left font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap">
+            <thead className="sticky top-0 z-[1]">
+              <tr className="bg-white">
+                <th className="px-2 py-1.5 text-left font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap bg-white">
+                  Sản phẩm
+                </th>
+                <th className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap bg-white">
                   Đơn giá
                 </th>
                 {cols.map((c) => (
                   <th
                     key={c.loai + c.dot}
-                    className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap"
+                    className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap bg-white"
                   >
                     {c.label}
                     {c.thang ? (
@@ -339,19 +382,52 @@ export function QuotaThauModal({
                     ) : null}
                   </th>
                 ))}
-                <th className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-slate-200">
+                <th className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-slate-200 bg-white">
                   Tổng
                 </th>
               </tr>
             </thead>
             <tbody>
-              {giaList.map((price) => {
+              {lines.map((line, i) => {
                 let tong = 0;
-                for (const c of cols) tong += Number(val(price, c)) || 0;
+                for (const c of cols) tong += Number(val(line, c)) || 0;
+                const dangXem = laDongDangXem(line);
+                const doiSp = i === 0 || lines[i - 1].prod !== line.prod;
                 return (
-                  <tr key={price}>
-                    <td className="px-2 py-1 tabular-nums text-slate-700 border-b border-r border-slate-100 whitespace-nowrap">
-                      {fmtInt(price)}
+                  <tr
+                    key={key(line, { loai: '_', dot: 0 })}
+                    ref={
+                      dangXem
+                        ? (el) =>
+                            el &&
+                            el.scrollIntoView({
+                              block: 'nearest',
+                            })
+                        : undefined
+                    }
+                    className={dangXem ? 'bg-emerald-50/70' : undefined}
+                  >
+                    <td
+                      className={`px-2 py-1 text-slate-700 border-b border-r border-slate-100 max-w-[240px] ${doiSp ? '' : 'text-slate-400'}`}
+                      title={`${line.mset ? line.mset + ' · ' : ''}${line.prod}`}
+                    >
+                      <div className="truncate">{doiSp ? line.prod : '↳'}</div>
+                      {doiSp && line.mset && line.mset !== line.prod && (
+                        <div className="truncate text-[10px] text-slate-400">
+                          {line.mset}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums text-slate-700 border-b border-r border-slate-100 whitespace-nowrap">
+                      {fmtInt(line.price)}
+                      {!line.tuKeHoach && (
+                        <span
+                          className="ml-1 text-[10px] text-amber-600"
+                          title="Mức giá này không còn trên kế hoạch, chỉ còn số quota đã nhập trước đó"
+                        >
+                          ⚠
+                        </span>
+                      )}
                     </td>
                     {cols.map((c) => (
                       <td
@@ -359,12 +435,12 @@ export function QuotaThauModal({
                         className="px-1 py-1 border-b border-r border-slate-100"
                       >
                         <input
-                          value={val(price, c)}
+                          value={val(line, c)}
                           disabled={locked || busy}
                           onChange={(e) =>
                             setDraft((d) => ({
                               ...d,
-                              [key(price, c)]: e.target.value,
+                              [key(line, c)]: e.target.value,
                             }))
                           }
                           className="w-[74px] text-[12px] text-right px-1.5 py-1 rounded border border-slate-200 tabular-nums outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50"
@@ -382,6 +458,10 @@ export function QuotaThauModal({
         </div>
         {err && <div className="mt-2 text-[12px] text-red-600">{err}</div>}
         <div className="mt-3 flex items-center justify-end gap-2">
+          <span className="mr-auto text-[11.5px] text-slate-500">
+            {lines.length} dòng
+            {soODaSua > 0 ? ` · ${soODaSua} ô đã sửa` : ''}
+          </span>
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-[12px] rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
