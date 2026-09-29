@@ -1752,6 +1752,7 @@ export function App() {
       dtUpd = 0,
       dtYtd = 0, // DThu thực hiện luỹ kế YTD (chỉ trong KH)
       khYtdDt = 0, // DThu KH update luỹ kế YTD (mẫu số của % TH YTD, chỉ trong KH)
+      q14Dt = 0, // Quota on-hand (tiền) = (qOld + qMain nếu đã đến tháng + qAdd nếu đã đến tháng) * giá
       productCount = 0;
     tree.forEach((c) =>
       c.groups.forEach((g) => {
@@ -1778,6 +1779,10 @@ export function App() {
                 dtYtd += dtActR;
                 khYtdDt += rawUpd * pr;
               }
+              const rQOld = Number(r.qOld) || 0;
+              const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
+              const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
+              q14Dt += (rQOld + (mainOn ? (Number(r.qMain) || 0) : 0) + (addOn ? (Number(r.qAdd) || 0) : 0)) * pr;
             });
           });
         });
@@ -1821,6 +1826,7 @@ export function App() {
       dtUpd,
       dtYtd,
       khYtdDt,
+      q14Dt,
       chenh: dtUpd - dt,
       customers: tree.length,
       productCount,
@@ -2411,7 +2417,7 @@ export function App() {
               />
               <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
             </div>
-            <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} />
+            <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
           </div>
         </div>
         {

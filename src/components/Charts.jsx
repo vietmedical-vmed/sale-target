@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 
-export function WaterfallChart({ dt, dtUpd, dtYtd }) {
+export function WaterfallChart({ dt, dtUpd, dtYtd, q14Dt }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const chenh = dtUpd - dt;
@@ -9,6 +9,8 @@ export function WaterfallChart({ dt, dtUpd, dtYtd }) {
   const updTy = dtUpd / 1e9;
   const chenhTy = chenh / 1e9;
   const conLaiTy = (dtUpd - (dtYtd || 0)) / 1e9;
+  const quotaAvailTy = ((q14Dt || 0) - (dtYtd || 0)) / 1e9;
+  const colOrange = '#f59e0b';
   useEffect(() => {
     if (!canvasRef.current) return;
     let cancelled = false;
@@ -25,24 +27,25 @@ export function WaterfallChart({ dt, dtUpd, dtYtd }) {
         updTy.toFixed(1),
         (chenhPos ? '+' : '') + chenhTy.toFixed(1),
         conLaiTy.toFixed(1),
+        quotaAvailTy.toFixed(1),
       ];
-      const labelColors = ['#1e293b', '#1e293b', chenhPos ? colGreen : colRed, colPurple];
+      const labelColors = ['#1e293b', '#1e293b', chenhPos ? colGreen : colRed, colPurple, colOrange];
       chartRef.current = new ChartJS(canvasRef.current, {
         type: 'bar',
         data: {
-          labels: ['Target đầu năm', 'Dthu dự kiến', 'Chênh lệch', 'KH còn lại'],
+          labels: ['Target đầu năm', 'Dthu dự kiến', 'Chênh lệch', 'KH còn lại', 'Quota khả dụng'],
           datasets: [
             {
               label: 'base',
-              data: [0, 0, chenhPos ? dauNamTy : updTy, 0],
+              data: [0, 0, chenhPos ? dauNamTy : updTy, 0, 0],
               backgroundColor: 'transparent',
               borderWidth: 0,
               barPercentage: 0.5,
             },
             {
               label: 'val',
-              data: [dauNamTy, updTy, Math.abs(chenhTy), Math.max(0, conLaiTy)],
-              backgroundColor: [colBlue, colBlue, chenhPos ? colGreen : colRed, colPurple],
+              data: [dauNamTy, updTy, Math.abs(chenhTy), Math.max(0, conLaiTy), Math.max(0, quotaAvailTy)],
+              backgroundColor: [colBlue, colBlue, chenhPos ? colGreen : colRed, colPurple, colOrange],
               borderWidth: 0,
               borderRadius: 3,
               barPercentage: 0.5,
@@ -127,7 +130,7 @@ export function WaterfallChart({ dt, dtUpd, dtYtd }) {
         chartRef.current = null;
       }
     };
-  }, [dauNamTy, updTy, chenhTy, conLaiTy]);
+  }, [dauNamTy, updTy, chenhTy, conLaiTy, quotaAvailTy]);
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col">
       <div className="text-[11px] text-slate-400 mb-2 tracking-wide">
