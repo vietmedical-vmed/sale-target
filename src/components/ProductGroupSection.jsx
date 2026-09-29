@@ -623,6 +623,15 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       ytdM = 0;
     const mDtBase = Array(12).fill(0);
     const mDtUpd = Array(12).fill(0);
+    // Quota cấp nhóm đọc cùng nguồn với từng dòng sản phẩm: nhóm đã khai đợt thầu
+    // thì tin shared.quota_thau, chưa khai thì giữ số cũ trên sale_target. Trước
+    // đây chỗ này chỉ cộng cột cũ, mà luồng lưu quota mới không ghi về cột đó nữa
+    // nên dòng tổng của nhóm đứng im trong khi từng sản phẩm đã có số.
+    const gk = grpKey(grpFy, ps, custId || '', groupName);
+    const dotsNhom = quotaCtx ? quotaCtx.dotsByGroup.get(gk) || [] : [];
+    const nhomCoDot = dotsNhom.length > 0;
+    const thangCuaDot = new Map();
+    for (const d of dotsNhom) thangCuaDot.set(`${d.loai}|${d.dot}`, d.thang || '');
     products.forEach((p) => {
       const allR = p.monthly.flatMap((c) => c.rows);
       let pQ14 = 0,
@@ -642,6 +651,33 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
         pOnHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
         if (!pPrice && r.price) pPrice = Number(r.price) || 0;
       });
+      // Dòng sản phẩm là MỘT mức giá nên chỉ lấy quota của đúng mức giá đó,
+      // khớp với con số đang hiện trên từng dòng.
+      const quotaSp = quotaCtx
+        ? (
+            quotaCtx.quotasByProduct.get(
+              prodKey(grpFy, ps, custId || '', groupName, p.mset, p.product),
+            ) || []
+          ).filter((q) => (Number(q.price) || 0) === (Number(p.pPrice) || 0))
+        : [];
+      if (nhomCoDot || quotaSp.length) {
+        pQ14 = 0;
+        pQMain = 0;
+        pQAdd = 0;
+        pOnHand = 0;
+        for (const q of quotaSp) {
+          const n = Number(q.qty) || 0;
+          if (q.loai === 'cu') {
+            pQ14 += n;
+            pOnHand += n;
+          } else {
+            if (q.loai === 'chinh') pQMain += n;
+            else pQAdd += n;
+            const thang = thangCuaDot.get(`${q.loai}|${q.dot}`) || '';
+            if (thang && thang <= CURRENT_MONTH) pOnHand += n;
+          }
+        }
+      }
       q14M += pQ14 * pPrice;
       qMainM += pQMain * pPrice;
       qAddM += pQAdd * pPrice;
@@ -686,7 +722,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       mDtBase,
       mDtUpd,
     };
-  }, [products]);
+  }, [products, quotaCtx, grpFy, ps, custId, groupName]);
   // products: [{ mset, product, monthly }], đã sort theo mset → product
   return (
     <div className="border-t border-slate-200">
