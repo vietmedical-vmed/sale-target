@@ -84,23 +84,32 @@ const ProductRow = React.memo(function ProductRow({
   const [quotaOpen, setQuotaOpen] = useState(false);
   const qInfo = useMemo(() => {
     if (!quotaCtx || !anchor) return null;
-    const groupHasDot = (quotaCtx.dotsByGroup.get(
-      grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp),
-    ) || []).length > 0;
+    const gk = grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp);
+    const dots = quotaCtx.dotsByGroup.get(gk) || [];
+    const groupHasDot = dots.length > 0;
     const list = quotaCtx.quotasByProduct.get(
       prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product),
     ) || [];
     if (!groupHasDot && !list.length) return null;
+    const dotMonth = new Map();
+    for (const d of dots) dotMonth.set(`${d.loai}|${d.dot}`, d.thang || '');
     let cu = 0,
       chinh = 0,
-      bo_sung = 0;
+      bo_sung = 0,
+      onHand = 0;
     for (const q of list) {
       const n = Number(q.qty) || 0;
-      if (q.loai === 'cu') cu += n;
-      else if (q.loai === 'chinh') chinh += n;
-      else bo_sung += n;
+      if (q.loai === 'cu') {
+        cu += n;
+        onHand += n;
+      } else {
+        const thang = dotMonth.get(`${q.loai}|${q.dot}`) || '';
+        if (q.loai === 'chinh') chinh += n;
+        else bo_sung += n;
+        if (thang && thang <= CURRENT_MONTH) onHand += n;
+      }
     }
-    return { cu, chinh, bo_sung };
+    return { cu, chinh, bo_sung, onHand };
   }, [quotaCtx, anchor, mset, product]);
   const prices = useMemo(() => {
     const s = new Set();
@@ -154,10 +163,7 @@ const ProductRow = React.memo(function ProductRow({
       q14 = qInfo.cu;
       qMain = qInfo.chinh;
       qAdd = qInfo.bo_sung;
-      const r0 = allRows[0];
-      const mainOn = r0 && r0.mMain && r0.mMain <= CURRENT_MONTH;
-      const addOn = r0 && r0.mAdd && r0.mAdd <= CURRENT_MONTH;
-      onHand = q14 + (mainOn ? qMain : 0) + (addOn ? qAdd : 0);
+      onHand = qInfo.onHand;
     }
     const totalQuota = q14 + qMain + qAdd;
     return {
