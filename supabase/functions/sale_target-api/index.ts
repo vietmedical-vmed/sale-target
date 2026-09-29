@@ -5,7 +5,7 @@ import { applyScope, scopeParams, parseGroups } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr,
   psInfo, buForPs, mienForPs,
-  fetchAll, fetchOopClassify, fetchQuotaThau,
+  fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone,
 } from "./helpers.ts";
 
@@ -537,7 +537,9 @@ Deno.serve(async (req) => {
         .eq("nam_tai_chinh", fy).eq("thang_ke_hoach", MONTHS[0])
         .eq("ps", psName).eq("ma_khach_hang", s.custId || "")
         .eq("nhom_san_pham", s.grp || "").eq("bo_vat_tu", s.mset || "")
-        .eq("san_pham", s.prod || "");
+        .eq("san_pham", s.prod || "")
+        // Dòng OOP (đồng bộ thực hiện) không phải kế hoạch — hấp thụ sau insert.
+        .not("ngoai_ke_hoach", "is", true);
       if (price !== null) dupQ = dupQ.eq("don_gia", price);
       else dupQ = dupQ.is("don_gia", null);
       const { count: dupCount } = await dupQ;
@@ -577,8 +579,9 @@ Deno.serve(async (req) => {
       const { data: ins, error } = await db.schema("shared").from("sale_target").insert(rowsIns).select(cols);
       if (error) throw new Error(error.message);
       const inserted = ins || [];
+      const absorbed = await absorbOop(db, inserted, cols);
       await writeAuditLog(db, sess, "addProduct", inserted.length, {
-        ps: psName, cust: s.cust, grp: s.grp, prod: s.prod, mset: s.mset, bu,
+        ps: psName, cust: s.cust, grp: s.grp, prod: s.prod, mset: s.mset, bu, absorbed,
       });
       return json({
         ok: true,
@@ -589,6 +592,7 @@ Deno.serve(async (req) => {
           })
         ),
         rowNums: inserted.map((r: Record<string, unknown>) => r.id),
+        absorbed,
         rev: await getRev(db, sess, payload),
       });
     }
@@ -670,10 +674,14 @@ Deno.serve(async (req) => {
             .eq("nam_tai_chinh", fy)
             .eq("thang_ke_hoach", MONTHS[0])
             .in("ps", uniquePs)
+            // Dòng OOP (đồng bộ thực hiện) không phải kế hoạch — hấp thụ sau insert.
+            .not("ngoai_ke_hoach", "is", true)
             .range(from, from + PAGE - 1);
           if (!data || data.length === 0) break;
           for (const r of data) {
-            existSet.add(`${r.ps}\0${r.ma_khach_hang}\0${r.nhom_san_pham}\0${r.bo_vat_tu}\0${r.san_pham}\0${r.don_gia}`);
+            const p = Number(r.don_gia);
+            const price = Number.isFinite(p) && p > 0 ? p : null;
+            existSet.add(`${r.ps}\0${r.ma_khach_hang}\0${r.nhom_san_pham}\0${r.bo_vat_tu}\0${r.san_pham}\0${price}`);
           }
           if (data.length < PAGE) break;
         }
@@ -736,9 +744,10 @@ Deno.serve(async (req) => {
         if (error) throw new Error(error.message);
         inserted.push(...(ins || []));
       }
+      const absorbed = await absorbOop(db, inserted, cols);
 
       await writeAuditLog(db, sess, "addProduct", inserted.length, {
-        batch: items.length, inserted: toInsert.length, skipped,
+        batch: items.length, inserted: toInsert.length, skipped, absorbed,
       });
       return json({
         ok: true,
@@ -746,6 +755,7 @@ Deno.serve(async (req) => {
         rowNums: inserted.map((r) => r.id),
         rowRevs: inserted.map((r) => Number(r._rev) || 0),
         skipped,
+        absorbed,
         rev: await getRev(db, sess, payload),
       });
     }

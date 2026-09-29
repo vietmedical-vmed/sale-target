@@ -225,3 +225,68 @@ export async function fetchQuotaThau(
   }
   return { dots, quotas };
 }
+
+// Sau khi thêm SP vào kế hoạch: các tháng đã "Đồng bộ thực hiện" trước đó đang nằm ở
+// dòng OOP (ngoai_ke_hoach=true) cùng khoá tháng+PS+KH+bộ VT+SP. Chuyển SL/DT thực hiện
+// của chúng sang dòng kế hoạch vừa tạo rồi xoá dòng OOP — đúng như map_hoadon_to_sale_target
+// sẽ làm ở lần đồng bộ sau (cùng khoá lower(btrim)), để không phải chờ đồng bộ lại và
+// không bị đếm 2 lần. Lần đồng bộ sau tính lại toàn bộ nên lỗi giữa chừng tự lành.
+// Trả về số dòng OOP đã hấp thụ; mảng `inserted` được cập nhật tại chỗ (sl/dt/_rev).
+export async function absorbOop(
+  db: ReturnType<typeof createClient>,
+  inserted: Record<string, unknown>[],
+  cols: string,
+): Promise<number> {
+  const n = (v: unknown) => String(v ?? "").trim().toLowerCase();
+  const keyOf = (r: Record<string, unknown>) =>
+    [r.thang_ke_hoach, n(r.ps), n(r.ma_khach_hang), n(r.bo_vat_tu), n(r.san_pham)].join("\0");
+  const custIds = [...new Set(inserted.map((r) => String(r.ma_khach_hang ?? "").trim()).filter(Boolean))];
+  if (!custIds.length) return 0;
+
+  const oop: Record<string, unknown>[] = [];
+  for (let i = 0; i < custIds.length; i += 100) {
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db.schema("shared").from("sale_target")
+        .select("id, thang_ke_hoach, ps, ma_khach_hang, bo_vat_tu, san_pham, sl_thuc_hien, doanh_thu_thuc_hien")
+        .eq("ngoai_ke_hoach", true)
+        .in("ma_khach_hang", custIds.slice(i, i + 100))
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      oop.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+    }
+  }
+  if (!oop.length) return 0;
+
+  const agg = new Map<string, { sl: number; dt: number; ids: number[] }>();
+  for (const r of oop) {
+    const k = keyOf(r);
+    const a = agg.get(k) || { sl: 0, dt: 0, ids: [] };
+    a.sl += Number(r.sl_thuc_hien) || 0;
+    a.dt += Number(r.doanh_thu_thuc_hien) || 0;
+    a.ids.push(r.id as number);
+    agg.set(k, a);
+  }
+
+  const absorbedIds: number[] = [];
+  for (let i = 0; i < inserted.length; i++) {
+    const k = keyOf(inserted[i]);
+    const a = agg.get(k);
+    if (!a) continue;
+    agg.delete(k); // nhiều dòng cùng khoá (khác đơn giá) -> dồn vào dòng đầu như map
+    const { data, error } = await db.schema("shared").from("sale_target")
+      .update({ sl_thuc_hien: a.sl, doanh_thu_thuc_hien: a.dt, updated_at: new Date().toISOString() })
+      .eq("id", inserted[i].id as number)
+      .select(cols);
+    if (error) throw new Error(error.message);
+    if (data && data[0]) inserted[i] = data[0];
+    absorbedIds.push(...a.ids);
+  }
+  for (let i = 0; i < absorbedIds.length; i += 500) {
+    const { error } = await db.schema("shared").from("sale_target")
+      .delete().in("id", absorbedIds.slice(i, i + 500));
+    if (error) throw new Error(error.message);
+  }
+  return absorbedIds.length;
+}

@@ -777,6 +777,12 @@ export function App() {
           });
           setRows((prev) => prev.concat(objs));
           if (typeof res.rev === 'number') setDataRev(res.rev);
+          // Backend đã chuyển thực hiện của các tháng OOP cùng khoá vào dòng mới và
+          // xoá dòng OOP -> tải lại list OOP cho khỏi đếm 2 lần.
+          if (res.absorbed) {
+            if (typeof res.rev === 'number') revRef.current = res.rev;
+            await reloadOop();
+          }
         } else {
           await loadData();
         }
@@ -786,7 +792,7 @@ export function App() {
         return false;
       }
     },
-    [loadData],
+    [loadData, reloadOop],
   );
 
   const bulkAddProducts = useCallback(
@@ -846,7 +852,11 @@ export function App() {
         const inserted = res?.rows?.length || 0;
         const skipped = res?.skipped || 0;
         if (skipped) setError(`Thêm SP thiếu: ${inserted / 12} mới, ${skipped} đã tồn tại`);
-        if (inserted) await reloadOop();
+        if (inserted) {
+          // rev đã đổi do chính mình -> không bật cờ stale
+          if (typeof res?.rev === 'number') revRef.current = res.rev;
+          await reloadOop();
+        }
       } catch (err) {
         setError('Thêm SP thiếu thất bại: ' + err.message);
       }
