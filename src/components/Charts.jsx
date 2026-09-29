@@ -17,7 +17,7 @@ export function WaterfallChart({ dt, dtUpd, dtYtd, q14Dt }) {
     import('chart.js/auto').then(({ default: ChartJS }) => {
       if (cancelled || !canvasRef.current) return;
       if (chartRef.current) chartRef.current.destroy();
-      const maxVal = Math.max(dauNamTy, updTy) * 1.25;
+      const maxVal = Math.max(dauNamTy, updTy, Math.max(0, conLaiTy), Math.max(0, quotaAvailTy)) * 1.25;
       const colBlue = '#2a78d6';
       const colGreen = '#10b981';
       const colRed = '#e34948';
