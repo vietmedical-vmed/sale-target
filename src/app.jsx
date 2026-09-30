@@ -1657,11 +1657,11 @@ export function App() {
                 MONTHS[i] < CURRENT_MONTH ||
                 (MONTHS[i] === CURRENT_MONTH && act !== 0);
               const upd = useAct
-                ? act
-                : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
-                  ? Number(r.revUpd) || 0
-                  : Number(r.rev) || 0;
-              v += upd * pr;
+                ? dtActR
+                : (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+                    ? Number(r.revUpd) || 0
+                    : Number(r.rev) || 0) * pr;
+              v += upd;
             });
           });
         }),
@@ -1774,7 +1774,7 @@ export function App() {
                 MONTHS[i] < CURRENT_MONTH ||
                 (MONTHS[i] === CURRENT_MONTH && act !== 0);
               dt += rev * pr;
-              dtUpd += useAct ? act * pr : rawUpd * pr;
+              dtUpd += useAct ? dtActR : rawUpd * pr;
               if (inYtd) {
                 dtYtd += dtActR;
                 khYtdDt += rawUpd * pr;
@@ -1815,7 +1815,7 @@ export function App() {
           ? Number(r.revUpd) || 0
           : rev;
       dt += rev * pr;
-      dtUpd += past ? act * pr : rawUpd * pr;
+      dtUpd += past ? dtActR : rawUpd * pr;
       if (inYtd) {
         dtYtd += dtActR;
       }

@@ -117,7 +117,7 @@ export function SummaryView({
       // Delta của DÒNG này — dùng chung cho cả 3 cấp: KH → Nhóm SP → Sản phẩm
       const dSl = Number(r.rev) || 0;
       const dDt = dSl * price;
-      const dDtUpd = updQty * price;
+      const dDtUpd = isPast ? dtActVal : updQty * price;
       const dQOld = Number(r.qOld) || 0;
       const qMainVal = Number(r.qMain) || 0;
       const qAddVal = Number(r.qAdd) || 0;
