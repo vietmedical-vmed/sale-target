@@ -1602,6 +1602,7 @@ export function App() {
         c.gMap.set(gKey, {
           name: grpName,
           ps: r.ps,
+          bu: r.bu || '',
           aprRow: null,
           pMap: new Map(),
         });
@@ -1734,6 +1735,7 @@ export function App() {
             return {
               name: g.name,
               ps: g.ps,
+              bu: g.bu,
               aprRow: g.aprRow,
               products,
               _dt: gdt,
@@ -2721,9 +2723,13 @@ export function App() {
                         (k) => k !== 'test',
                       );
                       return realTeams.map((tk) => {
-                        const custs = tree.filter(
-                          (c) => c.buList && c.buList.includes(tk),
-                        );
+                        const custs = tree
+                          .filter((c) => c.buList && c.buList.includes(tk))
+                          .map((c) => {
+                            const filtered = c.groups.filter((g) => g.bu === tk);
+                            return filtered.length === c.groups.length ? c : { ...c, groups: filtered };
+                          })
+                          .filter((c) => c.groups.length > 0);
                         if (custs.length === 0) return null;
                         const t = TEAMS[tk];
                         let secDt = 0,
