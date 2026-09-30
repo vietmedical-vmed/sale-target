@@ -483,11 +483,23 @@ Deno.serve(async (req) => {
       const ids = (payload.rows || []).map(Number).filter((n: number) => Number.isFinite(n));
       if (!ids.length) return json({ ok: false, error: "no_rows" }, 400);
       const CHUNK = 200;
+      // Chặn xoá lan sang PS khác: 1 KH thường do nhiều PS cùng phụ trách. Client
+      // phải gửi multiPs=true (người dùng đã thấy danh sách PS khi xác nhận).
+      const psSet = new Set<string>();
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const { data, error } = await db.schema("shared").from("sale_target")
+          .select("ps").in("id", ids.slice(i, i + CHUNK));
+        if (error) throw new Error(error.message);
+        for (const r of data || []) psSet.add(String(r.ps ?? ""));
+      }
+      if (psSet.size > 1 && payload.multiPs !== true) {
+        return json({ ok: false, error: "multi_ps", ps: [...psSet] }, 409);
+      }
       for (let i = 0; i < ids.length; i += CHUNK) {
         const { error } = await db.schema("shared").from("sale_target").delete().in("id", ids.slice(i, i + CHUNK));
         if (error) throw new Error(error.message);
       }
-      await writeAuditLog(db, sess, "deleteCustomer", ids.length, { ids: ids.slice(0, 50) });
+      await writeAuditLog(db, sess, "deleteCustomer", ids.length, { ids: ids.slice(0, 50), ps: [...psSet] });
       return json({ ok: true, deleted: ids.length, rev: await getRev(db, sess, payload) });
     }
 

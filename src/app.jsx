@@ -1091,30 +1091,46 @@ export function App() {
     }
   }, []);
 
-  // Xóa TOÀN BỘ kế hoạch của 1 khách hàng — admin. Gom id từ rows (kể cả phần đang bị
-  // bộ lọc ẩn) để xóa đúng những gì thẻ KH đại diện, không đoán theo tên/mã ở backend.
+  // Xóa kế hoạch của 1 khách hàng — admin. Chỉ gom dòng thuộc team / miền / PS đang
+  // chọn (đúng các PS trên thẻ): 1 KH thường do nhiều PS ở nhiều team cùng phụ trách,
+  // gom theo mã KH trên toàn bộ rows sẽ xoá luôn kế hoạch của PS khác. Bộ lọc cấp sản
+  // phẩm (nhóm SP, tìm kiếm) vẫn KHÔNG áp dụng -> xoá cả SP đang bị lọc ẩn của các PS đó.
   const deleteCustomer = useCallback(
     async (targetCustId, customer) => {
       const ids = [];
-      const prods = new Set();
+      const byPs = new Map();
       rows.forEach((r) => {
         const match = targetCustId
           ? r.custId === targetCustId
           : r.cust === customer || r.custRaw === customer;
         if (!match) return;
+        if (viewBu && viewBu !== 'test' && r.bu !== viewBu) return;
+        if (!inSel(regionFilter, r.region) || !inSel(psFilter, r.ps)) return;
         if (Number.isFinite(r._row)) ids.push(r._row);
-        if (r.prod) prods.add(`${r.grp}||${r.mset}||${r.prod}`);
+        const ps = r.ps || '(không có PS)';
+        if (!byPs.has(ps)) byPs.set(ps, { prods: new Set(), n: 0 });
+        const e = byPs.get(ps);
+        e.n += 1;
+        if (r.prod) e.prods.add(`${r.grp}||${r.mset}||${r.prod}`);
       });
       if (!ids.length) return;
+      const multiPs = byPs.size > 1;
+      const lines = [...byPs]
+        .map(([ps, e]) => `  • ${ps}: ${e.prods.size} sản phẩm · ${e.n} dòng`)
+        .join('\n');
       if (
         !confirm(
-          `Xóa TOÀN BỘ kế hoạch của "${customer}"?\n\n${prods.size} sản phẩm · ${ids.length} dòng sẽ bị xóa vĩnh viễn (gồm cả phần đang bị bộ lọc ẩn).\nKhông thể hoàn tác.`,
+          `Xóa kế hoạch của "${customer}"?\n\n${lines}\n\n` +
+            (multiPs
+              ? `CẢNH BÁO: đang xóa của ${byPs.size} PS. Chọn đúng 1 PS ở bộ lọc nếu chỉ muốn xóa phần của PS đó.\n`
+              : '') +
+            `Gồm cả sản phẩm đang bị lọc nhóm SP / tìm kiếm ẩn. Không thể hoàn tác.`,
         )
       )
         return;
       const idSet = new Set(ids);
       try {
-        const res = await api('deleteCustomer', { rows: ids });
+        const res = await api('deleteCustomer', { rows: ids, multiPs });
         setRows((prev) => prev.filter((r) => !idSet.has(r._row)));
         setDrafts((prev) => {
           const next = {};
@@ -1128,7 +1144,7 @@ export function App() {
         setError('Xóa khách hàng thất bại: ' + err.message);
       }
     },
-    [rows],
+    [rows, viewBu, regionFilter, psFilter],
   );
 
   const [conflicts, setConflicts] = useState([]);
