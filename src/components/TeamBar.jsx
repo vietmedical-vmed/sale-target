@@ -57,9 +57,9 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
   const teamStats = useMemo(() => {
     const m = {};
     realTeams.forEach((k) => {
-      m[k] = { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
+      m[k] = { dt: 0, dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
     });
-    m[''] = { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
+    m[''] = { dt: 0, dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
     const process = (r, isOop) => {
       const bu = r.bu || '';
       const idx = MONTHS.indexOf(r.mo);
@@ -77,15 +77,18 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
         (MONTHS[idx] === CURRENT_MONTH && act !== 0);
       const inYtd = MONTHS[idx] <= CURRENT_MONTH;
       const upd = useAct ? act * pr : rawUpd * pr;
+      const dDt = rev * pr;
       const actDt = dtActR;
       const khDt = rawUpd * pr;
       if (m[bu]) {
+        m[bu].dt += dDt;
         m[bu].dtUpd += upd;
         if (inYtd) {
           m[bu].dtYtd += actDt;
           if (!isOop) m[bu].khYtdDt += khDt;
         }
       }
+      m[''].dt += dDt;
       m[''].dtUpd += upd;
       if (inYtd) {
         m[''].dtYtd += actDt;
@@ -110,7 +113,7 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
       style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }}
     >
       {items.map((t) => {
-        const s = teamStats[t.key] || { dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
+        const s = teamStats[t.key] || { dt: 0, dtUpd: 0, dtYtd: 0, khYtdDt: 0 };
         const pct = s.dtUpd > 0 ? Math.round((s.dtYtd / s.dtUpd) * 100) : 0;
         const pctColor =
           pct >= 100
@@ -142,7 +145,12 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
               <span className="text-[18px] font-bold tabular-nums text-slate-800">
                 {masked ? '**' : moneyTy3(s.dtUpd)}
               </span>
-              <span className="text-[11px] text-slate-400 ml-1">KH Update</span>
+              <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
+              <span className="text-[11px] text-slate-300 mx-0.5">·</span>
+              <span className="text-[13px] font-semibold tabular-nums text-slate-500">
+                {masked ? '**' : moneyTy3(s.dt)}
+              </span>
+              <span className="text-[10px] text-slate-400 ml-0.5">Target đầu năm</span>
             </div>
             <div className="flex items-baseline gap-1 mb-1.5">
               <span

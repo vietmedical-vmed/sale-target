@@ -1274,6 +1274,27 @@ export function App() {
     if (!viewBu || viewBu === 'test') return effectiveRows;
     return effectiveRows.filter((r) => r.bu === viewBu);
   }, [effectiveRows, viewBu]);
+  const teamBarRows = useMemo(() => {
+    const q = deaccent(deferredSearch.trim());
+    return effectiveRows.filter((r) =>
+      inSel(regionFilter, r.region) &&
+      inSel(psFilter, r.ps) &&
+      inSel(custFilter, r.cust) &&
+      inSel(groupFilter, r.grp) &&
+      (!q || deaccent(r.cust).includes(q) || deaccent(r.prod).includes(q) || deaccent(r.custId).includes(q) || deaccent(r.mset).includes(q))
+    );
+  }, [effectiveRows, regionFilter, psFilter, custFilter, groupFilter, deferredSearch]);
+  const teamBarOop = useMemo(() => {
+    const q = deaccent(deferredSearch.trim());
+    return oopRows.filter((r) =>
+      MONTHS.indexOf(r.mo) >= 0 &&
+      inSel(regionFilter, r.region) &&
+      inSel(psFilter, r.ps) &&
+      inSel(custFilter, r.cust) &&
+      inSel(groupFilter, r.grp) &&
+      (!q || deaccent(r.cust).includes(q) || deaccent(r.prod).includes(q) || deaccent(r.custId).includes(q) || deaccent(r.mset).includes(q))
+    );
+  }, [oopRows, regionFilter, psFilter, custFilter, groupFilter, deferredSearch]);
   // Dữ liệu cho 2 MÀN TỔNG HỢP: kế hoạch + dòng ngoài kế hoạch (để tổng đủ số).
   // Màn chi tiết, export, sửa/xoá vẫn dùng teamRows -> không thấy các dòng này.
   const summaryRows = useMemo(
@@ -2401,8 +2422,8 @@ export function App() {
         <div className="px-6 pt-4">
           {canSwitchTeam(auth.role) && (
             <TeamSummaryBar
-              rows={effectiveRows}
-              oopRows={oopRows}
+              rows={teamBarRows}
+              oopRows={teamBarOop}
               value={viewBu}
               onChange={setViewBu}
             />
