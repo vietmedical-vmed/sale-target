@@ -76,7 +76,7 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
         MONTHS[idx] < CURRENT_MONTH ||
         (MONTHS[idx] === CURRENT_MONTH && act !== 0);
       const inYtd = MONTHS[idx] <= CURRENT_MONTH;
-      const upd = useAct ? act * pr : rawUpd * pr;
+      const upd = useAct ? dtActR : rawUpd * pr;
       const dDt = rev * pr;
       const actDt = dtActR;
       const khDt = rawUpd * pr;
