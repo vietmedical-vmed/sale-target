@@ -141,20 +141,17 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
                 {t.label}
               </span>
             </div>
-            <div className="flex items-baseline justify-between mb-0.5">
-              <div className="leading-tight">
-                <span className="text-[18px] font-bold tabular-nums text-slate-800">
-                  {masked ? '**' : moneyTy3(s.dtUpd)}
-                </span>
-                <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
-              </div>
-              <div className="leading-tight text-right">
-                <span className="text-[11px] text-slate-300 mx-1">/</span>
-                <span className="text-[18px] font-bold tabular-nums text-slate-800">
-                  {masked ? '**' : moneyTy3(s.dt)}
-                </span>
-                <span className="text-[11px] text-slate-400 ml-1">Target đầu năm</span>
-              </div>
+            <div className="leading-tight mb-0.5">
+              <span className="text-[18px] font-bold tabular-nums text-slate-800">
+                {masked ? '**' : moneyTy3(s.dtUpd)}
+              </span>
+              <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
+            </div>
+            <div className="leading-tight mb-1">
+              <span className="text-[18px] font-bold tabular-nums text-slate-800">
+                {masked ? '**' : moneyTy3(s.dt)}
+              </span>
+              <span className="text-[11px] text-slate-400 ml-1">Target đầu năm</span>
             </div>
             <div className="flex items-baseline gap-1 mb-1.5">
               <span
