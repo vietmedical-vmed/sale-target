@@ -37,6 +37,10 @@ export const AlertCircle = Ic([
   'M12 8v4',
   'M12 16h.01',
 ]);
+export const Ban = Ic([
+  'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z',
+  'm4.9 4.9 14.2 14.2',
+]);
 export const ChevronDown = Ic(['m6 9 6 6 6-6']);
 export const ChevronUp = Ic(['m6 15 6-6 6 6']);
 export const ChevronRight = Ic(['m9 6 6 6-6 6']);

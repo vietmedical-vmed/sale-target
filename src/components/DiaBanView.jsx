@@ -6,6 +6,7 @@ import { custLabel, deaccent, fmtCust, inSel } from '../lib/text.js';
 import { api } from '../api/client.js';
 import { CustomerPicker } from './CustomerPicker.jsx';
 import { Modal } from './Modal.jsx';
+import { HoaDonLoaiTruButton } from './HoaDonLoaiTru.jsx';
 
 // ============ CẤU HÌNH ĐỊA BÀN (Khách hàng × Ngành hàng → PS, có thời gian hiệu lực) ============
 // dm_dia_ban khai báo ai phụ trách ngành hàng nào của khách hàng nào, VÀ TỪ THÁNG
@@ -643,6 +644,8 @@ export function DiaBanView({
   };
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  // Đổi cấu hình loại trừ hóa đơn xong mà chưa đồng bộ -> nhắc bấm Đồng bộ thực hiện
+  const [loaiTruDirty, setLoaiTruDirty] = useState(false);
 
   return (
     <div className="px-6 pb-8">
@@ -709,6 +712,7 @@ export function DiaBanView({
                                 unmatched: d.unmatched_keys || 0,
                                 set: d.set_rows || 0,
                               });
+                              setLoaiTruDirty(false);
                               setSyncing(false);
                               return;
                             }
@@ -750,6 +754,14 @@ export function DiaBanView({
                       {syncResult.msg}
                     </span>
                   ))}
+                {loaiTruDirty && !syncing && (
+                  <span className="text-[11px] text-amber-700">
+                    Cấu hình loại trừ HĐ đã đổi — cần đồng bộ
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
+                <HoaDonLoaiTruButton onChanged={() => setLoaiTruDirty(true)} />
               </div>
               {oopAction && <div className="ml-auto">{oopAction}</div>}
             </div>

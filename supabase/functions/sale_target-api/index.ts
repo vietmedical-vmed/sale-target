@@ -1018,6 +1018,68 @@ Deno.serve(async (req) => {
       return json({ ok: true, job: data });
     }
 
+    // ---- Loại trừ hóa đơn khỏi thực hiện (app_sale.hoa_don_loai_tru) ----
+    // Đổi cấu hình chỉ có hiệu lực sau "Đồng bộ thực hiện" (cap_nhat_thuc_hien).
+    if (action === "getHoaDonLoaiTru") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const { data, error } = await db.rpc("get_hoa_don_loai_tru");
+      if (error) throw new Error(error.message);
+      return json({ ok: true, rows: data || [] });
+    }
+
+    if (action === "timHoaDon") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const q = String(payload.q || "").trim();
+      if (q.length < 2) return json({ ok: true, rows: [] });
+      const { data, error } = await db.rpc("tim_hoa_don", { p_q: q, p_limit: 50 });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, rows: data || [] });
+    }
+
+    if (action === "luuHoaDonLoaiTru") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const soTaiLieu = String(payload.soTaiLieu || "").trim();
+      const ngay = String(payload.ngayTaiLieu || "").trim();
+      if (!soTaiLieu || !/^\d{4}-\d{2}-\d{2}$/.test(ngay)) {
+        return json({ ok: false, error: "thieu_du_lieu" }, 400);
+      }
+      const dang = typeof payload.dangLoaiTru === "boolean" ? payload.dangLoaiTru : null;
+      const lyDo = typeof payload.lyDo === "string" ? payload.lyDo : null;
+      const { data, error } = await db.rpc("luu_hoa_don_loai_tru", {
+        p_so_tai_lieu: soTaiLieu,
+        p_ngay_tai_lieu: ngay,
+        p_dang_loai_tru: dang,
+        p_ly_do: lyDo,
+        p_actor: sess.n || sess.u || null,
+      });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("khong_tim_thay_hoa_don")) return json({ ok: false, error: "khong_tim_thay_hoa_don" }, 404);
+        if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+        throw new Error(msg);
+      }
+      await writeAuditLog(db, sess, "luuHoaDonLoaiTru", 1, {
+        so_tai_lieu: soTaiLieu, ngay_tai_lieu: ngay, dang_loai_tru: dang, ly_do: lyDo,
+      });
+      return json({ ok: true, row: data });
+    }
+
+    if (action === "xoaHoaDonLoaiTru") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const id = Number(payload.id);
+      if (!Number.isFinite(id)) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+      const { data, error } = await db.rpc("xoa_hoa_don_loai_tru", { p_id: id });
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("khong_ton_tai")) return json({ ok: false, error: "khong_ton_tai" }, 404);
+        throw new Error(msg);
+      }
+      await writeAuditLog(db, sess, "xoaHoaDonLoaiTru", 1, {
+        so_tai_lieu: data?.so_tai_lieu, ngay_tai_lieu: data?.ngay_tai_lieu,
+      });
+      return json({ ok: true });
+    }
+
     return json({ ok: false, error: "unknown_action" }, 400);
   } catch (err) {
     const msg = String(err && (err as Error).message || err);
