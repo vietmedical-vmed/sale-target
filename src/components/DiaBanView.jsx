@@ -644,8 +644,61 @@ export function DiaBanView({
   };
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
-  // Đổi cấu hình loại trừ hóa đơn xong mà chưa đồng bộ -> nhắc bấm Đồng bộ thực hiện
+  // Đổi cấu hình loại trừ hóa đơn mà chưa đồng bộ xong -> nhắc. Đóng popup loại trừ
+  // có thay đổi sẽ tự chạy runSync.
   const [loaiTruDirty, setLoaiTruDirty] = useState(false);
+  const runSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const r = await api('syncThucHien');
+      const jobId = r.jobId;
+      if (!jobId) {
+        setSyncResult({ ok: false, msg: 'Không nhận được jobId' });
+        setSyncing(false);
+        return;
+      }
+      if (r.running) {
+        setSyncResult({ ok: false, msg: 'Đang chạy job #' + jobId });
+      }
+      const poll = async () => {
+        for (let i = 0; i < 100; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          try {
+            const s = await api('syncJobStatus', { jobId });
+            const job = s.job;
+            if (!job) continue;
+            if (job.status === 'done') {
+              const d = job.result || {};
+              setSyncResult({
+                ok: true,
+                matched: d.matched_keys || 0,
+                unmatched: d.unmatched_keys || 0,
+                set: d.set_rows || 0,
+              });
+              // job đang chạy sẵn có thể bắt đầu TRƯỚC khi đổi cấu hình -> vẫn nhắc
+              if (!r.running) setLoaiTruDirty(false);
+              setSyncing(false);
+              return;
+            }
+            if (job.status === 'error') {
+              setSyncResult({ ok: false, msg: job.error || 'Lỗi không xác định' });
+              setSyncing(false);
+              return;
+            }
+          } catch {
+            // keep polling
+          }
+        }
+        setSyncResult({ ok: false, msg: 'Timeout — job vẫn chạy ở server' });
+        setSyncing(false);
+      };
+      poll();
+    } catch (e) {
+      setSyncResult({ ok: false, msg: e.message });
+      setSyncing(false);
+    }
+  };
 
   return (
     <div className="px-6 pb-8">
@@ -683,57 +736,7 @@ export function DiaBanView({
               <div className="flex items-center gap-2 ml-6 border-l border-slate-200 pl-6">
                 <button
                   disabled={syncing}
-                  onClick={async () => {
-                    setSyncing(true);
-                    setSyncResult(null);
-                    try {
-                      const r = await api('syncThucHien');
-                      const jobId = r.jobId;
-                      if (!jobId) {
-                        setSyncResult({ ok: false, msg: 'Không nhận được jobId' });
-                        setSyncing(false);
-                        return;
-                      }
-                      if (r.running) {
-                        setSyncResult({ ok: false, msg: 'Đang chạy job #' + jobId });
-                      }
-                      const poll = async () => {
-                        for (let i = 0; i < 100; i++) {
-                          await new Promise((r) => setTimeout(r, 3000));
-                          try {
-                            const s = await api('syncJobStatus', { jobId });
-                            const job = s.job;
-                            if (!job) continue;
-                            if (job.status === 'done') {
-                              const d = job.result || {};
-                              setSyncResult({
-                                ok: true,
-                                matched: d.matched_keys || 0,
-                                unmatched: d.unmatched_keys || 0,
-                                set: d.set_rows || 0,
-                              });
-                              setLoaiTruDirty(false);
-                              setSyncing(false);
-                              return;
-                            }
-                            if (job.status === 'error') {
-                              setSyncResult({ ok: false, msg: job.error || 'Lỗi không xác định' });
-                              setSyncing(false);
-                              return;
-                            }
-                          } catch {
-                            // keep polling
-                          }
-                        }
-                        setSyncResult({ ok: false, msg: 'Timeout — job vẫn chạy ở server' });
-                        setSyncing(false);
-                      };
-                      poll();
-                    } catch (e) {
-                      setSyncResult({ ok: false, msg: e.message });
-                      setSyncing(false);
-                    }
-                  }}
+                  onClick={runSync}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md disabled:opacity-50"
                 >
                   {syncing ? (
@@ -761,7 +764,12 @@ export function DiaBanView({
                 )}
               </div>
               <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
-                <HoaDonLoaiTruButton onChanged={() => setLoaiTruDirty(true)} />
+                <HoaDonLoaiTruButton
+                  onChanged={() => setLoaiTruDirty(true)}
+                  onDone={() => {
+                    if (!syncing) runSync();
+                  }}
+                />
               </div>
               {oopAction && <div className="ml-auto">{oopAction}</div>}
             </div>

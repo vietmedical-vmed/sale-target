@@ -8,7 +8,8 @@ import { Modal } from './Modal.jsx';
 // Khai báo hóa đơn (số tài liệu + ngày) không tính vào doanh thu thực hiện, lưu ở
 // app_sale.hoa_don_loai_tru. Không xoá hóa đơn: tắt "Loại" là tính lại, khai báo
 // (lý do, người sửa) vẫn giữ để sau bật lại được. Đổi cấu hình chỉ có hiệu lực
-// sau khi chạy "Đồng bộ thực hiện" → báo lên qua onChanged.
+// sau khi chạy "Đồng bộ thực hiện": báo lên qua onChanged, và đóng popup có thay
+// đổi sẽ gọi onDone để tự đồng bộ.
 
 // '2026-09-27' -> '27/09/2026'
 const fmtNgay = (d) => {
@@ -27,7 +28,7 @@ const th =
   'px-2 py-1.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap';
 const td = 'px-2 py-1.5 text-[12.5px] border-t border-slate-100 align-top';
 
-export function HoaDonLoaiTruButton({ onChanged }) {
+export function HoaDonLoaiTruButton({ onChanged, onDone }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState(null); // null = chưa tải
   const [loading, setLoading] = useState(false);
@@ -156,6 +157,14 @@ export function HoaDonLoaiTruButton({ onChanged }) {
     }
   };
 
+  const close = () => {
+    setOpen(false);
+    if (changed) {
+      setChanged(false);
+      if (onDone) onDone();
+    }
+  };
+
   const nDang = (rows || []).filter((r) => r.dang_loai_tru).length;
   const dtDang = (rows || [])
     .filter((r) => r.dang_loai_tru)
@@ -178,7 +187,7 @@ export function HoaDonLoaiTruButton({ onChanged }) {
       </button>
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         title="Loại trừ hóa đơn khỏi doanh thu thực hiện"
         icon={<Ban size={16} className="text-slate-600" />}
         width={1100}
@@ -186,17 +195,16 @@ export function HoaDonLoaiTruButton({ onChanged }) {
           <div className="flex items-center gap-3 px-4 py-3 border-t border-slate-100">
             {changed ? (
               <span className="text-[12px] text-amber-700">
-                Đã đổi cấu hình — bấm <b>Đồng bộ thực hiện</b> để số thực hiện
-                cập nhật.
+                Đã đổi cấu hình — đóng popup sẽ tự <b>Đồng bộ thực hiện</b>.
               </span>
             ) : (
               <span className="text-[12px] text-slate-500">
-                Thay đổi chỉ có hiệu lực sau khi bấm Đồng bộ thực hiện.
+                Có thay đổi thì đóng popup sẽ tự đồng bộ thực hiện.
               </span>
             )}
             <div className="flex-1" />
             <button
-              onClick={() => setOpen(false)}
+              onClick={close}
               className="px-3 py-1.5 text-[13px] font-medium border border-slate-200 hover:bg-slate-50 rounded-md"
             >
               Đóng
