@@ -2445,28 +2445,30 @@ export function App() {
             </div>
           )}
         </header>
-        <div className="px-6 pt-4">
-          {canSwitchTeam(auth.role) && (
-            <TeamSummaryBar
-              rows={teamBarRows}
-              oopRows={teamBarOop}
-              value={viewBu}
-              onChange={setViewBu}
-            />
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            <div className="flex flex-col gap-3">
-              <AccountBar
-                customers={accountsAssigned - missingAccounts.length}
-                assigned={accountsAssigned}
-                missing={missingAccounts.length}
-                onShowMissing={() => setShowMissing(true)}
+        {tab !== 'diaban' && tab !== 'audit' && (
+          <div className="px-6 pt-4">
+            {canSwitchTeam(auth.role) && (
+              <TeamSummaryBar
+                rows={teamBarRows}
+                oopRows={teamBarOop}
+                value={viewBu}
+                onChange={setViewBu}
               />
-              <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div className="flex flex-col gap-3">
+                <AccountBar
+                  customers={accountsAssigned - missingAccounts.length}
+                  assigned={accountsAssigned}
+                  missing={missingAccounts.length}
+                  onShowMissing={() => setShowMissing(true)}
+                />
+                <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
+              </div>
+              <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
             </div>
-            <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
           </div>
-        </div>
+        )}
         {
           // Modal chi tiết OOP + form dm_ps — treo ở root vì dùng fixed inset-0
           isAdmin && oopDetailReason && (
