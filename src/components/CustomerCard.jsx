@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from './icons.jsx';
-import { CURRENT_MONTH, MASK_MONEY, MONTHS, NO_MSET } from '../config/constants.js';
+import { CURRENT_MONTH, MASK_MONEY, MONTHS, NO_MSET, isYtdMonth } from '../config/constants.js';
 import { fmtTy3, moneyTy3 } from '../lib/format.js';
 import { Modal } from './Modal.jsx';
 import { ProductGroupSection } from './ProductGroupSection.jsx';
 import { ProductPickerForm } from './AddProduct.jsx';
+import { QuotaThauCtx, grpKey, prodKey } from './QuotaThau.jsx';
 
 
 // ============ CUSTOMER CARD ============
@@ -45,15 +46,54 @@ export const CustomerCard = React.memo(function CustomerCard({
     );
     return s;
   }, [adding, groups]);
+  const quotaCtx = useContext(QuotaThauCtx);
   const stats = useMemo(() => {
     let plan = 0,
       dt = 0,
-      dtUpd = 0;
+      dtUpd = 0,
+      dtYtd = 0,
+      onHandM = 0,
+      ytdM = 0;
     const monthlyDt = Array(12).fill(0);
     let productCount = 0;
     groups.forEach((g) => {
       productCount += g.products.length;
+      const allGroupRows = g.products.flatMap((p) => p.monthly.flatMap((c) => c.rows));
+      const grpFy = allGroupRows.length ? allGroupRows[0].fy : '';
+      const gk = grpKey(grpFy, g.ps, custId || '', g.name);
+      const dotsNhom = quotaCtx ? quotaCtx.dotsByGroup.get(gk) || [] : [];
+      const nhomCoDot = dotsNhom.length > 0;
+      const thangCuaDot = new Map();
+      for (const d of dotsNhom) thangCuaDot.set(`${d.loai}|${d.dot}`, d.thang || '');
       g.products.forEach((p) => {
+        let pOnHand = 0, pPrice = 0;
+        const allR = p.monthly.flatMap((c) => c.rows);
+        allR.forEach((r) => {
+          const rQOld = Number(r.qOld) || 0;
+          const rQMain = Number(r.qMain) || 0;
+          const rQAdd = Number(r.qAdd) || 0;
+          const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
+          const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
+          pOnHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
+          if (!pPrice && r.price) pPrice = Number(r.price) || 0;
+        });
+        const quotaSp = quotaCtx
+          ? (quotaCtx.quotasByProduct.get(
+              prodKey(grpFy, g.ps, custId || '', g.name, p.mset, p.product),
+            ) || []).filter((q) => (Number(q.price) || 0) === (Number(p.pPrice) || 0))
+          : [];
+        if (nhomCoDot || quotaSp.length) {
+          pOnHand = 0;
+          for (const q of quotaSp) {
+            const n = Number(q.qty) || 0;
+            if (q.loai === 'cu') { pOnHand += n; }
+            else {
+              const thang = thangCuaDot.get(`${q.loai}|${q.dot}`) || '';
+              if (thang && thang <= CURRENT_MONTH) pOnHand += n;
+            }
+          }
+        }
+        onHandM += pOnHand * pPrice;
         p.monthly.forEach((c, i) => {
           plan += c.rev;
           c.rows.forEach((r) => {
@@ -66,25 +106,33 @@ export const CustomerCard = React.memo(function CustomerCard({
             const d = (Number(r.rev) || 0) * pr;
             dt += d;
             monthlyDt[i] += d;
-            const upd = useAct
-              ? act
-              : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
-                ? Number(r.revUpd) || 0
-                : Number(r.rev) || 0;
-            dtUpd += upd * pr;
+            if (isYtdMonth(MONTHS[i])) {
+              dtYtd += dtActR;
+              ytdM += dtActR;
+            }
+            const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+              ? Number(r.revUpd) || 0
+              : Number(r.rev) || 0;
+            dtUpd += useAct ? dtActR : rawUpd * pr;
           });
         });
       });
     });
+    const khLeftDt = dtUpd - dtYtd;
+    const quotaAvailDt = onHandM - ytdM;
     return {
       plan,
       dt,
       dtUpd,
       chenh: dtUpd - dt,
+      dtYtd,
+      khLeftDt,
+      q14Dt: onHandM,
+      quotaAvailDt,
       productCount,
       monthlyDt,
     };
-  }, [groups]);
+  }, [groups, quotaCtx, custId]);
   return (
     <div className="bg-white rounded-lg border border-slate-200 mb-3 shadow-sm cust-wrap">
       <div className="flex items-stretch sticky-cust">
@@ -112,7 +160,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             <div className="hidden md:flex items-center gap-5 flex-shrink-0">
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                  DThu đầu năm
+                  Target đầu năm
                 </div>
                 <div className="text-[13px] font-semibold tabular-nums text-slate-700">
                   {moneyTy3(stats.dt)}
@@ -120,13 +168,13 @@ export const CustomerCard = React.memo(function CustomerCard({
               </div>
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                  DThu update
+                  Dthu dự kiến
                 </div>
                 <div className="text-[13px] font-semibold tabular-nums text-blue-700">
                   {moneyTy3(stats.dtUpd)}
                 </div>
               </div>
-              <div className="text-right min-w-[70px]">
+              <div className="text-right min-w-[60px]">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">
                   Chênh lệch
                 </div>
@@ -138,6 +186,24 @@ export const CustomerCard = React.memo(function CustomerCard({
                     : MASK_MONEY
                       ? '•••'
                       : (stats.chenh > 0 ? '+' : '') + fmtTy3(stats.chenh)}
+                </div>
+              </div>
+              <div className="text-right min-w-[60px]">
+                <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                  KH còn lại
+                </div>
+                <div className="text-[13px] font-semibold tabular-nums text-slate-700">
+                  {moneyTy3(stats.khLeftDt)}
+                </div>
+              </div>
+              <div className="text-right min-w-[60px]">
+                <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                  Quota khả dụng
+                </div>
+                <div
+                  className={`text-[13px] font-semibold tabular-nums ${stats.quotaAvailDt > 0 ? 'text-orange-600' : stats.quotaAvailDt < 0 ? 'text-red-600' : 'text-slate-400'}`}
+                >
+                  {moneyTy3(stats.quotaAvailDt)}
                 </div>
               </div>
             </div>

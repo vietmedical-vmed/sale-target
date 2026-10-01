@@ -695,12 +695,10 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           dt += rb;
           mDtBase[i] += rb;
           if (isYtdMonth(MONTHS[i])) ytdM += dtActR;
-          const upd = useAct
-            ? act
-            : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
-              ? Number(r.revUpd) || 0
-              : Number(r.rev) || 0;
-          const ru = upd * pr;
+          const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+            ? Number(r.revUpd) || 0
+            : Number(r.rev) || 0;
+          const ru = useAct ? dtActR : rawUpd * pr;
           dtUpd += ru;
           mDtUpd[i] += ru;
         });
@@ -758,7 +756,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           </div>
           <div className="text-right">
             <div className="text-[9px] uppercase tracking-wide text-slate-400">
-              DThu đầu năm
+              Target đầu năm
             </div>
             <div className="text-[12px] font-semibold tabular-nums text-slate-700">
               {moneyTy3(gs.dt)}
@@ -766,7 +764,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           </div>
           <div className="text-right">
             <div className="text-[9px] uppercase tracking-wide text-slate-400">
-              DThu update
+              Dthu dự kiến
             </div>
             <div className="text-[12px] font-semibold tabular-nums text-blue-700">
               {moneyTy3(gs.dtUpd)}
@@ -784,6 +782,24 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                 : MASK_MONEY
                   ? '•••'
                   : (gs.chenh > 0 ? '+' : '') + fmtTy3(gs.chenh)}
+            </div>
+          </div>
+          <div className="text-right min-w-[56px]">
+            <div className="text-[9px] uppercase tracking-wide text-slate-400">
+              KH còn lại
+            </div>
+            <div className="text-[12px] font-semibold tabular-nums text-slate-700">
+              {moneyTy3(gs.dtUpd - gs.ytdM)}
+            </div>
+          </div>
+          <div className="text-right min-w-[56px]">
+            <div className="text-[9px] uppercase tracking-wide text-slate-400">
+              Quota KD
+            </div>
+            <div
+              className={`text-[12px] font-semibold tabular-nums ${gs.quotaAvailM > 0 ? 'text-orange-600' : gs.quotaAvailM < 0 ? 'text-red-600' : 'text-slate-400'}`}
+            >
+              {moneyTy3(gs.quotaAvailM)}
             </div>
           </div>
         </div>
