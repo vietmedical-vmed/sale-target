@@ -1740,11 +1740,18 @@ export function App() {
                 (a.product || '').localeCompare(b.product || '') ||
                 (a.pPrice || 0) - (b.pPrice || 0),
             );
-            let gdt = 0;
+            let gdt = 0, gdtUpd = 0;
             products.forEach((p) =>
-              p.monthly.forEach((cell) =>
+              p.monthly.forEach((cell, i) =>
                 cell.rows.forEach((r) => {
-                  gdt += (Number(r.rev) || 0) * (Number(r.price) || 0);
+                  const pr = Number(r.price) || 0;
+                  const act = Number(r.act) || 0;
+                  const dtActR = Number(r.dtAct) || 0;
+                  gdt += (Number(r.rev) || 0) * pr;
+                  const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
+                  const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+                    ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
+                  gdtUpd += useAct ? dtActR : rawUpd * pr;
                 }),
               ),
             );
@@ -1755,6 +1762,7 @@ export function App() {
               aprRow: g.aprRow,
               products,
               _dt: gdt,
+              _dtUpd: gdtUpd,
             };
           })
           .filter((g) => g.products.length > 0)
@@ -2745,7 +2753,17 @@ export function App() {
                             const filtered = c.groups.filter((g) => g.bu === tk);
                             return filtered.length === c.groups.length ? c : { ...c, groups: filtered };
                           })
-                          .filter((c) => c.groups.length > 0);
+                          .filter((c) => c.groups.length > 0)
+                          .sort((a, b) => {
+                            const oa = a.customer === OOP_CUST ? 1 : 0,
+                              ob = b.customer === OOP_CUST ? 1 : 0;
+                            if (oa !== ob) return oa - ob;
+                            const aUpd = a.groups.reduce((s, g) => s + (g._dtUpd || 0), 0);
+                            const bUpd = b.groups.reduce((s, g) => s + (g._dtUpd || 0), 0);
+                            const ha = aUpd > 0 ? 0 : 1, hb = bUpd > 0 ? 0 : 1;
+                            if (ha !== hb) return ha - hb;
+                            return bUpd - aUpd;
+                          });
                         if (custs.length === 0) return null;
                         const t = TEAMS[tk];
                         let secDt = 0,
