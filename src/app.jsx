@@ -137,6 +137,7 @@ export function App() {
   // reload ngay, chờ user lưu/huỷ rồi mới reload để không mất bản nháp.
   const [pendingReload, setPendingReload] = useState(false);
   const [curMonth, setCurMonth] = useState(CURRENT_MONTH);
+  const [maxDocDate, setMaxDocDate] = useState(null);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
   const [teamOpen, setTeamOpen] = useState(() => new Set());
@@ -341,6 +342,7 @@ export function App() {
           setCurMonth(r.config.current_month);
         }
         if (typeof r.rev === 'number') setDataRev(r.rev);
+        if (r.maxDocDate) setMaxDocDate(r.maxDocDate);
         setStale(false);
         if (r.role)
           setAuth({
@@ -2339,6 +2341,22 @@ export function App() {
               </div>
             )}
           </div>
+          {(() => {
+            const today = new Date().toISOString().slice(0, 7);
+            let dateStr;
+            if (CURRENT_MONTH < today) {
+              const [y, m] = CURRENT_MONTH.split('-').map(Number);
+              const last = new Date(y, m, 0).getDate();
+              dateStr = `${CURRENT_MONTH}-${String(last).padStart(2, '0')}`;
+            } else {
+              dateStr = maxDocDate || new Date().toISOString().slice(0, 10);
+            }
+            return (
+              <div className="px-6 py-1.5 text-[12px] text-slate-500 border-t border-slate-100">
+                Dữ liệu cập nhật đến ngày {dateStr}
+              </div>
+            );
+          })()}
           <div className="px-6 flex items-center gap-1 border-t border-slate-100">
             <TabBtn
               active={tab === 'detail'}

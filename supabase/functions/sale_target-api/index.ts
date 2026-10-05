@@ -63,12 +63,18 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      const [allRows, classMap, rev, cfgRows, quotaThau] = await Promise.all([
+      const [allRows, classMap, rev, cfgRows, quotaThau, maxDocDateRes] = await Promise.all([
         fetchAll(db, sess, payload),
         fetchOopClassify(db, sess, payload).catch(() => new Map()),
         getRev(db, sess, payload),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
         fetchQuotaThau(db, sess, payload).catch(() => ({ dots: [], quotas: [] })),
+        db.schema("app_sale").from("hoa_don_bovattu")
+          .select("ngay_tai_lieu")
+          .order("ngay_tai_lieu", { ascending: false })
+          .limit(1)
+          .then(r => (r.data && r.data[0]?.ngay_tai_lieu) || null)
+          .catch(() => null),
       ]);
       const cfg: Record<string, unknown> = {};
       for (const r of cfgRows) cfg[r.key] = r.value;
@@ -97,7 +103,7 @@ Deno.serve(async (req) => {
         oopRows, oopMeta, oopRowNums, oopRowRevs, rev,
         dots: quotaThau.dots, quotas: quotaThau.quotas,
         role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
-        config: cfg,
+        config: cfg, maxDocDate: maxDocDateRes,
       });
     }
 
