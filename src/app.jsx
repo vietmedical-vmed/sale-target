@@ -10,7 +10,7 @@ import React, {
 import {
   Search, Download, Check, Loader2, AlertCircle,
   ChevronDown, ChevronRight, RefreshCw,
-  LogOut, Eye, EyeOff, UserPlus,
+  LogOut, Eye, EyeOff, UserPlus, HelpCircle, Pencil,
 } from './components/icons.jsx';
 import {
   MONTHS, MONTH_LABELS, CURRENT_MONTH, setCurrentMonth,
@@ -50,6 +50,49 @@ const observeVerticalOffset = (instance, cb) => {
     cb(offset, isScrolling);
   });
 };
+
+function HelpModal({ open, onClose, content, isAdmin, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const startEdit = () => { setDraft(content); setEditing(true); };
+  const save = async () => {
+    setSaving(true);
+    try { await onSave(draft); setEditing(false); } catch {}
+    setSaving(false);
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="Định nghĩa & Công thức" icon={<HelpCircle size={16} className="text-blue-500" />} width={720}>
+      <div className="px-4 py-3 max-h-[70vh] overflow-y-auto">
+        {editing ? (
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="w-full min-h-[300px] text-[13px] font-mono border border-slate-200 rounded-md p-3 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-y"
+          />
+        ) : content ? (
+          <div className="text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed">{content}</div>
+        ) : (
+          <div className="text-[13px] text-slate-400 italic">Chưa có nội dung. {isAdmin ? 'Bấm Chỉnh sửa để thêm.' : ''}</div>
+        )}
+      </div>
+      {isAdmin && (
+        <div className="px-4 py-2.5 border-t border-slate-100 flex justify-end gap-2">
+          {editing ? (
+            <>
+              <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-[12px] text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50">Huỷ</button>
+              <button onClick={save} disabled={saving} className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu'}</button>
+            </>
+          ) : (
+            <button onClick={startEdit} className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50">
+              <Pencil size={12} /> Chỉnh sửa
+            </button>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 function VirtualCardList({ items, scrollRef, cardKey, renderCard }) {
   const virtualizer = useVirtualizer({
@@ -138,6 +181,8 @@ export function App() {
   const [pendingReload, setPendingReload] = useState(false);
   const [curMonth, setCurMonth] = useState(CURRENT_MONTH);
   const [maxDocDate, setMaxDocDate] = useState(null);
+  const [helpContent, setHelpContent] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
   const [teamOpen, setTeamOpen] = useState(() => new Set());
@@ -343,6 +388,7 @@ export function App() {
         }
         if (typeof r.rev === 'number') setDataRev(r.rev);
         if (r.maxDocDate) setMaxDocDate(r.maxDocDate);
+        if (r.config && r.config.help_content) setHelpContent(String(r.config.help_content));
         setStale(false);
         if (r.role)
           setAuth({
@@ -2352,8 +2398,15 @@ export function App() {
               dateStr = maxDocDate || new Date().toISOString().slice(0, 10);
             }
             return (
-              <div className="px-6 py-1.5 text-[12px] text-slate-500 border-t border-slate-100">
-                Dữ liệu cập nhật đến ngày {dateStr}
+              <div className="px-6 py-1.5 text-[12px] text-slate-500 border-t border-slate-100 flex items-center gap-3">
+                <span>Dữ liệu cập nhật đến ngày {dateStr}</span>
+                <button
+                  onClick={() => setShowHelp(true)}
+                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  <HelpCircle size={13} />
+                  Tìm hiểu thêm
+                </button>
               </div>
             );
           })()}
@@ -2526,6 +2579,16 @@ export function App() {
             busy={oopFixBusy}
           />
         )}
+        <HelpModal
+          open={showHelp}
+          onClose={() => setShowHelp(false)}
+          content={helpContent}
+          isAdmin={auth.role === 'admin'}
+          onSave={async (text) => {
+            await api('setAppConfig', { key: 'help_content', value: text });
+            setHelpContent(text);
+          }}
+        />
         <Modal
           open={showMissing}
           onClose={() => setShowMissing(false)}
