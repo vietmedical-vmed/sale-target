@@ -48,11 +48,12 @@ Deno.serve(async (req) => {
   // --- Fetch user ---
   const { data: user, error } = await db
     .schema("shared").from("users")
-    .select("username, password_hash, password_bcrypt, salt, role, scope, bu, mien, nhom_san_pham, ho_va_ten")
+    .select("username, password_hash, password_bcrypt, salt, role, scope, bu, mien, nhom_san_pham, ho_va_ten, active")
     .eq("username", username as string)
     .maybeSingle();
 
-  if (error || !user) {
+  // Locked accounts (active = false) get the same "invalid" answer as unknown users.
+  if (error || !user || user.active === false) {
     await recordAttempt(db, username as string, false, ip);
     return json({ ok: false, error: "invalid" }, 401);
   }
