@@ -43,6 +43,11 @@ Deno.serve(async (req) => {
   _role = sess.r;
 
   const db = admin();
+  // Token còn hạn chưa đủ: tài khoản bị khoá (shared.users.active = false) phải mất quyền ngay.
+  const { data: dbUser, error: userErr } = await db.schema("shared").from("users")
+    .select("active").eq("username", sess.u).maybeSingle();
+  if (userErr) return json({ ok: false, error: "server_error" }, 500);
+  if (!dbUser || dbUser.active === false) return json({ ok: false, error: "unauthorized" }, 401);
   const canEdit = ["admin", "ps", "manager", "area_manager"].includes(sess.r);
 
   try {
