@@ -58,19 +58,22 @@ Deno.serve(async (req) => {
   }
 
   // --- Verify password ---
-  let valid = false;
-  let needsRehash = false;
+  // shared.users is used by several apps (order, kpi-review, contract, ccdc) that only know
+  // password_hash/salt, so the legacy SHA-256 hash is the source of truth. password_bcrypt is a
+  // cache that goes stale when another app changes password_hash/salt, so verify both.
+  const verify = await verifyPassword(user, String(password));
 
-  if (user.password_bcrypt) {
-    valid = await bcrypt.compare(String(password), user.password_bcrypt);
-  } else {
-    const toHash = user.salt ? (user.salt + ":" + password) : String(password);
-    const inputHash = await sha256Hex(toHash);
-    valid = inputHash.toLowerCase() === String(user.password_hash).toLowerCase();
-    if (valid) needsRehash = true;
+  if (verify.staleBcrypt) {
+    // bcrypt matches an old password but password_hash was changed elsewhere: drop the stale
+    // bcrypt so the next login with the current password re-derives it.
+    try {
+      await db.schema("shared").from("users")
+        .update({ password_bcrypt: null })
+        .eq("username", user.username);
+    } catch (_) { /* cleanup failure is non-fatal */ }
   }
 
-  if (!valid) {
+  if (!verify.ok) {
     await recordAttempt(db, user.username, false, ip);
     return json({ ok: false, error: "invalid" }, 401);
   }
@@ -78,8 +81,8 @@ Deno.serve(async (req) => {
   // --- Successful login ---
   await recordAttempt(db, user.username, true, ip);
 
-  // Transparent re-hash: SHA-256 → bcrypt
-  if (needsRehash) {
+  // Transparent re-hash: SHA-256 → bcrypt (missing or out of date)
+  if (verify.needsRehash) {
     try {
       const hashed = await bcrypt.hash(String(password));
       await db.schema("shared").from("users")
@@ -96,10 +99,15 @@ Deno.serve(async (req) => {
     if (String(newPassword) === String(password)) {
       return json({ ok: false, error: "same_password" }, 400);
     }
+    // Keep the shared legacy scheme authoritative (password_hash is NOT NULL and the other apps
+    // verify only sha256(salt + ":" + password)). Refresh bcrypt for this app and null
+    // password_hash_v2 so order-login re-derives it from the new legacy hash.
+    const newSalt = randomSaltHex();
+    const newHash = await sha256Hex(newSalt + ":" + String(newPassword));
     const newBcrypt = await bcrypt.hash(String(newPassword));
     const { error: upErr } = await db
       .schema("shared").from("users")
-      .update({ password_bcrypt: newBcrypt, password_hash: null, salt: null })
+      .update({ password_hash: newHash, salt: newSalt, password_bcrypt: newBcrypt, password_hash_v2: null })
       .eq("username", user.username);
     if (upErr) return json({ ok: false, error: "update_failed" }, 500);
     return json({ ok: true, changed: true });
@@ -132,6 +140,35 @@ Deno.serve(async (req) => {
     expiresAt: exp,
   });
 });
+
+// Verify against both hashes (mirrors order-login's verifyPassword for password_hash_v2):
+//  - bcrypt ok, legacy ok   → accept
+//  - bcrypt ok, legacy fail → password_hash changed by another app; bcrypt is stale → reject
+//  - bcrypt fail, legacy ok → bcrypt out of date → accept and refresh bcrypt
+//  - no bcrypt              → legacy decides; refresh bcrypt on success
+async function verifyPassword(
+  user: { password_hash: string | null; password_bcrypt: string | null; salt: string | null },
+  password: string,
+): Promise<{ ok: boolean; needsRehash: boolean; staleBcrypt: boolean }> {
+  const toHash = user.salt ? (user.salt + ":" + password) : password;
+  const legacyOk = !!user.password_hash &&
+    (await sha256Hex(toHash)).toLowerCase() === String(user.password_hash).toLowerCase();
+
+  if (user.password_bcrypt) {
+    let bcryptOk = false;
+    try { bcryptOk = await bcrypt.compare(password, user.password_bcrypt); } catch (_) { /* malformed hash */ }
+    if (bcryptOk && legacyOk) return { ok: true, needsRehash: false, staleBcrypt: false };
+    if (bcryptOk && !legacyOk) return { ok: false, needsRehash: false, staleBcrypt: true };
+    if (!bcryptOk && legacyOk) return { ok: true, needsRehash: true, staleBcrypt: false };
+    return { ok: false, needsRehash: false, staleBcrypt: false };
+  }
+  return { ok: legacyOk, needsRehash: legacyOk, staleBcrypt: false };
+}
+
+function randomSaltHex(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 async function recordAttempt(
   db: ReturnType<typeof createClient>,
