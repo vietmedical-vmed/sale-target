@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { custLabel } from '../lib/text.js';
 
 export function CustomerPicker({ customers, value, onChange, className }) {
@@ -6,6 +7,24 @@ export function CustomerPicker({ customers, value, onChange, className }) {
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const boxRef = useRef(null);
+  const inputRef = useRef(null);
+  const dropRef = useRef(null);
+  const [pos, setPos] = useState(null);
+  const updatePos = useCallback(() => {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+    };
+  }, [open, updatePos]);
   const norm = (s) =>
     (s == null ? '' : String(s))
       .toLowerCase()
@@ -35,7 +54,8 @@ export function CustomerPicker({ customers, value, onChange, className }) {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+      if (boxRef.current && !boxRef.current.contains(e.target) &&
+          (!dropRef.current || !dropRef.current.contains(e.target))) setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -52,6 +72,7 @@ export function CustomerPicker({ customers, value, onChange, className }) {
   return (
     <div ref={boxRef} className="relative">
       <input
+        ref={inputRef}
         value={open ? q : display}
         onChange={(e) => {
           setQ(e.target.value);
@@ -81,8 +102,12 @@ export function CustomerPicker({ customers, value, onChange, className }) {
         placeholder={`Tìm theo tên hoặc mã KH… (${customers.length})`}
         className={className}
       />
-      {open && (
-        <div className="absolute z-20 mt-1 left-0 right-0 bg-white border border-slate-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+      {open && pos && createPortal(
+        <div
+          ref={dropRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+          className="bg-white border border-slate-200 rounded-md shadow-lg max-h-64 overflow-y-auto"
+        >
           {results.length === 0 ? (
             <div className="px-3 py-2 text-[12px] text-slate-400">
               Không tìm thấy khách hàng
@@ -109,7 +134,8 @@ export function CustomerPicker({ customers, value, onChange, className }) {
               </div>
             ))
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
