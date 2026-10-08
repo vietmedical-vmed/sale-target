@@ -34,8 +34,17 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
   const cols = [{ wch: 34 }, { wch: 7 }];
   const pctCols = [],
     numCols = [],
+    moneyCols = [],
     intCols = [1];
   let c = 2;
+  if (isSL) {
+    H1.push('Đơn giá');
+    H2.push('');
+    merges.push({ s: { r: 0, c: 2 }, e: { r: 1, c: 2 } });
+    cols.push({ wch: 14 });
+    moneyCols.push(2);
+    c = 3;
+  }
   for (let i = 0; i < 12; i++) {
     if (hasAct(i)) {
       H1.push(MONTH_LABELS[i], '', '');
@@ -91,6 +100,7 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
       '   '.repeat(level) + label,
       Number.isFinite(d.custCount) ? d.custCount : '',
     ];
+    if (isSL) row.push(d.price > 0 ? d.price : '');
     for (let i = 0; i < 12; i++) {
       const kh = moKh[i] || 0, act = moAct[i] || 0;
       if (!hasAct(i)) { row.push(tr(kh)); continue; }
@@ -137,11 +147,12 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
   ws['!merges'] = merges;
   ws['!cols'] = cols;
   ws['!rows'] = levels.map((l) => (l == null ? {} : { level: l }));
-  const pctSet = new Set(pctCols), numSet = new Set(numCols), intSet = new Set(intCols);
+  const pctSet = new Set(pctCols), numSet = new Set(numCols), intSet = new Set(intCols), moneySet = new Set(moneyCols);
   const numFmt = isSL ? '#,##0' : '#,##0.###';
   for (let r = 2; r < aoa.length; r++) {
     for (let cc = 1; cc <= LAST_COL; cc++) {
       if (pctSet.has(cc)) _fmt(ws, r, cc, '0%');
+      else if (moneySet.has(cc)) _fmt(ws, r, cc, '#,##0');
       else if (numSet.has(cc)) _fmt(ws, r, cc, numFmt);
       else if (intSet.has(cc)) _fmt(ws, r, cc, '#,##0');
     }
