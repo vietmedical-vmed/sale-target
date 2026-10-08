@@ -395,11 +395,11 @@ const ProductRow = React.memo(function ProductRow({
             <EditableCell
               key={'b' + mo}
               value={monthly[i].rev}
-              locked={!isAdmin}
+              locked={!isAdmin || monthly[i].rows.length === 0}
               pending={isAdmin ? pendDauNam(monthly[i]) : false}
               width={58}
-              bg={isAdmin ? 'bg-amber-50/50' : 'bg-slate-50/40'}
-              onCommit={isAdmin ? (nv) => commitRevDauNam(i, nv) : undefined}
+              bg={isAdmin && monthly[i].rows.length > 0 ? 'bg-amber-50/50' : 'bg-slate-50/40'}
+              onCommit={isAdmin && monthly[i].rows.length > 0 ? (nv) => commitRevDauNam(i, nv) : undefined}
             />
           ))
         : [
