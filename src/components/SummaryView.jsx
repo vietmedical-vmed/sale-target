@@ -216,7 +216,7 @@ export function SummaryView({
         gNode.prodMap.set(pKey, {
           prod: r.prod || '—',
           mset: r.mset || '',
-          price: price,
+          price: 0,
           dt: 0,
           dtYtd: 0,
           dtUpd: 0,
@@ -239,7 +239,10 @@ export function SummaryView({
           slUpd: 0,
         });
       const pNode = gNode.prodMap.get(pKey);
-      if (pNode.price !== price) pNode.price = null;
+      if (price > 0) {
+        if (pNode.price === 0) pNode.price = price;
+        else if (pNode.price > 0 && pNode.price !== price) pNode.price = -1;
+      }
       bump(pNode);
     }
     const fold = () => ({
