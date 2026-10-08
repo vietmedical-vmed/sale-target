@@ -73,6 +73,7 @@ const ProductRow = React.memo(function ProductRow({
   conflicts,
   onResolveConflict,
   onOpenQuota,
+  onEnsureMonthRow,
 }) {
   const allRows = useMemo(() => monthly.flatMap((c) => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
@@ -222,9 +223,14 @@ const ProductRow = React.memo(function ProductRow({
     onCommit(updates);
   };
   // admin sửa SL KH đầu năm → cập nhật rev + dt (doanh thu = SL × đơn giá)
-  const commitRevDauNam = (monthIdx, newVal) => {
+  const commitRevDauNam = async (monthIdx, newVal) => {
     const cell = monthly[monthIdx];
-    if (!cell || cell.rows.length === 0) return;
+    if (!cell) return;
+    if (cell.rows.length === 0) {
+      if (!anchor || !onEnsureMonthRow) return;
+      await onEnsureMonthRow(anchor._row, monthIdx, newVal);
+      return;
+    }
     const updates = [];
     cell.rows.forEach((r, j) => {
       const qty = j === 0 ? newVal : 0;
@@ -395,11 +401,11 @@ const ProductRow = React.memo(function ProductRow({
             <EditableCell
               key={'b' + mo}
               value={monthly[i].rev}
-              locked={!isAdmin || monthly[i].rows.length === 0}
+              locked={!isAdmin || (!anchor && monthly[i].rows.length === 0)}
               pending={isAdmin ? pendDauNam(monthly[i]) : false}
               width={58}
-              bg={isAdmin && monthly[i].rows.length > 0 ? 'bg-amber-50/50' : 'bg-slate-50/40'}
-              onCommit={isAdmin && monthly[i].rows.length > 0 ? (nv) => commitRevDauNam(i, nv) : undefined}
+              bg={isAdmin && (monthly[i].rows.length > 0 || anchor) ? 'bg-amber-50/50' : 'bg-slate-50/40'}
+              onCommit={isAdmin && (monthly[i].rows.length > 0 || anchor) ? (nv) => commitRevDauNam(i, nv) : undefined}
             />
           ))
         : [
@@ -511,6 +517,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
   catIdx,
   conflicts,
   onResolveConflict,
+  onEnsureMonthRow,
 }) {
   const [open, setOpen] = useState(false);
   const [noteModal, setNoteModal] = useState(false);
@@ -1160,6 +1167,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                       conflicts={conflicts}
                       onResolveConflict={onResolveConflict}
                       onOpenQuota={openQuota}
+                      onEnsureMonthRow={onEnsureMonthRow}
                     />
                   );
                 })}

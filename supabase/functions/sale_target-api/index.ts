@@ -620,6 +620,73 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "ensureMonthRow") {
+      const isAdmin = sess.r === "admin";
+      if (!isAdmin) return json({ ok: false, error: "forbidden" }, 403);
+      const refRow = Number(payload.refRow);
+      const month = String(payload.month || "");
+      const rev = Number(payload.rev) || 0;
+      if (!refRow || !month) return json({ ok: false, error: "refRow and month required" }, 400);
+      const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
+      const { data: ref, error: refErr } = await db.schema("shared").from("sale_target")
+        .select(cols).eq("id", refRow).single();
+      if (refErr || !ref) return json({ ok: false, error: "ref row not found" }, 404);
+      let dupQ = db.schema("shared").from("sale_target")
+        .select("id", { count: "exact", head: true })
+        .eq("nam_tai_chinh", ref.nam_tai_chinh)
+        .eq("thang_ke_hoach", month)
+        .eq("ps", ref.ps)
+        .eq("ma_khach_hang", ref.ma_khach_hang)
+        .eq("nhom_san_pham", ref.nhom_san_pham)
+        .eq("bo_vat_tu", ref.bo_vat_tu)
+        .eq("san_pham", ref.san_pham);
+      if (ref.don_gia !== null) dupQ = dupQ.eq("don_gia", ref.don_gia);
+      else dupQ = dupQ.is("don_gia", null);
+      const { data: existing } = await dupQ;
+      if (existing && (existing as unknown as { count: number }).count > 0) {
+        return json({ ok: false, error: "row_exists" }, 409);
+      }
+      const price = Number(ref.don_gia) || 0;
+      const newRow = {
+        nam_tai_chinh: ref.nam_tai_chinh,
+        thang_ke_hoach: month,
+        mien: ref.mien,
+        ps: ref.ps,
+        khach_hang: ref.khach_hang,
+        ma_khach_hang: ref.ma_khach_hang,
+        nhom_san_pham: ref.nhom_san_pham,
+        san_pham: ref.san_pham,
+        bo_vat_tu: ref.bo_vat_tu,
+        ma_san_pham: ref.ma_san_pham,
+        ma_bo_vat_tu: ref.ma_bo_vat_tu,
+        don_gia: ref.don_gia,
+        bu: ref.bu,
+        thang_thau_chinh: ref.thang_thau_chinh,
+        thang_thau_bo_sung: ref.thang_thau_bo_sung,
+        sl_ke_hoach_dau_nam: rev,
+        doanh_thu_kh_dau_nam: rev * price,
+        sl_thuc_hien: 0,
+      };
+      const { data: ins, error: insErr } = await db.schema("shared").from("sale_target")
+        .insert([newRow]).select(cols);
+      if (insErr) throw new Error(insErr.message);
+      const inserted = (ins || [])[0];
+      if (!inserted) return json({ ok: false, error: "insert failed" }, 500);
+      await writeAuditLog(db, sess, "ensureMonthRow", 1, {
+        refRow, month, rev, newId: inserted.id,
+      });
+      return json({
+        ok: true,
+        row: FIELDS.map((f) => {
+          const v = (inserted as Record<string, unknown>)[COL[f]];
+          return v === null || v === undefined ? "" : v;
+        }),
+        rowNum: inserted.id,
+        rowRev: Number(inserted._rev) || 0,
+        rev: await getRev(db, sess, payload),
+      });
+    }
+
     if (action === "addProducts") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const items = payload.items;

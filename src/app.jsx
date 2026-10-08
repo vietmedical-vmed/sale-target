@@ -1139,6 +1139,36 @@ export function App() {
     }
   }, []);
 
+  const ensureMonthRow = useCallback(
+    async (refRowId, monthIdx, rev) => {
+      const month = MONTHS[monthIdx];
+      try {
+        const res = await api('ensureMonthRow', { refRow: refRowId, month, rev });
+        if (!res || !res.ok) throw new Error(res?.error || 'Tạo dòng tháng thất bại');
+        const flds = fieldsRef.current;
+        if (res.row && flds.length) {
+          const o = { _row: res.rowNum };
+          for (let j = 0; j < flds.length; j++) {
+            const v = res.row[j];
+            if (v !== '' && v !== null && v !== undefined) o[flds[j]] = v;
+          }
+          if (o.cust) {
+            o.custRaw = o.cust;
+            o.cust = custLabel(o.custId, o.cust);
+          }
+          setRows((prev) => prev.concat([o]));
+          if (res.rowRev) rowRevsRef.current.set(res.rowNum, res.rowRev);
+          if (typeof res.rev === 'number') setDataRev(res.rev);
+        } else {
+          await loadData();
+        }
+      } catch (err) {
+        setError('Tạo dòng tháng thiếu thất bại: ' + err.message);
+      }
+    },
+    [loadData],
+  );
+
   // Xóa kế hoạch của 1 khách hàng — admin. Chỉ gom dòng thuộc team / miền / PS đang
   // chọn (đúng các PS trên thẻ): 1 KH thường do nhiều PS ở nhiều team cùng phụ trách,
   // gom theo mã KH trên toàn bộ rows sẽ xoá luôn kế hoạch của PS khác. Bộ lọc cấp sản
@@ -2822,6 +2852,7 @@ export function App() {
                         onDeleteCustomer={deleteCustomer}
                         conflicts={conflicts}
                         onResolveConflict={resolveConflict}
+                        onEnsureMonthRow={ensureMonthRow}
                       />
                     );
                     const renderCards = (list) => list.map(renderOneCard);

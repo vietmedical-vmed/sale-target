@@ -31,6 +31,7 @@ export const CustomerCard = React.memo(function CustomerCard({
   onDeleteCustomer,
   conflicts,
   onResolveConflict,
+  onEnsureMonthRow,
 }) {
   const [adding, setAdding] = useState(false);
   // Khoá chống thêm trùng — chỉ tính khi form thêm SP đang mở (tránh chạy cho mọi thẻ).
@@ -284,6 +285,7 @@ export const CustomerCard = React.memo(function CustomerCard({
               catIdx={catIdx}
               conflicts={conflicts}
               onResolveConflict={onResolveConflict}
+              onEnsureMonthRow={onEnsureMonthRow}
             />
           ))}
         </div>
