@@ -14,7 +14,15 @@ const _fmt = (ws, r, c, z) => {
 
 export async function exportSummaryPS(data) {
   const XLSX = await loadXLSX();
-  const tr = (v) => (Number(v) || 0) / 1e6;
+  const wb = XLSX.utils.book_new();
+  _buildSumPSSheet(XLSX, wb, data, 'money');
+  _buildSumPSSheet(XLSX, wb, data, 'qty');
+  XLSX.writeFile(wb, `TongHop_theo_PS_${_today()}.xlsx`);
+}
+
+function _buildSumPSSheet(XLSX, wb, data, mode) {
+  const isSL = mode === 'qty';
+  const tr = isSL ? (v) => Math.round(Number(v) || 0) : (v) => (Number(v) || 0) / 1e6;
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
   const hasAct = (i) => i <= curIdx;
   const H1 = ['Miền / PS / Khách hàng', 'Số KH'],
@@ -25,7 +33,7 @@ export async function exportSummaryPS(data) {
   ];
   const cols = [{ wch: 34 }, { wch: 7 }];
   const pctCols = [],
-    moneyCols = [],
+    numCols = [],
     intCols = [1];
   let c = 2;
   for (let i = 0; i < 12; i++) {
@@ -34,14 +42,14 @@ export async function exportSummaryPS(data) {
       H2.push('KH', 'TH', '% TH');
       merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
       cols.push({ wch: 10 }, { wch: 10 }, { wch: 7 });
-      moneyCols.push(c, c + 1);
+      numCols.push(c, c + 1);
       pctCols.push(c + 2);
       c += 3;
     } else {
       H1.push(MONTH_LABELS[i]);
       H2.push('KH');
       cols.push({ wch: 10 });
-      moneyCols.push(c);
+      numCols.push(c);
       c += 1;
     }
   }
@@ -49,55 +57,61 @@ export async function exportSummaryPS(data) {
   H2.push('KH', 'TH', '% TH YTD', 'tốc độ TH YTD', 'tốc độ KH YTD', 'CL tốc độ');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
-  moneyCols.push(c, c + 1);
+  numCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
   H1.push('Target', '', '', '');
-  H2.push('Target đầu năm', 'DThu dự kiến', 'Chênh lệch', 'KH còn lại');
+  H2.push(
+    isSL ? 'SL đầu năm' : 'Target đầu năm',
+    isSL ? 'SL dự kiến' : 'DThu dự kiến',
+    'Chênh lệch', 'KH còn lại',
+  );
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
-  moneyCols.push(c, c + 1, c + 2, c + 3);
+  numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
   H1.push('Quota', '', '', '', '');
   H2.push('On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
-  moneyCols.push(c, c + 1, c + 2, c + 3, c + 4);
+  numCols.push(c, c + 1, c + 2, c + 3, c + 4);
   c += 5;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
   const push = (level, label, d) => {
-    const dt = Number(d.dt) || 0,
-      ch = (Number(d.dtUpd) || 0) - dt;
-    const khYtdDt = Number(d.khYtdDt) || 0,
-      dtYtd = Number(d.dtYtd) || 0;
+    const dtV = isSL ? (Number(d.slDauNam) || 0) : (Number(d.dt) || 0);
+    const dtUpdV = isSL ? (Number(d.slUpd) || 0) : (Number(d.dtUpd) || 0);
+    const ch = dtUpdV - dtV;
+    const khYtdV = isSL ? (Number(d.khYtd) || 0) : (Number(d.khYtdDt) || 0);
+    const dtYtdV = isSL ? (Number(d.ytd) || 0) : (Number(d.dtYtd) || 0);
+    const moKh = isSL ? d.moKh : d.moKhDt;
+    const moAct = isSL ? d.moAct : d.moActDt;
     const row = [
       '   '.repeat(level) + label,
       Number.isFinite(d.custCount) ? d.custCount : '',
     ];
     for (let i = 0; i < 12; i++) {
-      const kh = d.moKhDt[i] || 0,
-        act = d.moActDt[i] || 0;
-      if (!hasAct(i)) {
-        row.push(tr(kh));
-        continue;
-      }
+      const kh = moKh[i] || 0, act = moAct[i] || 0;
+      if (!hasAct(i)) { row.push(tr(kh)); continue; }
       row.push(tr(kh), tr(act), kh > 0 ? act / kh : '');
     }
-    const dtUpd = Number(d.dtUpd) || 0;
-    const thP = khYtdDt > 0 ? dtYtd / khYtdDt : null;
-    const tdTh = dtUpd > 0 ? dtYtd / dtUpd : null;
-    const tdKh = dtUpd > 0 ? khYtdDt / dtUpd : null;
+    const thP = khYtdV > 0 ? dtYtdV / khYtdV : null;
+    const tdTh = dtUpdV > 0 ? dtYtdV / dtUpdV : null;
+    const tdKh = dtUpdV > 0 ? khYtdV / dtUpdV : null;
     const clP = tdTh != null && tdKh != null ? tdTh - tdKh : '';
     row.push(
-      tr(khYtdDt), tr(dtYtd),
+      tr(khYtdV), tr(dtYtdV),
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
-    row.push(tr(dt), tr(dtUpd), tr(ch), tr(dtUpd - dtYtd));
-    const quotaRemain = d.quotaAvailDt == null ? '-' : tr((d.q14Dt || 0) - dtYtd);
-    row.push(tr(d.q14Dt || 0), tr(d.qUpcomingDt || 0), tr(d.quotaFYDt || 0), tr(dtYtd), quotaRemain);
+    row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - dtYtdV));
+    const q14V = isSL ? (d.q14 || 0) : (d.q14Dt || 0);
+    const qUpV = isSL ? (d.qUpcoming || 0) : (d.qUpcomingDt || 0);
+    const qFYV = isSL ? (d.quotaFY || 0) : (d.quotaFYDt || 0);
+    const qAvail = isSL ? d.quotaAvail : d.quotaAvailDt;
+    const quotaRemain = qAvail == null ? '-' : tr(q14V - dtYtdV);
+    row.push(tr(q14V), tr(qUpV), tr(qFYV), tr(dtYtdV), quotaRemain);
     aoa.push(row);
     levels.push(level);
   };
@@ -123,19 +137,16 @@ export async function exportSummaryPS(data) {
   ws['!merges'] = merges;
   ws['!cols'] = cols;
   ws['!rows'] = levels.map((l) => (l == null ? {} : { level: l }));
-  const pctSet = new Set(pctCols),
-    moneySet = new Set(moneyCols),
-    intSet = new Set(intCols);
+  const pctSet = new Set(pctCols), numSet = new Set(numCols), intSet = new Set(intCols);
+  const numFmt = isSL ? '#,##0' : '#,##0.###';
   for (let r = 2; r < aoa.length; r++) {
     for (let cc = 1; cc <= LAST_COL; cc++) {
       if (pctSet.has(cc)) _fmt(ws, r, cc, '0%');
-      else if (moneySet.has(cc)) _fmt(ws, r, cc, '#,##0.###');
+      else if (numSet.has(cc)) _fmt(ws, r, cc, numFmt);
       else if (intSet.has(cc)) _fmt(ws, r, cc, '#,##0');
     }
   }
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Tong hop theo PS');
-  XLSX.writeFile(wb, `TongHop_theo_PS_${_today()}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, isSL ? 'Theo PS (SL)' : 'Theo PS (Tien)');
 }
 
 export async function exportProductSummary(data) {

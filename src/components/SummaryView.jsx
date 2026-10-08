@@ -4,7 +4,7 @@ import {
   MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY,
   getCurIdx, isYtdMonth,
 } from '../config/constants.js';
-import { fmtTy3, moneyTy3 } from '../lib/format.js';
+import { fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
 import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
 import { exportSummaryPS } from '../lib/excel.js';
@@ -82,13 +82,19 @@ export function SummaryView({
         quotaFYDt: 0,
         q14: 0,
         q14Dt: 0,
+        qUpcoming: 0,
         qUpcomingDt: 0,
         ytd: 0,
         khLeft: 0,
         khLeftDt: 0,
-        moKhDt: MONTHS.map(() => 0), // DThu KH update từng tháng
-        moActDt: MONTHS.map(() => 0), // DThu thực hiện từng tháng
-        khYtdDt: 0, // DThu KH update luỹ kế YTD (để tính % TH YTD)
+        moKh: MONTHS.map(() => 0),
+        moKhDt: MONTHS.map(() => 0),
+        moAct: MONTHS.map(() => 0),
+        moActDt: MONTHS.map(() => 0),
+        khYtd: 0,
+        khYtdDt: 0,
+        slDauNam: 0,
+        slUpd: 0,
         prods: new Set(),
         subMap: new Map(), // chỉ nhóm "Ngoài kế hoạch" dùng: KH thật → { grpMap }
         grpMap: new Map(), // Nhóm SP → { prodMap: Sản phẩm }
@@ -145,15 +151,21 @@ export function SummaryView({
         o.quotaFYDt += dQuotaDt;
         o.q14 += dQ14;
         o.q14Dt += dQ14Dt;
+        o.qUpcoming += dQUpcoming;
         o.qUpcomingDt += dQUpcomingDt;
         o.ytd += dYtd;
         o.khLeft += dKhLeft;
         o.khLeftDt += dKhLeftDt;
         o.dtYtd += dDtYtd;
+        o.slDauNam += dSl;
+        o.slUpd += updQty;
         if (mi >= 0) {
+          o.moKh[mi] += planUpd;
           o.moKhDt[mi] += dMoKh;
+          o.moAct[mi] += actQty;
           o.moActDt[mi] += dMoAct;
         }
+        o.khYtd += isOop ? 0 : inYtd ? planUpd : 0;
         o.khYtdDt += dKhYtdDt;
       };
       const prodKey = `${r.grp}||${r.mset}||${r.prod}`;
@@ -181,13 +193,19 @@ export function SummaryView({
           quotaFYDt: 0,
           q14: 0,
           q14Dt: 0,
+          qUpcoming: 0,
           qUpcomingDt: 0,
           ytd: 0,
           khLeft: 0,
           khLeftDt: 0,
+          moKh: MONTHS.map(() => 0),
           moKhDt: MONTHS.map(() => 0),
+          moAct: MONTHS.map(() => 0),
           moActDt: MONTHS.map(() => 0),
+          khYtd: 0,
           khYtdDt: 0,
+          slDauNam: 0,
+          slUpd: 0,
           prodMap: new Map(),
         });
       const gNode = host.grpMap.get(gKey);
@@ -198,6 +216,7 @@ export function SummaryView({
         gNode.prodMap.set(pKey, {
           prod: r.prod || '—',
           mset: r.mset || '',
+          price: price,
           dt: 0,
           dtYtd: 0,
           dtUpd: 0,
@@ -205,15 +224,23 @@ export function SummaryView({
           quotaFYDt: 0,
           q14: 0,
           q14Dt: 0,
+          qUpcoming: 0,
           qUpcomingDt: 0,
           ytd: 0,
           khLeft: 0,
           khLeftDt: 0,
+          moKh: MONTHS.map(() => 0),
           moKhDt: MONTHS.map(() => 0),
+          moAct: MONTHS.map(() => 0),
           moActDt: MONTHS.map(() => 0),
+          khYtd: 0,
           khYtdDt: 0,
+          slDauNam: 0,
+          slUpd: 0,
         });
-      bump(gNode.prodMap.get(pKey));
+      const pNode = gNode.prodMap.get(pKey);
+      if (pNode.price !== price) pNode.price = null;
+      bump(pNode);
     }
     const fold = () => ({
       dt: 0,
@@ -223,13 +250,19 @@ export function SummaryView({
       quotaFYDt: 0,
       q14: 0,
       q14Dt: 0,
+      qUpcoming: 0,
       qUpcomingDt: 0,
       ytd: 0,
       khLeft: 0,
       khLeftDt: 0,
+      moKh: MONTHS.map(() => 0),
       moKhDt: MONTHS.map(() => 0),
+      moAct: MONTHS.map(() => 0),
       moActDt: MONTHS.map(() => 0),
+      khYtd: 0,
       khYtdDt: 0,
+      slDauNam: 0,
+      slUpd: 0,
       prodCount: 0,
       custCount: 0,
     });
@@ -241,15 +274,21 @@ export function SummaryView({
       a.quotaFYDt += c.quotaFYDt;
       a.q14 += c.q14;
       a.q14Dt += c.q14Dt;
+      a.qUpcoming += c.qUpcoming;
       a.qUpcomingDt += c.qUpcomingDt;
       a.ytd += c.ytd;
       a.khLeft += c.khLeft;
       a.khLeftDt += c.khLeftDt;
       for (let i = 0; i < 12; i++) {
+        a.moKh[i] += c.moKh[i];
         a.moKhDt[i] += c.moKhDt[i];
+        a.moAct[i] += c.moAct[i];
         a.moActDt[i] += c.moActDt[i];
       }
+      a.khYtd += c.khYtd;
       a.khYtdDt += c.khYtdDt;
+      a.slDauNam += c.slDauNam;
+      a.slUpd += c.slUpd;
       a.prodCount += c.prodCount;
       return a;
     };
@@ -346,7 +385,9 @@ export function SummaryView({
   const g = data.grand;
   // Thu gọn/mở phần thực hiện theo tháng (mặc định thu gọn → chỉ còn Luỹ kế YTD).
   const [showMonths, setShowMonths] = useState(false);
+  const [viewMode, setViewMode] = useState('money');
   SUM_SHOW_MONTHS = showMonths; // set trước khi render header/rows (chúng đọc biến module này)
+  SUM_VIEW_MODE = viewMode;
   // Nút xuất Excel nằm trên thanh bộ lọc (do App vẽ) → đăng ký hàm xuất lên đó
   useEffect(() => {
     onExport(() => exportSummaryPS(data));
@@ -362,6 +403,13 @@ export function SummaryView({
       <div className="px-6 pb-8">
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
+            <button
+              onClick={() => setViewMode((m) => (m === 'money' ? 'qty' : 'money'))}
+              title={viewMode === 'money' ? 'Chuyển sang xem Số lượng' : 'Chuyển sang xem Doanh thu'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            >
+              {viewMode === 'money' ? '💰 Doanh thu' : '📦 Số lượng'}
+            </button>
             <button
               onClick={() => setShowMonths((s) => !s)}
               title={
@@ -395,19 +443,14 @@ export function SummaryView({
           </div>
         </div>
         <p className="text-[11px] text-slate-400 mt-2">
-          Cột theo tháng & Luỹ kế YTD = doanh thu (SL × đơn giá): KH = DThu KH
-          update, TH = DThu thực hiện, % = TH / KH. Mặc định chỉ hiện tháng hiện
-          tại + Luỹ kế YTD; nút "Chi tiết theo tháng" hiện đủ 12 tháng. Ở Luỹ kế
-          YTD: % TH YTD = TH YTD / KH YTD; tốc độ TH YTD = TH YTD / KH update cả
-          năm; tốc độ KH YTD = KH YTD / KH update cả năm (tiến độ kế hoạch); CL
-          tốc độ = tốc độ TH YTD − tốc độ KH YTD (dương = thực hiện nhanh hơn
-          tiến độ kế hoạch). ≥1 tỷ hiện theo tỷ (1 số lẻ), nhỏ hơn hiện theo
-          triệu. Luỹ kế YTD tính ĐẾN HẾT tháng hiện tại. Quota: On hand = (quota
-          thầu cũ + quota chính đã tới tháng + quota BS đã tới tháng) × đơn giá;
-          Upcoming = (quota chính + BS chưa tới tháng hoặc chưa điền tháng) ×
-          đơn giá; Tổng quota = On hand + Upcoming; Khả dụng = Tổng quota − TH
-          YTD. Target: Target đầu năm = DThu kế hoạch đầu năm; DThu dự kiến = DThu
-          update cả năm; Chênh lệch = DThu dự kiến − Target đầu năm.
+          {viewMode === 'money'
+            ? 'Chế độ Doanh thu: tất cả giá trị = SL × đơn giá (triệu VNĐ). '
+            : 'Chế độ Số lượng: tất cả giá trị = SL; đơn giá hiện ở dòng sản phẩm. '}
+          KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết
+          tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH
+          YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH. Quota: On
+          hand = quota thầu cũ + quota chính + BS đã tới tháng; Upcoming = chưa tới
+          tháng; Khả dụng = On hand − TH YTD.
         </p>
       </div>
     </React.Fragment>
@@ -437,6 +480,8 @@ const pctClsSum = (th, kh) => {
 // Nút "chi tiết theo tháng": khi false chỉ hiện THÁNG HIỆN TẠI + Luỹ kế YTD; khi true hiện đủ 12 tháng.
 // SummaryView set biến này trước khi render con (giống cơ chế MASK_MONEY).
 let SUM_SHOW_MONTHS = false;
+let SUM_VIEW_MODE = 'money'; // 'money' | 'qty'
+const fmtSL = (v) => (!v ? '—' : Math.round(v).toLocaleString('en-US'));
 // Các cột tháng hiển thị: mặc định chỉ tháng hiện tại; bấm "Chi tiết theo tháng" thì hiện cả 12.
 const sumMonthIdxs = () =>
   SUM_SHOW_MONTHS
@@ -580,13 +625,13 @@ function SummaryHead() {
           key="tdt"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
-          Target đầu năm
+          {SUM_VIEW_MODE === 'qty' ? 'SL đầu năm' : 'Target đầu năm'}
         </th>,
         <th
           key="tdu"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
-          DThu dự kiến
+          {SUM_VIEW_MODE === 'qty' ? 'SL dự kiến' : 'DThu dự kiến'}
         </th>,
         <th
           key="tch"
@@ -635,8 +680,24 @@ function SummaryHead() {
   );
 }
 
-// Các ô số: [tháng] → Luỹ kế YTD → Target (Target đầu năm · DThu dự kiến · CL · KH còn lại) → Quota (On hand · Upcoming · Tổng · TH YTD · Khả dụng).
+// Các ô số: [tháng] → Luỹ kế YTD → Target → Quota.
 function StatCells({ d, size, dark }) {
+  const isQty = SUM_VIEW_MODE === 'qty';
+  const fmt = isQty ? fmtSL : moneyTy3;
+  const fmtCh = isQty
+    ? (v) => (!v ? '—' : (v > 0 ? '+' : '') + Math.round(v).toLocaleString('en-US'))
+    : (v) => (!v ? '—' : MASK_MONEY ? '•••' : (v > 0 ? '+' : '') + fmtTy3(v));
+  const moKh = isQty ? d.moKh : d.moKhDt;
+  const moAct = isQty ? d.moAct : d.moActDt;
+  const khYtdV = isQty ? d.khYtd : d.khYtdDt;
+  const dtYtdV = isQty ? d.ytd : d.dtYtd;
+  const dtUpdV = isQty ? d.slUpd : d.dtUpd;
+  const dtV = isQty ? d.slDauNam : d.dt;
+  const klV = isQty ? d.khLeft : d.khLeftDt;
+  const q14V = isQty ? d.q14 : d.q14Dt;
+  const qUpV = isQty ? d.qUpcoming : d.qUpcomingDt;
+  const qFYV = isQty ? d.quotaFY : d.quotaFYDt;
+  const qAvV = isQty ? d.quotaAvail : d.quotaAvailDt;
   const p =
     size === 'sm'
       ? 'py-1.5 text-[12px]'
@@ -659,192 +720,99 @@ function StatCells({ d, size, dark }) {
       ? 'text-blue-600'
       : 'text-blue-700';
   const cells = [];
-  // --- Cột theo tháng (mặc định chỉ tháng hiện tại, "chi tiết theo tháng" hiện đủ 12) ---
   for (const i of sumMonthIdxs()) {
     const bg = dark ? '' : moBgSum(i);
-    const kh = d.moKhDt[i],
-      act = d.moActDt[i];
+    const kh = moKh[i], act = moAct[i];
     if (!moHasAct(i)) {
       cells.push(
-        <td
-          key={'k' + i}
-          className={`px-2 ${p} text-right tabular-nums border-r border-slate-100 ${base} ${bg}`}
-        >
-          {moneyTy3(kh)}
+        <td key={'k' + i} className={`px-2 ${p} text-right tabular-nums border-r border-slate-100 ${base} ${bg}`}>
+          {fmt(kh)}
         </td>,
       );
       continue;
     }
     cells.push(
-      <td
-        key={'k' + i}
-        className={`px-2 ${p} text-right tabular-nums ${base} ${bg}`}
-      >
-        {moneyTy3(kh)}
-      </td>,
+      <td key={'k' + i} className={`px-2 ${p} text-right tabular-nums ${base} ${bg}`}>{fmt(kh)}</td>,
     );
     cells.push(
-      <td
-        key={'a' + i}
-        className={`px-2 ${p} text-right tabular-nums ${orange} ${bg}`}
-      >
-        {moneyTy3(act)}
-      </td>,
+      <td key={'a' + i} className={`px-2 ${p} text-right tabular-nums ${orange} ${bg}`}>{fmt(act)}</td>,
     );
     cells.push(
-      <td
-        key={'pc' + i}
-        className={`px-2 ${p} text-right tabular-nums border-r border-slate-200 ${dark ? 'text-slate-300' : pctClsSum(act, kh)} ${bg}`}
-      >
+      <td key={'pc' + i} className={`px-2 ${p} text-right tabular-nums border-r border-slate-200 ${dark ? 'text-slate-300' : pctClsSum(act, kh)} ${bg}`}>
         {pctTxtSum(act, kh)}
       </td>,
     );
   }
-  // --- Luỹ kế YTD (doanh thu): KH · TH · % TH YTD · % KH YTD · CL tốc độ ---
+  // --- Luỹ kế YTD ---
   const ybg = dark ? '' : 'bg-amber-50/40';
-  // % TH YTD = TH YTD / KH YTD ; tốc độ TH YTD = TH YTD / KH update cả năm ;
-  // tốc độ KH YTD = KH YTD / KH update cả năm ; CL tốc độ = tốc độ TH YTD − tốc độ KH YTD (điểm %).
-  const tdTh = d.dtUpd > 0 ? d.dtYtd / d.dtUpd : null;
-  const tdKh = d.dtUpd > 0 ? d.khYtdDt / d.dtUpd : null;
-  const clVal =
-    tdTh != null && tdKh != null ? Math.round((tdTh - tdKh) * 100) : null;
+  const tdTh = dtUpdV > 0 ? dtYtdV / dtUpdV : null;
+  const tdKh = dtUpdV > 0 ? khYtdV / dtUpdV : null;
+  const clVal = tdTh != null && tdKh != null ? Math.round((tdTh - tdKh) * 100) : null;
   const clCol = dark ? 'text-slate-300' : chCls(clVal || 0);
   cells.push(
-    <td
-      key="yk"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${ybg}`}
-    >
-      {moneyTy3(d.khYtdDt)}
+    <td key="yk" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${ybg}`}>{fmt(khYtdV)}</td>,
+  );
+  cells.push(
+    <td key="ya" className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${ybg}`}>{fmt(dtYtdV)}</td>,
+  );
+  cells.push(
+    <td key="yp" className={`px-3 ${p} text-right tabular-nums font-semibold ${dark ? 'text-slate-300' : pctClsSum(dtYtdV, khYtdV)} ${ybg}`}>
+      {pctTxtSum(dtYtdV, khYtdV)}
     </td>,
   );
   cells.push(
-    <td
-      key="ya"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${ybg}`}
-    >
-      {moneyTy3(d.dtYtd)}
+    <td key="ytd" className={`px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}`}>
+      {pctTxtSum(dtYtdV, dtUpdV)}
     </td>,
   );
   cells.push(
-    <td
-      key="yp"
-      className={`px-3 ${p} text-right tabular-nums font-semibold ${dark ? 'text-slate-300' : pctClsSum(d.dtYtd, d.khYtdDt)} ${ybg}`}
-    >
-      {pctTxtSum(d.dtYtd, d.khYtdDt)}
+    <td key="ykp" className={`px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}`}>
+      {pctTxtSum(khYtdV, dtUpdV)}
     </td>,
   );
   cells.push(
-    <td
-      key="ytd"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}`}
-    >
-      {pctTxtSum(d.dtYtd, d.dtUpd)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="ykp"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-slate-300' : 'text-slate-500'} ${ybg}`}
-    >
-      {pctTxtSum(d.khYtdDt, d.dtUpd)}
-    </td>,
-  );
-  cells.push(
-    <td
-      key="ycl"
-      className={`px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-200 ${clCol} ${ybg}`}
-    >
+    <td key="ycl" className={`px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-200 ${clCol} ${ybg}`}>
       {clVal == null ? '—' : (clVal > 0 ? '+' : '') + clVal + '%'}
     </td>,
   );
-  // --- Target group: Target đầu năm · DThu dự kiến · Chênh lệch · KH còn lại ---
+  // --- Target ---
   const tbg = dark ? '' : 'bg-emerald-50/30';
-  const ch = (d.dtUpd || 0) - (d.dt || 0);
-  const chCol = dark
-    ? ch > 0
-      ? 'text-emerald-300'
-      : ch < 0
-        ? 'text-red-300'
-        : ''
-    : chCls(ch);
+  const ch = (dtUpdV || 0) - (dtV || 0);
+  const chCol = dark ? (ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : '') : chCls(ch);
   cells.push(
-    <td
-      key="dt"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${tbg}`}
-    >
-      {moneyTy3(d.dt)}
-    </td>,
+    <td key="dt" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${tbg}`}>{fmt(dtV)}</td>,
   );
   cells.push(
-    <td
-      key="du"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${blue} ${tbg}`}
-    >
-      {moneyTy3(d.dtUpd)}
-    </td>,
+    <td key="du" className={`px-3 ${p} text-right tabular-nums font-medium ${blue} ${tbg}`}>{fmt(dtUpdV)}</td>,
   );
   cells.push(
-    <td
-      key="ch"
-      className={`px-3 ${p} text-right tabular-nums font-semibold ${chCol} ${tbg}`}
-    >
-      {ch === 0 ? '—' : MASK_MONEY ? '•••' : (ch > 0 ? '+' : '') + fmtTy3(ch)}
-    </td>,
+    <td key="ch" className={`px-3 ${p} text-right tabular-nums font-semibold ${chCol} ${tbg}`}>{fmtCh(ch)}</td>,
   );
-  const khConLai = (d.dtUpd || 0) - (d.dtYtd || 0);
-  const klCol = dark
-    ? 'text-purple-200'
-    : 'text-purple-600';
+  const khConLai = (dtUpdV || 0) - (dtYtdV || 0);
+  const klCol = dark ? 'text-purple-200' : 'text-purple-600';
   cells.push(
-    <td
-      key="kl"
-      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-200 ${klCol} ${tbg}`}
-    >
-      {MASK_MONEY ? '•••' : moneyTy3(khConLai)}
+    <td key="kl" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-200 ${klCol} ${tbg}`}>
+      {isQty ? fmtSL(khConLai) : MASK_MONEY ? '•••' : moneyTy3(khConLai)}
     </td>,
   );
-  // --- Quota group: On hand · Upcoming · Tổng quota · TH YTD · Khả dụng ---
+  // --- Quota ---
   const qbg = dark ? '' : 'bg-teal-50/30';
-  const quotaRemain =
-    d.quotaAvailDt == null ? null : (d.q14Dt || 0) - (d.dtYtd || 0);
+  const quotaRemain = qAvV == null ? null : (q14V || 0) - (dtYtdV || 0);
   cells.push(
-    <td
-      key="q14"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
-    >
-      {moneyTy3(d.q14Dt)}
-    </td>,
+    <td key="q14" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(q14V)}</td>,
   );
   cells.push(
-    <td
-      key="qup"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
-    >
-      {moneyTy3(d.qUpcomingDt)}
-    </td>,
+    <td key="qup" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(qUpV)}</td>,
   );
   cells.push(
-    <td
-      key="q"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}
-    >
-      {moneyTy3(d.quotaFYDt)}
-    </td>,
+    <td key="q" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(qFYV)}</td>,
   );
   cells.push(
-    <td
-      key="qth"
-      className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${qbg}`}
-    >
-      {moneyTy3(d.dtYtd)}
-    </td>,
+    <td key="qth" className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${qbg}`}>{fmt(dtYtdV)}</td>,
   );
   cells.push(
-    <td
-      key="qav"
-      className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}
-    >
-      {quotaRemain == null ? '—' : moneyTy3(quotaRemain)}
+    <td key="qav" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}>
+      {quotaRemain == null ? '—' : fmt(quotaRemain)}
     </td>,
   );
   return React.createElement(React.Fragment, null, ...cells);
@@ -1017,7 +985,14 @@ function SummaryGroupRow({ grp: g, depth = 0 }) {
             className="hover:bg-slate-50/40 border-b border-slate-100"
           >
             <td className="px-3 py-1.5 text-[11.5px] text-slate-500 border-r border-slate-100 sticky left-0 z-10 bg-white">
-              <div className="break-words">{p.prod}</div>
+              <div className="break-words">
+                {p.prod}
+                {SUM_VIEW_MODE === 'qty' && p.price > 0 && (
+                  <span className="ml-1.5 text-[10px] text-slate-400">
+                    ĐG: {moneyPrice(p.price)}tr
+                  </span>
+                )}
+              </div>
             </td>
             <StatCells d={p} size="sm" />
             <td className="border-b border-slate-100" />
