@@ -132,7 +132,7 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
     for (const gp of c.grps) {
       push(level + 1, gp.grp, gp);
       for (const pp of gp.prods)
-        push(level + 2, (pp.mset ? pp.mset + ' · ' : '') + pp.prod, pp);
+        push(level + 2, pp.prod, pp);
     }
   };
   for (const reg of data.regions) {
