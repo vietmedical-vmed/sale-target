@@ -1454,6 +1454,18 @@ export function App() {
     });
     return { raw, has, count: raw.size };
   }, [rows]);
+  // KH đã có thẻ ở team ĐANG XEM (teamRows). Kiểm trùng khi thêm KH phải theo
+  // tập này, không theo custIndex.has (mọi team): KH chỉ có kế hoạch ở BU khác
+  // vẫn phải thêm được vào BU này, nếu không thì bị báo "đã có" mà không thấy thẻ.
+  const teamCustKeys = useMemo(() => {
+    const has = new Set();
+    teamRows.forEach((r) => {
+      if (!r.cust) return;
+      has.add(r.cust);
+      if (r.custId) has.add(r.custId);
+    });
+    return has;
+  }, [teamRows]);
   const totalCustCount = custIndex.count;
   useEffect(() => {
     custRawRef.current = custIndex.raw;
@@ -1513,10 +1525,10 @@ export function App() {
     () =>
       newCusts.filter(
         (c) =>
-          !custIndex.has.has(custLabel(c.custId, c.cust)) &&
-          !(c.custId && custIndex.has.has(c.custId)),
+          !teamCustKeys.has(custLabel(c.custId, c.cust)) &&
+          !(c.custId && teamCustKeys.has(c.custId)),
       ),
-    [newCusts, custIndex],
+    [newCusts, teamCustKeys],
   );
   const addCustomer = useCallback((c) => {
     setNewCusts((prev) =>
@@ -2689,7 +2701,7 @@ export function App() {
             psOptions={allPsList}
             regionsByPs={regionsByPs}
             diaBanByCust={diaBanByCust}
-            existingCustKeys={custIndex.has}
+            existingCustKeys={teamCustKeys}
             catIdx={catalog.length > 0 ? catIdx : null}
             groupsByPs={groupsByPs}
             priceOf={priceOf}
