@@ -3,7 +3,7 @@ import { verifyToken, signToken } from "../_shared/auth.ts";
 import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, PAGE } from "./config.ts";
 import { applyScope, scopeParams, parseGroups } from "./scope.ts";
 import {
-  admin, getRev, writeAuditLog, diaBanErr,
+  admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone,
@@ -875,9 +875,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "saveDiaBan") {
-      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
+      const isPs = sess.r === "ps";
+      if (sess.r !== "admin" && sess.r !== "manager" && !isPs) return json({ ok: false, error: "forbidden" }, 403);
       const rows = payload.rows || [];
       if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
+      if (isPs) {
+        const chan = await kiemTraPsThemDiaBan(db, sess, rows);
+        if (chan) return json({ ok: false, error: chan.error }, chan.status);
+      }
       const ids = rows.map((r: Record<string, unknown>) => Number(r.id)).filter((n: number) => Number.isFinite(n));
       const oldMien = new Map<number, string>();
       if (ids.length) {

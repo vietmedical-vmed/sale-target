@@ -17,6 +17,83 @@ export function diaBanErr(error: { message?: string }, req?: Request) {
   return json({ ok: false, error: msg }, 500, req);
 }
 
+// PS tự khai báo địa bàn: chỉ được THÊM bản mới cho CHÍNH MÌNH, và chỉ cho tổ hợp
+// (KH × ngành hàng) chưa có PS khác — kể cả trong dm_dia_ban lẫn trên dòng kế hoạch.
+// Lý do: upsert_dm_dia_ban tự apply_dia_ban_to_plan, ghi PS xuống MỌI dòng kế hoạch
+// của tổ hợp; nếu PS khác đang có kế hoạch ở đó thì sẽ bị "cướp" dòng.
+// Sửa/xoá/chuyển địa bàn vẫn chỉ admin/manager. Ghi đè ps/active trên `rows`.
+// Trả { status, error } khi phải chặn, null khi hợp lệ.
+export async function kiemTraPsThemDiaBan(
+  db: ReturnType<typeof createClient>,
+  sess: Session,
+  rows: Record<string, unknown>[],
+): Promise<{ status: number; error: string } | null> {
+  const me = String(sess.s || "").trim();
+  for (const r of rows) {
+    if (r.id != null && r.id !== "") return { status: 403, error: "forbidden_rows" };
+    const ps = String(r.ps || "").trim();
+    if (ps && ps !== me) return { status: 403, error: "forbidden_rows" };
+    r.ps = me;
+    r.active = true;
+  }
+  let bu: string;
+  try {
+    bu = await buForPs(db, me, sess.b);
+  } catch (e) {
+    return { status: 409, error: String(e && (e as Error).message || e) };
+  }
+  const keyOf = (custId: unknown, cust: unknown) =>
+    String(custId || "").trim() || String(cust || "").trim();
+  const want = new Map<string, string>(); // custKey||grp -> nhãn hiển thị
+  for (const r of rows) {
+    const k = keyOf(r.custId, r.cust);
+    const g = String(r.grp || "").trim();
+    if (k && g) want.set(`${k}||${g}`, `${String(r.cust || k)} · ${g}`);
+  }
+  if (!want.size) return null; // thiếu dữ liệu → để upsert_dm_dia_ban báo thieu_du_lieu
+  const keys = [...new Set([...want.keys()].map((x) => x.split("||")[0]))];
+  const grps = [...new Set([...want.keys()].map((x) => x.split("||")[1]))];
+
+  const conflict = new Map<string, Set<string>>(); // custKey||grp -> PS khác
+  const add = (k: string, ps: unknown) => {
+    if (!want.has(k)) return;
+    let s = conflict.get(k);
+    if (!s) conflict.set(k, s = new Set());
+    s.add(String(ps));
+  };
+
+  const { data: dbs, error: e1 } = await db.schema("shared").from("dm_dia_ban")
+    .select("cust_key, nhom_san_pham, ps")
+    .eq("bu", bu).in("cust_key", keys).in("nhom_san_pham", grps).neq("ps", me);
+  if (e1) throw new Error(e1.message);
+  for (const d of dbs || []) add(`${d.cust_key}||${d.nhom_san_pham}`, d.ps);
+
+  // Khớp dòng kế hoạch y như apply_dia_ban_to_plan: coalesce(nullif(ma_khach_hang,''), khach_hang).
+  const ids = keys.filter((k) => rows.some((r) => String(r.custId || "").trim() === k));
+  const names = keys.filter((k) => !ids.includes(k));
+  const scan = async (col: "ma_khach_hang" | "khach_hang", vals: string[]) => {
+    if (!vals.length) return;
+    const { data, error } = await db.schema("shared").from("sale_target")
+      .select("ma_khach_hang, khach_hang, nhom_san_pham, ps")
+      .eq("bu", bu).in(col, vals).in("nhom_san_pham", grps).neq("ps", me)
+      .limit(5000);
+    if (error) throw new Error(error.message);
+    for (const s of data || []) {
+      const k = keyOf(s.ma_khach_hang, s.khach_hang);
+      add(`${k}||${s.nhom_san_pham}`, s.ps);
+    }
+  };
+  await scan("ma_khach_hang", ids);
+  await scan("khach_hang", names);
+
+  if (!conflict.size) return null;
+  const list = [...conflict].map(([k, s]) => `${want.get(k)} (PS ${[...s].join(", ")})`);
+  return {
+    status: 409,
+    error: `da_co_ps_khac: ${list.slice(0, 5).join("; ")}${list.length > 5 ? ` … và ${list.length - 5} tổ hợp khác` : ""}`,
+  };
+}
+
 export function admin() {
   return createClient(
     Deno.env.get("SUPABASE_URL") ?? "",

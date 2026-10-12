@@ -63,6 +63,11 @@ export const diaBanErrMsg = (m) => {
   if (s === 'dup_dia_ban')
     return 'địa bàn này đã được khai báo cho PS đó từ cùng một tháng.';
   if (s === 'forbidden') return 'chỉ admin được sửa cấu hình địa bàn.';
+  if (s.startsWith('da_co_ps_khac:'))
+    return (
+      'tổ hợp đã có PS khác phụ trách (địa bàn hoặc kế hoạch) — nhờ admin chuyển: ' +
+      s.slice('da_co_ps_khac:'.length).trim()
+    );
   if (s === 'forbidden_rows') return 'có dòng ngoài phạm vi quyền của bạn.';
   if (s === 'thieu_du_lieu') return 'thiếu khách hàng / ngành hàng / PS.';
   if (s === 'khong_ton_tai')
@@ -90,6 +95,9 @@ export function DiaBanView({
   psKnown,
   groupOptions,
   canEdit,
+  // Được mở "Thêm địa bàn" (admin/manager, và PS — PS chỉ thêm cho chính mình,
+  // tổ hợp chưa có PS khác; backend kiểm). Sửa/xoá/dọn vẫn theo canEdit.
+  canAdd = canEdit,
   psFilter,
   regionFilter,
   groupFilter,
@@ -139,7 +147,9 @@ export function DiaBanView({
   // thêm ô mới; Xác nhận gửi toàn bộ danh sách vào onSave (backend auto-apply cả
   // năm cho tất cả tổ hợp không chồng lấn).
   const [addOpen, setAddOpen] = useState(false);
-  const emptyAddRow = { custKey: '', grp: '', ps: '' };
+  // Chỉ 1 PS để chọn (PS tự khai báo) → điền sẵn luôn.
+  const psMacDinh = psOptions.length === 1 ? psOptions[0] : '';
+  const emptyAddRow = { custKey: '', grp: '', ps: psMacDinh };
   const [addRows, setAddRows] = useState([emptyAddRow]);
   // Ref để scroll dòng khai báo cần chú ý (prefill purpose='chuyen') vào tầm nhìn.
   const highlightRef = useRef(null);
@@ -169,7 +179,7 @@ export function DiaBanView({
         {
           custKey: prefill.custId || prefill.cust || '',
           grp: prefill.grp || '',
-          ps: '',
+          ps: psMacDinh,
         },
       ]);
       setAddOpen(true);
@@ -561,7 +571,7 @@ export function DiaBanView({
             Dọn {overlapCount}chồng lấn
           </button>
         )}
-        {canEdit && (
+        {canAdd && (
           <button
             onClick={openAdd}
             disabled={busy}
@@ -624,6 +634,7 @@ export function DiaBanView({
     };
   }, [
     canEdit,
+    canAdd,
     overlapCount,
     busy,
     allShownGroupKeys,
@@ -840,7 +851,7 @@ export function DiaBanView({
       }
       {
         // ---- Modal Thêm địa bàn (nhiều dòng) — mở qua nút "+ Thêm địa bàn" ở toolbar
-        canEdit && addOpen && (
+        canAdd && addOpen && (
           <div
             className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4"
             onClick={closeAdd}
@@ -951,6 +962,8 @@ export function DiaBanView({
                 <span className="text-[11.5px] text-slate-500">
                   {readyRows.length}/ {addRows.length}dòng đầy đủ (KH · Ngành
                   hàng · PS)
+                  {!canEdit &&
+                    ' · chỉ thêm được KH × ngành hàng chưa có PS khác phụ trách'}
                 </span>
                 <div className="flex-1" />
                 <button

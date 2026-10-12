@@ -480,7 +480,8 @@ export function App() {
     return () => clearTimeout(id);
   }, [notice]);
 
-  // Ghi khai báo địa bàn (thêm/sửa). Chỉ admin — backend cũng chặn lại lần nữa.
+  // Ghi khai báo địa bàn (thêm/sửa). Admin/manager; PS chỉ được thêm bản mới cho
+  // chính mình (tổ hợp chưa có PS khác) — backend kiểm lại.
   // Từ 2026-08-07: backend TỰ ĐỘNG apply cho cả năm sau khi ghi xong, nên sau
   // save cần loadData để lấy ps/mien mới của dòng kế hoạch.
   const saveDiaBan = useCallback(
@@ -1600,6 +1601,16 @@ export function App() {
     });
     return Array.from(s).sort();
   }, [catalog, rows, diaBan]);
+  // Ngành hàng trong popup Thêm địa bàn: PS chỉ chọn nhóm thuộc BU của mình
+  // (như form thêm SP); admin/manager thấy đủ.
+  const diaBanGroupOptions = useMemo(() => {
+    if (auth.role !== 'ps') return allGroupNames;
+    const ok = new Set();
+    allPsList.forEach((p) =>
+      (groupsByPs.get(p) || []).forEach((g) => ok.add(g)),
+    );
+    return ok.size ? allGroupNames.filter((g) => ok.has(g)) : allGroupNames;
+  }, [auth.role, allGroupNames, allPsList, groupsByPs]);
   // PS → Miền. Ưu tiên dm_ps.area (câu trả lời dứt khoát, có cả cho PS chưa có dòng
   // kế hoạch); chỉ khi PS không có trong danh mục mới suy từ kế hoạch, và chỉ nhận
   // khi PS đó thuộc đúng 1 miền. Backend suy lại y hệt khi lưu nên client không
@@ -2697,8 +2708,9 @@ export function App() {
             psOptions={allPsList}
             mienByPs={mienByPs}
             psKnown={psKnown}
-            groupOptions={allGroupNames}
+            groupOptions={diaBanGroupOptions}
             canEdit={isAdmin || auth.role === 'manager'}
+            canAdd={isAdmin || auth.role === 'manager' || auth.role === 'ps'}
             psFilter={psFilter}
             regionFilter={regionFilter}
             groupFilter={groupFilter}
