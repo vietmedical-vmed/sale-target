@@ -15,6 +15,11 @@ export function parseGroups(raw: unknown): string[] {
   return String(raw || "").split(",").map((x) => x.trim()).filter(Boolean);
 }
 
+// area_manager: scope = danh sách tên miền phụ trách ("Miền Bắc, Miền Trung").
+export function mienScope(sess: Session): string[] {
+  return parseGroups(sess.s);
+}
+
 function narrowGroups(sess: Session, groups: string[]) {
   const nhoms = parseGroups(sess.g);
   if (!nhoms.length) return groups;
@@ -48,7 +53,7 @@ export function applyScope(
     const groups = narrowGroups(sess, parseGroups(sess.s));
     return eqOrIn(q, "nhom_san_pham", groups);
   }
-  if (role === "area_manager") q = q.eq("mien", sess.s);
+  if (role === "area_manager") q = eqOrIn(q, "mien", mienScope(sess));
   else if (role === "ps") q = q.eq("ps", sess.s);
   else if (role !== "admin" && role !== "manager") q = q.eq("ps", sess.s);
 
@@ -68,7 +73,7 @@ export function scopeParams(sess: Session) {
     return { ...nil, p_groups: groups.length ? groups : ["__none__"] };
   }
   const base = role === "area_manager"
-    ? { ...nil, p_bu: sess.b, p_mien: sess.s }
+    ? { ...nil, p_bu: sess.b, p_mien: mienScope(sess).join(",") || "__none__" }
     : { ...nil, p_bu: sess.b, p_ps: sess.s };
   return nhoms.length ? { ...base, p_groups: nhoms } : base;
 }

@@ -1,7 +1,7 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
 import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, PAGE } from "./config.ts";
-import { applyScope, scopeParams, parseGroups } from "./scope.ts";
+import { applyScope, scopeParams, parseGroups, mienScope } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
       })).filter((p: { ps: unknown }) => p.ps);
       const role = sess.r;
       if (role === "ps") list = list.filter((p: { ps: unknown }) => p.ps === sess.s);
-      else if (role === "area_manager") list = list.filter((p: { mien: unknown }) => p.mien === sess.s);
+      else if (role === "area_manager") list = list.filter((p: { mien: unknown }) => mienScope(sess).includes(String(p.mien)));
       else if ((role === "admin" || role === "manager") && payload.bu) {
         list = list.filter((p: { bu: unknown }) => p.bu === payload.bu);
       }
@@ -533,7 +533,7 @@ Deno.serve(async (req) => {
       }
       if (sess.r === "area_manager") {
         const psMien = await mienForPs(db, psName);
-        if (bu !== sess.b || !psMien || psMien !== sess.s) {
+        if (bu !== sess.b || !psMien || !mienScope(sess).includes(psMien)) {
           return json({
             ok: false,
             error: !psMien
@@ -549,7 +549,8 @@ Deno.serve(async (req) => {
           error: `Nhóm SP "${s.grp || ""}" không thuộc phạm vi của bạn (${gLimits.join(", ")})`,
         }, 403);
       }
-      let mien = sess.r === "area_manager" ? sess.s : String(s.region || "").trim();
+      // area_manager: miền của dòng = miền của PS (đã kiểm tra thuộc phạm vi ở trên).
+      let mien = sess.r === "area_manager" ? "" : String(s.region || "").trim();
       if (!mien) mien = await mienForPs(db, psName) || "";
       const thangThau = (v: unknown) => {
         const t = String(v || "").trim();
@@ -714,11 +715,11 @@ Deno.serve(async (req) => {
           let psMien = "";
           if (sess.r === "area_manager") {
             const m = await mienForPs(db, ps);
-            if (psBu !== sess.b || !m || m !== sess.s) {
+            if (psBu !== sess.b || !m || !mienScope(sess).includes(m)) {
               psInfoCache.set(ps, null);
               continue;
             }
-            psMien = sess.s;
+            psMien = m;
           } else {
             psMien = await mienForPs(db, ps) || "";
           }
@@ -1028,7 +1029,7 @@ Deno.serve(async (req) => {
       if (sess.r === "ps") ps = sess.s;
       else if (sess.r === "area_manager") {
         const info = await psInfo(db, ps);
-        if (!info || info.area !== sess.s) return json({ ok: false, error: "out_of_scope" }, 403);
+        if (!info || !mienScope(sess).includes(String(info.area))) return json({ ok: false, error: "out_of_scope" }, 403);
       } else if (sess.r === "product_manager") {
         if (grp) {
           const groups = String(sess.s || "").split(",").map((x: string) => x.trim()).filter(Boolean);
@@ -1057,7 +1058,7 @@ Deno.serve(async (req) => {
       if (sess.r === "ps") ps = sess.s;
       else if (sess.r === "area_manager") {
         const info = await psInfo(db, ps);
-        if (!info || info.area !== sess.s) return json({ ok: false, error: "out_of_scope" }, 403);
+        if (!info || !mienScope(sess).includes(String(info.area))) return json({ ok: false, error: "out_of_scope" }, 403);
       } else if (sess.r === "product_manager") {
         if (grp) {
           const groups = String(sess.s || "").split(",").map((x: string) => x.trim()).filter(Boolean);

@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import type { Session } from "../_shared/auth.ts";
 import { json } from "../_shared/cors.ts";
 import { COL, FIELDS, PAGE, CONCURRENCY } from "./config.ts";
-import { applyScope, readScopeParams, parseGroups } from "./scope.ts";
+import { applyScope, readScopeParams, parseGroups, mienScope } from "./scope.ts";
 
 export function diaBanErr(error: { message?: string }, req?: Request) {
   const msg = String(error && error.message || "");
@@ -141,7 +141,10 @@ export function applyScopeTombstone(
     return groups.length > 1 ? q.in("nhom_san_pham", groups) : q.eq("nhom_san_pham", groups[0]);
   } else {
     q = q.eq("bu", sess.b);
-    if (role === "area_manager") q = q.eq("mien", sess.s);
+    if (role === "area_manager") {
+      const miens = mienScope(sess);
+      q = miens.length > 1 ? q.in("mien", miens) : q.eq("mien", miens[0] ?? "__none__");
+    }
     else q = q.eq("ps", sess.s);
   }
 
