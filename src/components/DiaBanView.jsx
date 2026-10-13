@@ -323,6 +323,10 @@ export function DiaBanView({
   );
 
   const allRows = useMemo(() => [...list, ...missingRows], [list, missingRows]);
+  const diffRows = useMemo(
+    () => list.filter((d) => d.status === 'diff'),
+    [list],
+  );
 
   // Stats
   const statOk = useMemo(() => allRows.filter((d) => d.status === 'ok').length, [allRows]);
@@ -382,10 +386,6 @@ export function DiaBanView({
     });
     return n;
   }, [filteredDiaBan]);
-  const diffRows = useMemo(
-    () => list.filter((d) => d.status === 'diff'),
-    [list],
-  );
   const editCount = Object.keys(edits).length;
   const custCount = new Set(list.map((d) => dbCustKey(d.custId, d.cust))).size;
   const psLaList = useMemo(
