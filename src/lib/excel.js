@@ -162,106 +162,136 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
 
 export async function exportProductSummary(data) {
   const XLSX = await loadXLSX();
+  const wb = XLSX.utils.book_new();
+  _buildProdSheet(XLSX, wb, data, 'money');
+  _buildProdSheet(XLSX, wb, data, 'qty');
+  XLSX.writeFile(wb, `TongHop_theo_SP_${_today()}.xlsx`);
+}
+
+function _buildProdSheet(XLSX, wb, data, mode) {
+  const isSL = mode === 'qty';
+  const tr = isSL ? (v) => Math.round(Number(v) || 0) : (v) => (Number(v) || 0) / 1e6;
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
   const hasAct = (i) => i <= curIdx;
-  const H1 = ['Sản phẩm / Miền / KH'],
+  const H1 = ['Miền / Nhóm SP / SP / KH'],
     H2 = [''];
   const merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];
-  const cols = [{ wch: 34 }];
-  const pctCols = [];
+  const cols = [{ wch: 38 }];
+  const pctCols = [], numCols = [], moneyCols = [];
   let c = 1;
+  if (isSL) {
+    H1.push('Đơn giá');
+    H2.push('');
+    merges.push({ s: { r: 0, c: 1 }, e: { r: 1, c: 1 } });
+    cols.push({ wch: 14 });
+    moneyCols.push(1);
+    c = 2;
+  }
   for (let i = 0; i < 12; i++) {
     if (hasAct(i)) {
       H1.push(MONTH_LABELS[i], '', '');
       H2.push('KH update', 'Thực hiện', '% TH');
       merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
-      cols.push({ wch: 9 }, { wch: 9 }, { wch: 7 });
+      cols.push({ wch: 10 }, { wch: 10 }, { wch: 7 });
+      numCols.push(c, c + 1);
       pctCols.push(c + 2);
       c += 3;
     } else {
       H1.push(MONTH_LABELS[i]);
       H2.push('KH update');
-      cols.push({ wch: 9 });
+      cols.push({ wch: 10 });
+      numCols.push(c);
       c += 1;
     }
   }
   H1.push('Luỹ kế YTD', '', '', '', '', '');
   H2.push('KH update', 'Thực hiện', '% TH YTD', 'tốc độ TH YTD', 'tốc độ KH YTD', 'CL tốc độ');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
-  cols.push({ wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
+  cols.push({ wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
+  numCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
   H1.push('Target', '', '', '');
-  H2.push('Target đầu năm', 'DThu dự kiến', 'Chênh lệch', 'KH còn lại');
+  H2.push(
+    isSL ? 'SL đầu năm' : 'Target đầu năm',
+    isSL ? 'SL dự kiến' : 'DThu dự kiến',
+    'Chênh lệch', 'KH còn lại',
+  );
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
+  numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
   H1.push('Quota', '', '', '', '');
   H2.push('On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
   cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
+  numCols.push(c, c + 1, c + 2, c + 3, c + 4);
   c += 5;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
-  const push = (level, label, d) => {
-    const quota = Number(d.quota) || 0,
-      thYtd = Number(d.thYtd) || 0,
-      khYtd = Number(d.khYtd) || 0;
+  const push = (level, label, d, price) => {
+    const dtV = isSL ? (Number(d.slDauNam) || 0) : (Number(d.dt) || 0);
+    const dtUpdV = isSL ? (Number(d.slUpd) || 0) : (Number(d.dtUpd) || 0);
+    const ch = dtUpdV - dtV;
+    const khYtdV = isSL ? (Number(d.khYtd) || 0) : (Number(d.khYtdDt) || 0);
+    const thYtdV = isSL ? (Number(d.thYtd) || 0) : (Number(d.dtYtd) || 0);
+    const moKh = isSL ? d.moKh : d.moKhDt;
+    const moAct = isSL ? d.moAct : d.moActDt;
+    const onHandV = isSL ? (Number(d.onHand) || 0) : (Number(d.onHandDt) || 0);
+    const upcomingV = isSL ? (Number(d.upcoming) || 0) : (Number(d.upcomingDt) || 0);
+    const quotaV = isSL ? (Number(d.quota) || 0) : (Number(d.quotaDt) || 0);
     const row = ['   '.repeat(level) + label];
+    if (isSL) row.push(price > 0 ? price : '');
     for (let i = 0; i < 12; i++) {
-      const kh = Math.round(d.moKh[i] || 0);
-      if (!hasAct(i)) {
-        row.push(kh);
-        continue;
-      }
-      const act = Math.round(d.moAct[i] || 0);
-      row.push(kh, act, kh > 0 ? act / kh : '');
+      const kh = moKh[i] || 0, act = moAct[i] || 0;
+      if (!hasAct(i)) { row.push(tr(kh)); continue; }
+      row.push(tr(kh), tr(act), kh > 0 ? act / kh : '');
     }
-    const totKh = d.moKh.reduce((s, v, i) => s + (i < curIdx ? d.moAct[i] || 0 : v), 0);
-    const thP = khYtd > 0 ? thYtd / khYtd : null;
-    const tdTh = totKh > 0 ? thYtd / totKh : null;
-    const tdKh = totKh > 0 ? khYtd / totKh : null;
+    const thP = khYtdV > 0 ? thYtdV / khYtdV : null;
+    const tdTh = dtUpdV > 0 ? thYtdV / dtUpdV : null;
+    const tdKh = dtUpdV > 0 ? khYtdV / dtUpdV : null;
     const clP = tdTh != null && tdKh != null ? tdTh - tdKh : '';
     row.push(
-      Math.round(khYtd), Math.round(thYtd),
+      tr(khYtdV), tr(thYtdV),
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
-    const slDauNam = Math.round((d.moKhDauNam || []).reduce((s, v) => s + v, 0));
-    const slUpd = Math.round(totKh);
-    row.push(slDauNam, slUpd, slUpd - slDauNam, slUpd - Math.round(thYtd));
-    const onHand = Number(d.onHand) || 0,
-      upcoming = Number(d.upcoming) || 0;
+    row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - thYtdV));
     row.push(
-      Math.round(onHand), Math.round(upcoming), Math.round(quota),
-      Math.round(thYtd), d.oop ? '-' : Math.round(onHand - thYtd),
+      tr(onHandV), tr(upcomingV), tr(quotaV),
+      tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV),
     );
     aoa.push(row);
     levels.push(level);
   };
-  for (const p of data.prods) {
-    push(0, p.prod, p);
-    for (const rg of p.regs) {
-      push(1, rg.region, rg);
-      for (const cu of rg.custs) {
-        push(2, cu.cust + (cu.custId ? ` (${cu.custId})` : ''), cu);
-        for (const s of cu.subs || [])
-          push(3, s.cust + (s.custId ? ` (${s.custId})` : ''), s);
+  for (const reg of data.regs) {
+    push(0, reg.region, reg, 0);
+    for (const g of reg.grps) {
+      push(1, g.grp, g, 0);
+      for (const p of g.prods) {
+        push(2, p.prod, p, p.price || 0);
+        for (const cu of p.custs) {
+          push(3, cu.cust + (cu.custId ? ` (${cu.custId})` : ''), cu, 0);
+          for (const s of cu.subs || [])
+            push(4, s.cust + (s.custId ? ` (${s.custId})` : ''), s, 0);
+        }
       }
     }
   }
-  push(0, 'TỔNG CỘNG', data.grand);
+  push(0, 'TỔNG CỘNG', data.grand, 0);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges'] = merges;
   ws['!cols'] = cols;
   ws['!rows'] = levels.map((l) => (l == null ? {} : { level: l }));
-  const pctSet = new Set(pctCols);
+  const pctSet = new Set(pctCols), numSet = new Set(numCols), moneySet = new Set(moneyCols);
+  const numFmt = isSL ? '#,##0' : '#,##0.###';
   for (let r = 2; r < aoa.length; r++) {
-    for (let cc = 1; cc <= LAST_COL; cc++)
-      _fmt(ws, r, cc, pctSet.has(cc) ? '0%' : '#,##0');
+    for (let cc = 1; cc <= LAST_COL; cc++) {
+      if (pctSet.has(cc)) _fmt(ws, r, cc, '0%');
+      else if (moneySet.has(cc)) _fmt(ws, r, cc, '#,##0');
+      else if (numSet.has(cc)) _fmt(ws, r, cc, numFmt);
+    }
   }
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Tong hop theo SP');
-  XLSX.writeFile(wb, `TongHop_theo_SP_${_today()}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, isSL ? 'Theo SP (SL)' : 'Theo SP (Tien)');
 }
