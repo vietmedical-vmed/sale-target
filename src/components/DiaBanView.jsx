@@ -1225,6 +1225,26 @@ export function DiaBanView({
                                               ' whitespace-nowrap text-right'
                                             }
                                           >
+                                            {d.status === 'diff' && (
+                                              <button
+                                                onClick={() =>
+                                                  onSave([
+                                                    {
+                                                      id: d.id,
+                                                      custId: d.custId,
+                                                      cust: d.cust,
+                                                      grp: d.grp,
+                                                      ps: d.ps,
+                                                    },
+                                                  ])
+                                                }
+                                                disabled={busy}
+                                                title="Áp dụng PS này vào kế hoạch"
+                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
+                                              >
+                                                <RefreshCw size={13} />
+                                              </button>
+                                            )}
                                             <button
                                               onClick={() => doDelete(d)}
                                               disabled={busy}
