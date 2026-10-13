@@ -415,6 +415,10 @@ export function DiaBanView({
     });
     return n;
   }, [filteredDiaBan]);
+  const diffRows = useMemo(
+    () => list.filter((d) => d.status === 'diff'),
+    [list],
+  );
   const editCount = Object.keys(edits).length;
   const custCount = groups.length;
   const psLaList = useMemo(
@@ -526,6 +530,26 @@ export function DiaBanView({
     await onSave(batch);
   };
 
+  const applyDiffToPlan = async () => {
+    if (!diffRows.length) return;
+    const batch = diffRows.map((d) => ({
+      id: d.id,
+      custId: d.custId,
+      cust: d.cust,
+      grp: d.grp,
+      ps: d.ps,
+    }));
+    if (
+      !confirm(
+        `Áp dụng PS từ ${batch.length} địa bàn lệch vào kế hoạch?\n\n` +
+          `Dòng kế hoạch sẽ đổi PS theo đúng địa bàn đã khai báo. ` +
+          `Tổ hợp có nhiều PS chồng lấn sẽ được bỏ qua — cần dọn chồng lấn trước.`,
+      )
+    )
+      return;
+    await onSave(batch);
+  };
+
   const doDelete = (d) => {
     if (
       confirm(
@@ -569,6 +593,17 @@ export function DiaBanView({
           >
             <RefreshCw size={14} />
             Dọn {overlapCount}chồng lấn
+          </button>
+        )}
+        {canEdit && diffRows.length > 0 && (
+          <button
+            onClick={applyDiffToPlan}
+            disabled={busy}
+            title="Áp dụng PS từ địa bàn vào các dòng kế hoạch đang lệch"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50"
+          >
+            <RefreshCw size={14} />
+            Áp {diffRows.length} lệch vào KH
           </button>
         )}
         {canAdd && (
@@ -636,6 +671,7 @@ export function DiaBanView({
     canEdit,
     canAdd,
     overlapCount,
+    diffRows.length,
     busy,
     allShownGroupKeys,
     allClosed,
