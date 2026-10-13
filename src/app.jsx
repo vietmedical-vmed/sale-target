@@ -35,6 +35,8 @@ import { buildCatalogIndex, AddCustomerModal, NewCustomerCard } from './componen
 import { DiaBanView } from './components/DiaBanView.jsx';
 import { TabBtn, OopReasonButton, FixBoVatTuModal, OopDetailModal, DmpsForm, StatCard } from './components/SupportComponents.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './components/QuotaThau.jsx';
+import { ganQuotaTheoDot } from './lib/quota.js';
+import { exportQuotaThau } from './lib/excel.js';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
 import { useVirtualizer, observeElementOffset } from '@tanstack/react-virtual';
@@ -479,6 +481,21 @@ export function App() {
     const id = setTimeout(() => setNotice(''), 8000);
     return () => clearTimeout(id);
   }, [notice]);
+
+  // Xuất quota thầu gộp quota_thau + cột cũ sale_target, toàn bộ BU (tạm chỉ admin).
+  const [quotaXuatBusy, setQuotaXuatBusy] = useState(false);
+  const xuatQuotaThau = useCallback(async () => {
+    setQuotaXuatBusy(true);
+    setError('');
+    try {
+      const r = await api('exportQuotaThau');
+      await exportQuotaThau(r.rows || []);
+    } catch (e) {
+      setError('Xuất quota thầu thất bại: ' + e.message);
+    } finally {
+      setQuotaXuatBusy(false);
+    }
+  }, []);
 
   // Ghi khai báo địa bàn (thêm/sửa). Admin/manager; PS chỉ được thêm bản mới cho
   // chính mình (tổ hợp chưa có PS khác) — backend kiểm lại.
@@ -1392,16 +1409,22 @@ export function App() {
   }, [oopRows, regionFilter, psFilter, custFilter, groupFilter, deferredSearch]);
   // Dữ liệu cho 2 MÀN TỔNG HỢP: kế hoạch + dòng ngoài kế hoạch (để tổng đủ số).
   // Màn chi tiết, export, sửa/xoá vẫn dùng teamRows -> không thấy các dòng này.
+  // Quota on-hand / upcoming gắn sẵn lên từng dòng theo tháng của đợt thầu.
   const summaryRows = useMemo(
     () =>
-      oopRows.length
-        ? teamRows.concat(
-            oopRows.filter(
-              (r) => !viewBu || viewBu === 'test' || r.bu === viewBu,
-            ),
-          )
-        : teamRows,
-    [teamRows, oopRows, viewBu],
+      ganQuotaTheoDot(
+        oopRows.length
+          ? teamRows.concat(
+              oopRows.filter(
+                (r) => !viewBu || viewBu === 'test' || r.bu === viewBu,
+              ),
+            )
+          : teamRows,
+        dots,
+        quotas,
+        curMonth,
+      ),
+    [teamRows, oopRows, viewBu, dots, quotas, curMonth],
   );
   const draftKeys = useMemo(() => new Set(Object.keys(drafts)), [drafts]);
   const regionList = useMemo(
@@ -1900,8 +1923,9 @@ export function App() {
       dtUpd = 0,
       dtYtd = 0, // DThu thực hiện luỹ kế YTD (chỉ trong KH)
       khYtdDt = 0, // DThu KH update luỹ kế YTD (mẫu số của % TH YTD, chỉ trong KH)
-      q14Dt = 0, // Quota on-hand (tiền) = (qOld + qMain nếu đã đến tháng + qAdd nếu đã đến tháng) * giá
+      q14Dt = 0, // Quota on-hand (tiền) = quota đã tới tháng thầu * giá
       productCount = 0;
+    const treeRows = [];
     tree.forEach((c) =>
       c.groups.forEach((g) => {
         productCount += g.products.length;
@@ -1927,15 +1951,15 @@ export function App() {
                 dtYtd += dtActR;
                 khYtdDt += rawUpd * pr;
               }
-              const rQOld = Number(r.qOld) || 0;
-              const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
-              const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
-              q14Dt += (rQOld + (mainOn ? (Number(r.qMain) || 0) : 0) + (addOn ? (Number(r.qAdd) || 0) : 0)) * pr;
+              treeRows.push(r);
             });
           });
         });
       }),
     );
+    // Quota on-hand theo tháng của đợt thầu, cùng nguồn với 2 màn tổng hợp.
+    for (const r of ganQuotaTheoDot(treeRows, dots, quotas, CURRENT_MONTH))
+      q14Dt += r._qOnHand * (Number(r.price) || 0);
     // Cộng thêm phần THỰC HIỆN NGOÀI KẾ HOẠCH (oopRows) để thẻ tiền khớp với TỔNG CỘNG
     // ở 2 màn tổng hợp — dùng ĐÚNG bộ lọc & công thức như SummaryView.
     const q = search.toLowerCase().trim();
@@ -1989,6 +2013,8 @@ export function App() {
     groupFilter,
     search,
     curMonth,
+    dots,
+    quotas,
   ]);
 
   // Đối chiếu thực hiện: gom oopRows theo ly_do — cảnh báo tổng để người cấu hình
@@ -2422,6 +2448,21 @@ export function App() {
               >
                 <Download size={14} />
                 Xuất Excel
+              </button>
+            )}
+            {isAdmin && tab !== 'diaban' && (
+              <button
+                onClick={xuatQuotaThau}
+                disabled={quotaXuatBusy}
+                title="Xuất quota thầu toàn bộ (đợt thầu mới + cột cũ), kèm On hand / Upcoming và cảnh báo quota lệch kế hoạch"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 disabled:opacity-60"
+              >
+                {quotaXuatBusy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                Xuất quota thầu
               </button>
             )}
             {tab === 'diaban' && diaBanToolbar && diaBanToolbar()}

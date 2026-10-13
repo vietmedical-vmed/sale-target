@@ -295,3 +295,37 @@ function _buildProdSheet(XLSX, wb, data, mode) {
   }
   XLSX.utils.book_append_sheet(wb, ws, isSL ? 'Theo SP (SL)' : 'Theo SP (Tien)');
 }
+
+// Quota thầu gộp 2 nguồn (view shared.v_quota_thau_xuat) — tạm chỉ admin.
+export async function exportQuotaThau(rows) {
+  const XLSX = await loadXLSX();
+  const LOAI = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Thầu bổ sung' };
+  const H = [
+    'Năm TC', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', 'Bộ vật tư',
+    'Sản phẩm', 'Đơn giá', 'Loại thầu', 'Đợt', 'Tháng thầu', 'SL quota',
+    'Thành tiền', 'Trạng thái', 'Nguồn', 'Cảnh báo',
+  ];
+  const num = (v) => (v === null || v === undefined || v === '' ? '' : Number(v));
+  const aoa = [H].concat(
+    rows.map((r) => [
+      r.nam_tai_chinh, r.bu, r.mien, r.ps, r.ma_khach_hang, r.khach_hang,
+      r.nhom_san_pham, r.bo_vat_tu, r.san_pham, num(r.don_gia),
+      LOAI[r.loai] || r.loai, num(r.dot), r.thang_thau || '', num(r.so_luong),
+      num(r.thanh_tien), r.trang_thai, r.nguon, r.canh_bao || '',
+    ]),
+  );
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [6, 6, 8, 16, 9, 30, 18, 18, 30, 13, 12, 5, 10, 10, 16, 10, 18, 30].map(
+    (wch) => ({ wch }),
+  );
+  ws['!autofilter'] = { ref: `A1:${_ec(aoa.length - 1, H.length - 1)}` };
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  for (let r = 1; r < aoa.length; r++) {
+    _fmt(ws, r, 9, '#,##0');
+    _fmt(ws, r, 13, '#,##0');
+    _fmt(ws, r, 14, '#,##0');
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Quota thầu');
+  XLSX.writeFile(wb, `Quota_thau_${_today()}.xlsx`);
+}

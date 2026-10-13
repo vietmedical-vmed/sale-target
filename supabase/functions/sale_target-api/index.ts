@@ -1101,6 +1101,21 @@ Deno.serve(async (req) => {
       return json({ ok: true, job: data });
     }
 
+    // ---- Xuất quota thầu gộp quota_thau + cột cũ sale_target (tạm chỉ admin) ----
+    if (action === "exportQuotaThau") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const rows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db.schema("shared").from("v_quota_thau_xuat")
+          .select("*").order("stt", { ascending: true }).range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        if (!data || data.length === 0) break;
+        rows.push(...data);
+        if (data.length < PAGE) break;
+      }
+      return json({ ok: true, rows });
+    }
+
     // ---- Loại trừ hóa đơn khỏi thực hiện (app_sale.hoa_don_loai_tru) ----
     // Đổi cấu hình chỉ có hiệu lực sau "Đồng bộ thực hiện" (cap_nhat_thuc_hien).
     if (action === "getHoaDonLoaiTru") {

@@ -124,15 +124,9 @@ export function SummaryView({
       const dSl = Number(r.rev) || 0;
       const dDt = dSl * price;
       const dDtUpd = isPast ? dtActVal : updQty * price;
-      const dQOld = Number(r.qOld) || 0;
-      const qMainVal = Number(r.qMain) || 0;
-      const qAddVal = Number(r.qAdd) || 0;
-      const mainOnHand = r.mMain && r.mMain <= CURRENT_MONTH;
-      const addOnHand = r.mAdd && r.mAdd <= CURRENT_MONTH;
-      const dQ14 =
-        dQOld + (mainOnHand ? qMainVal : 0) + (addOnHand ? qAddVal : 0);
-      const dQUpcoming =
-        (mainOnHand ? 0 : qMainVal) + (addOnHand ? 0 : qAddVal);
+      // On-hand / upcoming đã tính sẵn theo tháng đợt thầu (lib/quota.js).
+      const dQ14 = Number(r._qOnHand) || 0;
+      const dQUpcoming = Number(r._qUp) || 0;
       const dQuota = dQ14 + dQUpcoming;
       const dQuotaDt = dQuota * price;
       const dQ14Dt = dQ14 * price;
