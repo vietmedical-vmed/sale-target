@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Check, ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, Search, Settings, Trash2, XIcon } from './icons.jsx';
+import { Check, Loader2, Plus, RefreshCw, Search, Settings, Trash2, XIcon } from './icons.jsx';
 import { CURRENT_MONTH, MONTHS, MONTH_LABELS } from '../config/constants.js';
 import { fmtInt } from '../lib/format.js';
 import { custLabel, deaccent, fmtCust, inSel } from '../lib/text.js';
@@ -140,9 +140,9 @@ export function DiaBanView({
   // tự set '2026-04' khi insert).
   const [edits, setEdits] = useState({}); // { id: ps } — PS đã đổi, chưa lưu
   const [search, setSearch] = useState('');
-  const [showMissing, setShowMissing] = useState(false);
-  const [closed, setClosed] = useState(() => new Set()); // KH đang gập
-  const [closedRegions, setClosedRegions] = useState(() => new Set()); // miền đang gập
+  const [statusFilter, setStatusFilter] = useState(''); // '' | 'ok' | 'diff' | 'noplan' | 'missing'
+  const [sortCol, setSortCol] = useState('cust'); // 'cust' | 'grp' | 'ps' | 'mien' | 'status'
+  const [sortDir, setSortDir] = useState(1); // 1 asc, -1 desc
   // Modal "Thêm địa bàn" — cho thêm NHIỀU dòng trong 1 lượt lưu. Nút "+ Thêm dòng"
   // thêm ô mới; Xác nhận gửi toàn bộ danh sách vào onSave (backend auto-apply cả
   // năm cho tất cả tổ hợp không chồng lấn).
@@ -161,13 +161,6 @@ export function DiaBanView({
     if (!prefill) return;
     if (prefill.purpose === 'chuyen') {
       setSearch(prefill.custId || '');
-      const custKey = dbCustKey(prefill.custId, prefill.cust);
-      setClosed((prev) => {
-        if (!prev.has(custKey)) return prev;
-        const next = new Set(prev);
-        next.delete(custKey);
-        return next;
-      });
       setTimeout(() => {
         const el = highlightRef.current;
         if (el && el.scrollIntoView)
@@ -312,90 +305,64 @@ export function DiaBanView({
     custFilter,
   ]);
 
-  // Gom theo KHÁCH HÀNG: 1 KH thường có nhiều ngành hàng (và có thể khác PS mỗi
-  // ngành) → xem theo nhóm dễ soát hơn bảng phẳng lặp tên KH ở mọi dòng.
-  const groups = useMemo(() => {
-    const m = new Map();
-    for (const d of list) {
-      const k = dbCustKey(d.custId, d.cust);
-      let g = m.get(k);
-      if (!g) {
-        g = {
-          key: k,
-          custId: d.custId,
-          cust: d.cust,
-          rows: [],
-          diff: 0,
-          gaps: [],
-        };
-        m.set(k, g);
-      }
-      g.rows.push(d);
-      if (d.status === 'diff') g.diff++;
-    }
-    const arr = Array.from(m.values());
-    arr.forEach((g) => {
-      g.rows.sort(
-        (a, b) => a.grp.localeCompare(b.grp) || a.ps.localeCompare(b.ps),
-      );
-    });
-    arr.sort((a, b) =>
-      custLabel(a.custId, a.cust).localeCompare(custLabel(b.custId, b.cust)),
-    );
-    return arr;
-  }, [list]);
-
-  // Gom khách hàng theo MIỀN: mỗi miền = 1 thẻ cha, bên trong là bảng chi tiết.
-  // KH có ngành hàng ở nhiều miền → xuất hiện ở cả 2 thẻ (chỉ hiện dòng thuộc miền đó).
-  const regionGroups = useMemo(() => {
-    const m = new Map();
-    for (const g of groups) {
-      const byRgn = new Map();
-      for (const d of g.rows) {
-        const rgn = d.mien || '(Không rõ miền)';
-        if (!byRgn.has(rgn)) byRgn.set(rgn, []);
-        byRgn.get(rgn).push(d);
-      }
-      for (const [rgn, rgnRows] of byRgn) {
-        if (!m.has(rgn)) m.set(rgn, []);
-        const splitKey = byRgn.size > 1 ? g.key + '||' + rgn : g.key;
-        m.get(rgn).push({
-          key: splitKey,
-          custId: g.custId,
-          cust: g.cust,
-          rows: rgnRows,
-          diff: rgnRows.filter((r) => r.status === 'diff').length,
-          gaps: g.gaps,
-        });
-      }
-    }
-    return Array.from(m.entries())
-      .map(([rgn, custs]) => ({ region: rgn, groups: custs }))
-      .sort((a, b) => a.region.localeCompare(b.region, 'vi'));
-  }, [groups]);
-
-  // Trần hiển thị tính theo dòng nhưng CẮT Ở RANH GIỚI KHÁCH HÀNG (không hiện nửa KH).
-  const shownRegionData = useMemo(() => {
-    let total = 0;
-    return regionGroups.map((rg) => {
-      const shown = [];
-      for (const g of rg.groups) {
-        if (total >= MAX_DIA_BAN_ROWS) break;
-        shown.push(g);
-        total += g.rows.length;
-      }
-      return { ...rg, shownGroups: shown };
-    });
-  }, [regionGroups]);
-  const shownRows = shownRegionData.reduce(
-    (s, rg) => rg.shownGroups.reduce((ss, g) => ss + g.rows.length, s),
-    0,
+  // Flat rows: list + missing (as virtual rows with status 'missing')
+  const missingRows = useMemo(
+    () =>
+      missing.map((m, i) => ({
+        id: 'miss_' + i,
+        custId: m.custId,
+        cust: m.cust,
+        grp: m.grp,
+        ps: m.ps,
+        mien: (mienByPs && mienByPs.get(m.ps)) || '',
+        status: 'missing',
+        planPs: [],
+        virtual: true,
+      })),
+    [missing, mienByPs],
   );
-  const allShownGroupKeys = shownRegionData.flatMap((rg) =>
-    rg.shownGroups.map((g) => g.key),
-  );
-  const allClosed =
-    closed.size >= allShownGroupKeys.length && allShownGroupKeys.length > 0;
+
+  const allRows = useMemo(() => [...list, ...missingRows], [list, missingRows]);
+
+  // Stats
+  const statOk = useMemo(() => allRows.filter((d) => d.status === 'ok').length, [allRows]);
+  const statDiff = diffRows.length;
+  const statNoPlan = useMemo(() => allRows.filter((d) => d.status === 'noplan').length, [allRows]);
+  const statMissing = missingRows.length;
+
+  // Filter + sort
+  const sortedRows = useMemo(() => {
+    let rows = statusFilter
+      ? allRows.filter((d) => d.status === statusFilter)
+      : allRows;
+    const cmp = (a, b) => {
+      let va, vb;
+      if (sortCol === 'cust') {
+        va = custLabel(a.custId, a.cust);
+        vb = custLabel(b.custId, b.cust);
+      } else if (sortCol === 'grp') {
+        va = a.grp; vb = b.grp;
+      } else if (sortCol === 'ps') {
+        va = a.ps; vb = b.ps;
+      } else if (sortCol === 'mien') {
+        va = a.mien || ''; vb = b.mien || '';
+      } else {
+        va = a.status; vb = b.status;
+      }
+      return (va || '').localeCompare(vb || '', 'vi') * sortDir;
+    };
+    return rows.slice().sort(cmp);
+  }, [allRows, statusFilter, sortCol, sortDir]);
+
+  const shownRows = Math.min(sortedRows.length, MAX_DIA_BAN_ROWS);
+  const displayRows = sortedRows.slice(0, MAX_DIA_BAN_ROWS);
+
+  const toggleSort = (col) => {
+    if (sortCol === col) setSortDir((d) => -d);
+    else { setSortCol(col); setSortDir(1); }
+  };
+  const sortIcon = (col) =>
+    sortCol === col ? (sortDir === 1 ? ' ▲' : ' ▼') : '';
 
   // Bỏ khoảng trống + diffIds: cấu hình tự apply cả năm sau save, không còn khái
   // niệm "thiếu tháng" hay "áp dụng thủ công".
@@ -420,7 +387,7 @@ export function DiaBanView({
     [list],
   );
   const editCount = Object.keys(edits).length;
-  const custCount = groups.length;
+  const custCount = new Set(list.map((d) => dbCustKey(d.custId, d.cust))).size;
   const psLaList = useMemo(
     () =>
       Array.from(
@@ -440,13 +407,6 @@ export function DiaBanView({
         return o;
       }
       return { ...prev, [d.id]: ps };
-    });
-  const toggleGroup = (key) =>
-    setClosed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
     });
 
   const byId = useMemo(
@@ -569,12 +529,12 @@ export function DiaBanView({
   const th =
     'px-2 py-2 text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold whitespace-nowrap';
   const td = 'px-2 py-1.5 text-[12px] border-t border-slate-100';
-  const BADGE = {
-    ok: ['bg-emerald-50 text-emerald-700', 'Khớp kế hoạch'],
-    diff: ['bg-amber-50 text-amber-700', 'Lệch kế hoạch'],
-    noplan: ['bg-slate-100 text-slate-500', 'Chưa có kế hoạch'],
+  const STATUS_CFG = {
+    ok: { dot: 'bg-emerald-500', label: 'Khớp', cls: 'text-emerald-700' },
+    diff: { dot: 'bg-amber-500', label: 'Lệch', cls: 'text-amber-700' },
+    noplan: { dot: 'bg-slate-300', label: 'Chưa có KH', cls: 'text-slate-500' },
+    missing: { dot: 'bg-red-400', label: 'Thiếu khai báo', cls: 'text-red-600' },
   };
-  const COLS = canEdit ? 4 : 3; // Ngành hàng · PS · Đối chiếu (+ thao tác)
 
   // Đăng ký toolbar buttons lên thanh lọc chung của App.
   useEffect(() => {
@@ -615,16 +575,6 @@ export function DiaBanView({
           >
             <Plus size={14} />
             Thêm địa bàn
-          </button>
-        )}
-        {allShownGroupKeys.length > 0 && (
-          <button
-            onClick={() =>
-              setClosed(allClosed ? new Set() : new Set(allShownGroupKeys))
-            }
-            className="px-2.5 py-1.5 text-[13px] text-slate-600 hover:bg-slate-100 rounded-md"
-          >
-            {allClosed ? 'Mở tất cả' : 'Gập tất cả'}
           </button>
         )}
         <div className="relative">
@@ -673,8 +623,6 @@ export function DiaBanView({
     overlapCount,
     diffRows.length,
     busy,
-    allShownGroupKeys,
-    allClosed,
     search,
     editCount,
   ]);
@@ -823,68 +771,53 @@ export function DiaBanView({
           </div>
         )
       }
-      {
-        // ---- Chưa khai báo (có kế hoạch nhưng thiếu trong danh mục) ----
-        missing.length > 0 && (
-          <div className="bg-white rounded-lg border border-slate-200 mb-3">
-            <div className="flex items-center gap-2 px-3 py-2.5">
-              <button
-                onClick={() => setShowMissing((v) => !v)}
-                className="flex items-center gap-2 text-left"
-              >
-                {showMissing ? (
-                  <ChevronDown size={15} className="text-slate-500" />
-                ) : (
-                  <ChevronRight size={15} className="text-slate-500" />
-                )}
-                <span className="text-[13px] font-semibold text-slate-700">
-                  Có kế hoạch nhưng chưa khai báo địa bàn ({missing.length})
-                </span>
-              </button>
-              <div className="flex-1" />
-              {canEdit && (
-                <button
-                  onClick={declareMissing}
-                  disabled={busy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-md disabled:opacity-50"
-                >
-                  <Plus size={14} />
-                  Khai báo theo kế hoạch
-                  {missing.length > MAX_DIA_BAN_ROWS
-                    ? ` (${MAX_DIA_BAN_ROWS} dòng đầu)`
-                    : ''}
-                </button>
-              )}
+      {/* ---- Stat cards ---- */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+        {[
+          { key: '', label: 'Tổng', count: allRows.length,
+            active: 'border-slate-400 bg-slate-50 ring-2 ring-slate-200',
+            num: 'text-slate-600' },
+          { key: 'ok', label: 'Khớp KH', count: statOk,
+            active: 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200',
+            num: 'text-emerald-600' },
+          { key: 'diff', label: 'Lệch KH', count: statDiff,
+            active: 'border-amber-400 bg-amber-50 ring-2 ring-amber-200',
+            num: 'text-amber-600' },
+          { key: 'noplan', label: 'Chưa có KH', count: statNoPlan,
+            active: 'border-slate-400 bg-slate-50 ring-2 ring-slate-200',
+            num: 'text-slate-500' },
+          { key: 'missing', label: 'Thiếu khai báo', count: statMissing,
+            active: 'border-red-400 bg-red-50 ring-2 ring-red-200',
+            num: 'text-red-600' },
+        ].map((s) => (
+          <button
+            key={s.key || '_all'}
+            onClick={() => setStatusFilter(statusFilter === s.key ? '' : s.key)}
+            className={`rounded-lg border px-3 py-2.5 text-left transition-all ${
+              statusFilter === s.key
+                ? s.active
+                : 'border-slate-200 bg-white hover:border-slate-300'
+            }`}
+          >
+            <div className={'text-[20px] font-bold ' + s.num}>
+              {fmtInt(s.count)}
             </div>
-            {showMissing && (
-              <div className="px-3 pb-3 max-h-64 overflow-auto scroll-shadow">
-                <table className="w-full">
-                  <tbody>
-                    {missing.slice(0, MAX_DIA_BAN_ROWS).map((m, i) => (
-                      <tr key={i}>
-                        <td
-                          className={
-                            td + ' font-mono text-slate-400 whitespace-nowrap'
-                          }
-                        >
-                          {m.custId || '—'}
-                        </td>
-                        <td className={td + ' text-slate-700'}>
-                          {custLabel(m.custId, m.cust)}
-                        </td>
-                        <td className={td + ' text-slate-600'}>{m.grp}</td>
-                        <td className={td + ' font-medium text-slate-800'}>
-                          {m.ps}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )
-      }
+            <div className="text-[11px] text-slate-500 mt-0.5">{s.label}</div>
+          </button>
+        ))}
+      </div>
+      {canEdit && statMissing > 0 && statusFilter === 'missing' && (
+        <div className="mb-3 flex items-center gap-2 px-1">
+          <button
+            onClick={declareMissing}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-md disabled:opacity-50"
+          >
+            <Plus size={14} />
+            Khai báo {Math.min(statMissing, MAX_DIA_BAN_ROWS)} địa bàn theo kế hoạch
+          </button>
+        </div>
+      )}
       {
         // ---- Modal Thêm địa bàn (nhiều dòng) — mở qua nút "+ Thêm địa bàn" ở toolbar
         canAdd && addOpen && (
@@ -1025,254 +958,182 @@ export function DiaBanView({
           </div>
         )
       }
-      {
-        // ---- Bảng địa bàn theo miền ----
-        shownRegionData.length === 0 ||
-        shownRegionData.every((rg) => rg.shownGroups.length === 0) ? (
-          <div className="bg-white rounded-lg border border-slate-200 px-4 py-12 text-center text-slate-400 text-sm">
-            {filteredDiaBan.length === 0
-              ? 'Chưa có địa bàn nào được khai báo'
-              : 'Không có địa bàn nào khớp bộ lọc'}
+      {/* ---- Flat data table ---- */}
+      {displayRows.length === 0 ? (
+        <div className="bg-white rounded-lg border border-slate-200 px-4 py-12 text-center text-slate-400 text-sm">
+          {allRows.length === 0
+            ? 'Chưa có địa bàn nào được khai báo'
+            : 'Không có địa bàn nào khớp bộ lọc'}
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="overflow-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr>
+                  <th className={th + ' cursor-pointer select-none'} onClick={() => toggleSort('cust')}>
+                    Khách hàng{sortIcon('cust')}
+                  </th>
+                  <th className={th + ' cursor-pointer select-none'} onClick={() => toggleSort('grp')}>
+                    Ngành hàng{sortIcon('grp')}
+                  </th>
+                  <th className={th + ' cursor-pointer select-none'} onClick={() => toggleSort('ps')}>
+                    PS phụ trách{sortIcon('ps')}
+                  </th>
+                  <th className={th + ' cursor-pointer select-none'} onClick={() => toggleSort('mien')}>
+                    Miền{sortIcon('mien')}
+                  </th>
+                  <th className={th + ' cursor-pointer select-none'} onClick={() => toggleSort('status')}>
+                    Trạng thái{sortIcon('status')}
+                  </th>
+                  {canEdit && <th className={th} />}
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map((d) => {
+                  const dirty = !d.virtual && !!edits[d.id];
+                  const st = STATUS_CFG[d.status] || STATUS_CFG.noplan;
+                  const isMissing = d.virtual;
+                  const focused =
+                    prefill &&
+                    prefill.purpose === 'chuyen' &&
+                    dbCustKey(d.custId, d.cust) ===
+                      dbCustKey(prefill.custId, prefill.cust);
+                  return (
+                    <tr
+                      key={d.virtual ? d.id : d.id}
+                      ref={focused ? highlightRef : null}
+                      className={
+                        dirty
+                          ? 'bg-amber-50/60'
+                          : focused
+                            ? 'bg-amber-50/40 ring-2 ring-amber-400'
+                            : isMissing
+                              ? 'bg-red-50/30'
+                              : 'hover:bg-slate-50/60'
+                      }
+                    >
+                      <td className={td}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                            {d.custId || '—'}
+                          </span>
+                          <span className="text-[12.5px] text-slate-800 truncate">
+                            {custLabel(d.custId, d.cust)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className={td + ' text-slate-700'}>{d.grp}</td>
+                      <td className={td} style={{ minWidth: 140 }}>
+                        {canEdit && !isMissing ? (
+                          <select
+                            value={edits[d.id] || d.ps}
+                            onChange={(e) =>
+                              setEdit(byId.get(d.id) || d, e.target.value)
+                            }
+                            title="Sửa PS — sau khi Lưu, kế hoạch cả năm tự chuyển sang PS mới."
+                            className={
+                              cellSel +
+                              (dirty ? ' border-amber-400' : ' border-slate-200')
+                            }
+                          >
+                            {psOptions.map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                            {!psOptions.includes(d.ps) && (
+                              <option value={d.ps}>{d.ps}</option>
+                            )}
+                          </select>
+                        ) : (
+                          <span className="text-[12.5px]">{d.ps}</span>
+                        )}
+                        {psLa(d.ps) && (
+                          <span
+                            title='PS không có trong dm_ps — hoá đơn sẽ không khớp kế hoạch.'
+                            className="ml-1 px-1 rounded bg-red-100 text-red-700 text-[10px] font-bold cursor-help"
+                          >
+                            !
+                          </span>
+                        )}
+                      </td>
+                      <td className={td + ' text-[12px] text-slate-600'}>
+                        {d.mien || '—'}
+                      </td>
+                      <td className={td}>
+                        <span className="inline-flex items-center gap-1.5" title={
+                          d.status === 'diff'
+                            ? 'KH: ' + (d.planPs || []).join(', ')
+                            : st.label
+                        }>
+                          <span className={'inline-block w-2 h-2 rounded-full shrink-0 ' + st.dot} />
+                          <span className={'text-[11px] font-medium ' + st.cls}>
+                            {st.label}
+                          </span>
+                        </span>
+                        {d.status === 'diff' && d.planPs && d.planPs.length > 0 && (
+                          <span className="text-[10px] text-slate-400 ml-1">
+                            ({d.planPs.join(', ')})
+                          </span>
+                        )}
+                      </td>
+                      {canEdit && (
+                        <td className={td + ' whitespace-nowrap text-right'}>
+                          {d.status === 'diff' && !isMissing && (
+                            <button
+                              onClick={() =>
+                                onSave([{
+                                  id: d.id,
+                                  custId: d.custId,
+                                  cust: d.cust,
+                                  grp: d.grp,
+                                  ps: d.ps,
+                                }])
+                              }
+                              disabled={busy}
+                              title="Áp dụng PS này vào kế hoạch"
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
+                            >
+                              <RefreshCw size={13} />
+                            </button>
+                          )}
+                          {isMissing ? (
+                            <button
+                              onClick={() =>
+                                onSave([{
+                                  custId: d.custId,
+                                  cust: d.cust,
+                                  grp: d.grp,
+                                  ps: d.ps,
+                                }])
+                              }
+                              disabled={busy}
+                              title="Khai báo địa bàn này"
+                              className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-50"
+                            >
+                              <Plus size={13} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => doDelete(d)}
+                              disabled={busy}
+                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        ) : (
-          shownRegionData
-            .filter((rg) => rg.shownGroups.length > 0)
-            .map((rg) => {
-              const rgnOpen = !closedRegions.has(rg.region);
-              const rgnCustCount = rg.shownGroups.length;
-              const rgnRowCount = rg.shownGroups.reduce(
-                (s, g) => s + g.rows.length,
-                0,
-              );
-              return (
-                <div
-                  key={'rgn:' + rg.region}
-                  className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-3"
-                >
-                  <div
-                    className="px-3 py-2.5 flex items-center gap-2 cursor-pointer select-none border-b border-slate-100"
-                    onClick={() =>
-                      setClosedRegions((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(rg.region)) next.delete(rg.region);
-                        else next.add(rg.region);
-                        return next;
-                      })
-                    }
-                  >
-                    {rgnOpen ? (
-                      <ChevronDown
-                        size={16}
-                        className="text-emerald-600 shrink-0"
-                      />
-                    ) : (
-                      <ChevronRight
-                        size={16}
-                        className="text-emerald-600 shrink-0"
-                      />
-                    )}
-                    <span className="text-[14px] font-bold text-slate-800">
-                      {rg.region}
-                    </span>
-                    <span className="text-[11px] text-slate-400 ml-1">
-                      {fmtInt(rgnRowCount)}địa bàn · {fmtInt(rgnCustCount)}khách
-                      hàng
-                    </span>
-                  </div>
-                  {rgnOpen && (
-                    <div className="overflow-auto scroll-shadow">
-                      <table className="w-full">
-                        <thead className="bg-slate-50 sticky top-0 z-10">
-                          <tr>
-                            <th className={th}>Khách hàng / Ngành hàng</th>
-                            <th className={th}>PS phụ trách</th>
-                            <th className={th}>Đối chiếu kế hoạch</th>
-                            {canEdit && <th className={th} />}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rg.shownGroups.map((g) => {
-                            const gOpen = !closed.has(g.key);
-                            const custKey =
-                              prefill &&
-                              dbCustKey(prefill.custId, prefill.cust);
-                            const focused =
-                              prefill &&
-                              prefill.purpose === 'chuyen' &&
-                              (g.key === custKey ||
-                                g.key.startsWith(custKey + '||'));
-                            return (
-                              <React.Fragment key={'g:' + g.key}>
-                                <tr
-                                  ref={focused ? highlightRef : null}
-                                  className={
-                                    'bg-slate-50/80 border-t border-slate-200' +
-                                    (focused ? ' ring-2 ring-amber-400' : '')
-                                  }
-                                >
-                                  <td className="px-2 py-1.5" colSpan={COLS}>
-                                    <button
-                                      onClick={() => toggleGroup(g.key)}
-                                      className="flex items-center gap-2 text-left w-full"
-                                    >
-                                      {gOpen ? (
-                                        <ChevronDown
-                                          size={14}
-                                          className="text-emerald-600 shrink-0"
-                                        />
-                                      ) : (
-                                        <ChevronRight
-                                          size={14}
-                                          className="text-emerald-600 shrink-0"
-                                        />
-                                      )}
-                                      <span className="font-mono text-[11px] text-slate-400 shrink-0">
-                                        {g.custId || '—'}
-                                      </span>
-                                      <span className="text-[13px] font-semibold text-slate-800 truncate">
-                                        {custLabel(g.custId, g.cust)}
-                                      </span>
-                                      <span className="text-[11px] text-slate-400 shrink-0">
-                                        {g.rows.length}ngành hàng
-                                      </span>
-                                    </button>
-                                  </td>
-                                </tr>
-                                {gOpen &&
-                                  g.rows.map((d) => {
-                                    const dirty = !!edits[d.id];
-                                    const [cls, text] = BADGE[d.status];
-                                    return (
-                                      <tr
-                                        key={d.id}
-                                        className={
-                                          dirty
-                                            ? 'bg-amber-50/60'
-                                            : 'hover:bg-slate-50/60'
-                                        }
-                                      >
-                                        <td
-                                          className={
-                                            td + ' text-slate-700 pl-8'
-                                          }
-                                        >
-                                          {d.grp}
-                                        </td>
-                                        <td
-                                          className={td}
-                                          style={{ minWidth: 150 }}
-                                        >
-                                          {canEdit ? (
-                                            <select
-                                              value={d.ps}
-                                              onChange={(e) =>
-                                                setEdit(
-                                                  byId.get(d.id) || d,
-                                                  e.target.value,
-                                                )
-                                              }
-                                              title="Sửa PS — sau khi Lưu, kế hoạch cả năm tự chuyển sang PS mới."
-                                              className={
-                                                cellSel +
-                                                (dirty
-                                                  ? ' border-amber-400'
-                                                  : ' border-slate-200')
-                                              }
-                                            >
-                                              {psOptions.map((p) => (
-                                                <option key={p} value={p}>
-                                                  {p}
-                                                </option>
-                                              ))}
-                                              {!psOptions.includes(d.ps) && (
-                                                <option value={d.ps}>
-                                                  {d.ps}
-                                                </option>
-                                              )}
-                                            </select>
-                                          ) : (
-                                            d.ps
-                                          )}
-                                          {psLa(d.ps) && (
-                                            <span
-                                              title='PS này không có trong danh mục PS (dm_ps) — hoá đơn của họ được dịch tên theo dm_ps nên sẽ KHÔNG khớp dòng kế hoạch, số rơi hết sang "ngoài kế hoạch". Sửa tên trong dm_ps hoặc chọn đúng PS trong danh mục.'
-                                              className="ml-1 px-1 rounded bg-red-100 text-red-700 text-[10px] font-bold cursor-help"
-                                            >
-                                              !
-                                            </span>
-                                          )}
-                                        </td>
-                                        <td className={td}>
-                                          <span
-                                            className={`inline-block px-1.5 py-0.5 rounded text-[10.5px] font-medium ${cls}`}
-                                          >
-                                            {text}
-                                          </span>
-                                          {d.status === 'diff' && (
-                                            <span className="text-[11px] text-slate-500 ml-1.5">
-                                              kế hoạch: {d.planPs.join(', ')}
-                                              <span className="opacity-70">
-                                                · nhiều PS chồng lấn → không tự
-                                                apply
-                                              </span>
-                                            </span>
-                                          )}
-                                        </td>
-                                        {canEdit && (
-                                          <td
-                                            className={
-                                              td +
-                                              ' whitespace-nowrap text-right'
-                                            }
-                                          >
-                                            {d.status === 'diff' && (
-                                              <button
-                                                onClick={() =>
-                                                  onSave([
-                                                    {
-                                                      id: d.id,
-                                                      custId: d.custId,
-                                                      cust: d.cust,
-                                                      grp: d.grp,
-                                                      ps: d.ps,
-                                                    },
-                                                  ])
-                                                }
-                                                disabled={busy}
-                                                title="Áp dụng PS này vào kế hoạch"
-                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
-                                              >
-                                                <RefreshCw size={13} />
-                                              </button>
-                                            )}
-                                            <button
-                                              onClick={() => doDelete(d)}
-                                              disabled={busy}
-                                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                                            >
-                                              <Trash2 size={13} />
-                                            </button>
-                                          </td>
-                                        )}
-                                      </tr>
-                                    );
-                                  })}
-                              </React.Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-        )
-      }
-      {list.length > shownRows && (
-        <div className="px-3 py-2 text-[12px] text-slate-500 bg-white rounded-lg border border-slate-200 mt-1 text-center">
-          Đang hiện {fmtInt(shownRows)}/{fmtInt(list.length)}dòng (
-          {fmtInt(allShownGroupKeys.length)}/{fmtInt(groups.length)}khách hàng)
+        </div>
+      )}
+      {sortedRows.length > MAX_DIA_BAN_ROWS && (
+        <div className="px-3 py-2 text-[12px] text-slate-500 bg-white rounded-lg border border-slate-200 mt-2 text-center">
+          Đang hiện {fmtInt(shownRows)}/{fmtInt(sortedRows.length)} dòng
           — dùng bộ lọc hoặc ô tìm kiếm để thu hẹp.
         </div>
       )}
