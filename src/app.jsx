@@ -2569,7 +2569,7 @@ export function App() {
             </div>
           )}
         </header>
-        {tab !== 'diaban' && tab !== 'audit' && (
+        {tab !== 'audit' && (
           <div className="px-6 pt-4">
             {canSwitchTeam(auth.role) && (
               <TeamSummaryBar
@@ -2579,18 +2579,20 @@ export function App() {
                 onChange={setViewBu}
               />
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-              <div className="flex flex-col gap-3">
-                <AccountBar
-                  customers={accountsAssigned - missingAccounts.length}
-                  assigned={accountsAssigned}
-                  missing={missingAccounts.length}
-                  onShowMissing={() => setShowMissing(true)}
-                />
-                <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
+            {tab !== 'diaban' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                <div className="flex flex-col gap-3">
+                  <AccountBar
+                    customers={accountsAssigned - missingAccounts.length}
+                    assigned={accountsAssigned}
+                    missing={missingAccounts.length}
+                    onShowMissing={() => setShowMissing(true)}
+                  />
+                  <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
+                </div>
+                <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
               </div>
-              <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
-            </div>
+            )}
           </div>
         )}
         {
