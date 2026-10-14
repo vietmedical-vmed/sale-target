@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom';
 import { Trash2 } from './icons.jsx';
 import { fmtInt } from '../lib/format.js';
 import { Modal } from './Modal.jsx';
+import { CURRENT_MONTH } from '../config/constants.js';
+import { hetHanDot, trangThaiDot } from '../lib/quota.js';
 
 // ============ ĐỢT THẦU & QUOTA (shared.dot_thau / shared.quota_thau) ============
 // Quota đã tách khỏi sale_target: 1 nhóm SP có thể có NHIỀU đợt thầu bổ sung trong
@@ -28,45 +30,83 @@ const dotLabel = (loai, dot, tong) =>
       ? `${LOAI_LABEL[loai]} ${dot}`
       : LOAI_LABEL[loai];
 
-// Ô nhập tháng thầu của MỘT đợt. Bỏ trống là hợp lệ (đã biết có đợt, chưa rõ tháng).
-export function DotMonthInput({ value, locked, onCommit }) {
-  const [draft, setDraft] = useState(value || '');
-  const [err, setErr] = useState(false);
+const THANG_RE = /^\d{4}-\d{2}$/;
+const hieuLucHopLe = (v) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 120;
+};
+// Đợt đủ thông tin = có tháng thầu + hiệu lực (số tháng). Thiếu thì không nhập quota được.
+export const dotDuThongTin = (d) => !!d && THANG_RE.test(d.thang || '') && hieuLucHopLe(d.thoiGian);
+
+// Ô tháng + hiệu lực của MỘT đợt (hoặc đợt đang thêm). Chỉ lưu khi cả hai hợp lệ;
+// thiếu ô nào thì viền đỏ và chưa gửi lên.
+export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth }) {
+  const [m, setM] = useState(thang || '');
+  const [hl, setHl] = useState(thoiGian == null || thoiGian === '' ? '' : String(Number(thoiGian)));
   useEffect(() => {
-    setDraft(value || '');
-  }, [value]);
-  const commit = () => {
-    const v = (draft || '').trim();
-    if (v === (value || '')) {
-      setErr(false);
-      return;
-    }
-    if (v !== '' && !/^\d{4}-\d{2}$/.test(v)) {
-      setErr(true);
-      return;
-    }
-    setErr(false);
-    onCommit(v);
+    setM(thang || '');
+  }, [thang]);
+  useEffect(() => {
+    setHl(thoiGian == null || thoiGian === '' ? '' : String(Number(thoiGian)));
+  }, [thoiGian]);
+  const mOk = THANG_RE.test(m.trim());
+  const hlOk = hieuLucHopLe(hl);
+  const thu = () => {
+    const mv = m.trim();
+    if (!THANG_RE.test(mv) || !hieuLucHopLe(hl)) return;
+    if (mv === (thang || '') && Number(hl) === Number(thoiGian)) return;
+    onSave(mv, Number(hl));
+  };
+  const het = hetHanDot(m.trim(), hl);
+  const tt = mOk && hlOk ? trangThaiDot(m.trim(), hl, curMonth) : null;
+  const o = (ok) =>
+    `text-[12px] px-2 py-1 rounded-md border outline-none ${ok ? 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100' : 'border-red-400 bg-red-50'}`;
+  const keyDown = (e) => {
+    if (e.key === 'Enter') e.target.blur();
   };
   return (
-    <input
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.target.blur();
-      }}
-      disabled={locked}
-      placeholder="yyyy-mm"
-      className={`w-[86px] text-[12px] px-2 py-1 rounded-md border outline-none ${err ? 'border-red-400 bg-red-50 ring-1 ring-red-200' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'}`}
-    />
+    <span className="inline-flex items-center gap-1">
+      <input
+        value={m}
+        onChange={(e) => setM(e.target.value)}
+        onBlur={thu}
+        onKeyDown={keyDown}
+        disabled={locked}
+        autoFocus={autoFocus}
+        placeholder="yyyy-mm"
+        title="Tháng thầu (bắt buộc)"
+        className={`w-[80px] ${o(mOk)}`}
+      />
+      <input
+        value={hl}
+        onChange={(e) => setHl(e.target.value.replace(/[^0-9]/g, ''))}
+        onBlur={thu}
+        onKeyDown={keyDown}
+        disabled={locked}
+        placeholder="HL"
+        title="Hiệu lực thầu, số tháng (bắt buộc)"
+        className={`w-[38px] text-right ${o(hlOk)}`}
+      />
+      <span className="text-[10px] text-slate-400">th</span>
+      {het && (
+        <span
+          className={`text-[10px] whitespace-nowrap ${tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
+          title="Tháng hết hiệu lực = tháng thầu + hiệu lực − 1"
+        >
+          {tt === 'het' ? `hết HL ${het}` : `→ ${het}`}
+        </span>
+      )}
+    </span>
   );
 }
 
 // Danh sách đợt thầu của 1 nhóm SP, thay cho 2 ô tháng cố định trước đây.
+// Mỗi đợt bắt buộc có tháng thầu + hiệu lực (số tháng).
 export function DotThauPanel({ fy, ps, custId, grp, locked }) {
   const ctx = useContext(QuotaThauCtx);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [dangThem, setDangThem] = useState(null); // loai đang thêm đợt
   if (!ctx) return null;
   const all = ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || [];
   const cua = (loai) =>
@@ -75,18 +115,25 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
   const bs = cua('bo_sung');
 
   const run = async (fn) => {
-    if (busy) return;
+    if (busy) return false;
     setBusy(true);
+    setErr('');
     try {
       await fn();
+      return true;
+    } catch (e) {
+      setErr(e.message || 'Lưu đợt thầu không được');
+      return false;
     } finally {
       setBusy(false);
     }
   };
-  const them = (loai) =>
-    run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, thang: '' }]));
-  const doiThang = (loai, dot, thang) =>
-    run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, dot, thang }]));
+  const them = async (loai, thang, thoiGian) => {
+    const ok = await run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, thang, thoiGian }]));
+    if (ok) setDangThem(null);
+  };
+  const sua = (loai, dot, thang, thoiGian) =>
+    run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, dot, thang, thoiGian }]));
   const xoa = (loai, dot, nhan) => {
     if (
       !confirm(
@@ -102,7 +149,7 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
       <span className="text-[10.5px] font-semibold text-blue-800 uppercase tracking-wide whitespace-nowrap">
         {LOAI_LABEL[loai]}
       </span>
-      {list.length === 0 && (
+      {list.length === 0 && dangThem !== loai && (
         <span className="text-[11px] text-slate-400">chưa có đợt nào</span>
       )}
       {list.map((d) => (
@@ -110,10 +157,12 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
           {list.length > 1 && (
             <span className="text-[10px] text-slate-500 tabular-nums">{`#${d.dot}`}</span>
           )}
-          <DotMonthInput
-            value={d.thang}
+          <DotEditor
+            thang={d.thang}
+            thoiGian={d.thoiGian}
             locked={locked || busy}
-            onCommit={(v) => doiThang(loai, d.dot, v)}
+            curMonth={CURRENT_MONTH}
+            onSave={(t, h) => sua(loai, d.dot, t, h)}
           />
           {!locked && (
             <button
@@ -128,10 +177,34 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
           )}
         </span>
       ))}
-      {!locked && (
+      {!locked && dangThem === loai && (
+        <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded-md bg-blue-50 border border-blue-200">
+          <span className="text-[10px] text-blue-700">Đợt mới</span>
+          <DotEditor
+            thang=""
+            thoiGian=""
+            locked={busy}
+            autoFocus
+            curMonth={CURRENT_MONTH}
+            onSave={(t, h) => them(loai, t, h)}
+          />
+          <button
+            onClick={() => setDangThem(null)}
+            className="text-[11px] text-slate-500 hover:text-slate-700 px-1"
+            title="Huỷ thêm đợt"
+          >
+            ✕
+          </button>
+        </span>
+      )}
+      {!locked && dangThem !== loai && (
         <button
-          onClick={() => them(loai)}
+          onClick={() => {
+            setErr('');
+            setDangThem(loai);
+          }}
           disabled={busy}
+          title="Thêm đợt: nhập tháng thầu và hiệu lực (số tháng)"
           className="text-[11px] font-semibold px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
         >
           + đợt
@@ -140,10 +213,17 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
     </div>
   );
 
+  const soThieu = all.filter((d) => !dotDuThongTin(d)).length;
   return (
     <div className="flex flex-col gap-1.5">
       {hang('chinh', chinh)}
       {hang('bo_sung', bs)}
+      {soThieu > 0 && (
+        <span className="text-[11px] text-red-600">
+          {soThieu} đợt chưa đủ tháng thầu / hiệu lực — chưa nhập được quota cho đợt đó.
+        </span>
+      )}
+      {err && <span className="text-[11px] text-red-600">{err}</span>}
     </div>
   );
 }
@@ -173,11 +253,15 @@ export function QuotaThauModal({
     const ds = [...dots].sort((a, b) =>
       a.loai === b.loai ? a.dot - b.dot : a.loai === 'chinh' ? -1 : 1,
     );
-    return [{ loai: 'cu', dot: 1, label: LOAI_LABEL.cu, thang: '' }].concat(
+    return [{ loai: 'cu', dot: 1, label: LOAI_LABEL.cu, thang: '', du: true }].concat(
       ds.map((d) => ({
         loai: d.loai,
         dot: d.dot,
         thang: d.thang,
+        thoiGian: d.thoiGian,
+        du: dotDuThongTin(d),
+        het: hetHanDot(d.thang, d.thoiGian),
+        trangThai: dotDuThongTin(d) ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up',
         label: dotLabel(d.loai, d.dot, d.loai === 'chinh' ? nChinh : nBs),
       })),
     );
@@ -268,6 +352,10 @@ export function QuotaThauModal({
         setErr(`Số lượng không hợp lệ ở "${d.o.line.prod}": ${d.loi}`);
         return;
       }
+      if (!d.o.c.du && d.qty > 0) {
+        setErr(`${d.o.c.label} chưa có tháng thầu / hiệu lực — điền ở mục Đợt thầu của nhóm trước khi nhập quota.`);
+        return;
+      }
       rows.push({
         fy,
         ps,
@@ -332,11 +420,16 @@ export function QuotaThauModal({
                     className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap bg-white"
                   >
                     {c.label}
-                    {c.thang ? (
-                      <div className="text-[10px] font-normal text-slate-400">
-                        {c.thang}
+                    {c.loai !== 'cu' && (
+                      <div
+                        className={`text-[10px] font-normal ${!c.du ? 'text-red-600' : c.trangThai === 'het' ? 'text-red-500' : 'text-slate-400'}`}
+                        title={c.du ? `Tháng thầu ${c.thang}, hiệu lực ${c.thoiGian} tháng, hết hạn ${c.het}` : 'Đợt chưa đủ tháng thầu / hiệu lực'}
+                      >
+                        {!c.du
+                          ? 'thiếu tháng / HL'
+                          : `${c.thang} · ${Number(c.thoiGian)}th${c.trangThai === 'het' ? ' · hết HL' : ''}`}
                       </div>
-                    ) : null}
+                    )}
                   </th>
                 ))}
                 <th className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-slate-200 bg-white">
@@ -393,7 +486,8 @@ export function QuotaThauModal({
                       >
                         <input
                           value={val(line, c)}
-                          disabled={locked || busy}
+                          disabled={locked || busy || (!c.du && cell(line, c) === '')}
+                          title={!c.du ? 'Đợt chưa đủ tháng thầu / hiệu lực: chỉ xoá hoặc đưa về 0 được' : undefined}
                           onChange={(e) =>
                             setDraft((d) => ({
                               ...d,

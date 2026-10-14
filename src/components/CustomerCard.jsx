@@ -6,6 +6,7 @@ import { Modal } from './Modal.jsx';
 import { ProductGroupSection } from './ProductGroupSection.jsx';
 import { ProductPickerForm } from './AddProduct.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './QuotaThau.jsx';
+import { trangThaiDot } from '../lib/quota.js';
 
 
 // ============ CUSTOMER CARD ============
@@ -63,8 +64,8 @@ export const CustomerCard = React.memo(function CustomerCard({
       const grpFy = allGroupRows.length ? allGroupRows[0].fy : '';
       const gk = grpKey(grpFy, g.ps, custId || '', g.name);
       const dotsNhom = quotaCtx ? quotaCtx.dotsByGroup.get(gk) || [] : [];
-      const thangCuaDot = new Map();
-      for (const d of dotsNhom) thangCuaDot.set(`${d.loai}|${d.dot}`, d.thang || '');
+      const dotCuaNhom = new Map();
+      for (const d of dotsNhom) dotCuaNhom.set(`${d.loai}|${d.dot}`, d);
       g.products.forEach((p) => {
         let pOnHand = 0, pPrice = 0;
         const allR = p.monthly.flatMap((c) => c.rows);
@@ -81,8 +82,8 @@ export const CustomerCard = React.memo(function CustomerCard({
             const n = Number(q.qty) || 0;
             if (q.loai === 'cu') { pOnHand += n; }
             else {
-              const thang = thangCuaDot.get(`${q.loai}|${q.dot}`) || '';
-              if (thang && thang <= CURRENT_MONTH) pOnHand += n;
+              const d = dotCuaNhom.get(`${q.loai}|${q.dot}`);
+              if (d && trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) === 'on') pOnHand += n;
             }
           }
         }

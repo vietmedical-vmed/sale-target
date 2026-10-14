@@ -374,10 +374,27 @@ export async function absorbOop(
 // Tháng thầu nhập lúc thêm sản phẩm → đợt thầu (shared.dot_thau) của nhóm SP.
 // sale_target không còn lưu tháng thầu. Chỉ tạo đợt mới khi nhóm chưa có đợt cùng
 // loại cùng tháng (số đợt do upsert_dot_thau tự đánh tiếp). Trả về số đợt đã tạo.
+// Tháng thầu nhập thì bắt buộc kèm hiệu lực (số tháng nguyên 1–120). Trả câu lỗi, hoặc null.
+export function kiemTraThangHieuLuc(items: Record<string, unknown>[]) {
+  for (const it of items) {
+    for (const [nhan, m, hl] of [["chính", it.mMain, it.hlMain], ["bổ sung", it.mAdd, it.hlAdd]] as const) {
+      if (!String(m || "").trim()) continue;
+      const n = Number(hl);
+      if (!Number.isInteger(n) || n < 1 || n > 120) {
+        return `Thầu ${nhan}: nhập tháng thầu thì phải nhập hiệu lực (số tháng, 1–120)`;
+      }
+    }
+  }
+  return null;
+}
+
 export async function taoDotTuThangThau(
   db: ReturnType<typeof createClient>,
   sess: Session,
-  items: { fy: string; ps: string; custId: unknown; grp: unknown; mMain: unknown; mAdd: unknown }[],
+  items: {
+    fy: string; ps: string; custId: unknown; grp: unknown;
+    mMain: unknown; mAdd: unknown; hlMain?: unknown; hlAdd?: unknown;
+  }[],
 ) {
   const thang = (v: unknown) => {
     const t = String(v || "").trim();
@@ -385,10 +402,13 @@ export async function taoDotTuThangThau(
   };
   const can = new Map<string, Record<string, unknown>>();
   for (const it of items) {
-    for (const [loai, v] of [["chinh", it.mMain], ["bo_sung", it.mAdd]] as const) {
+    for (const [loai, v, hl] of [["chinh", it.mMain, it.hlMain], ["bo_sung", it.mAdd, it.hlAdd]] as const) {
       const t = thang(v);
       if (!t) continue;
-      const row = { fy: it.fy, ps: it.ps, custId: String(it.custId || ""), grp: String(it.grp || ""), loai, thang: t };
+      const row = {
+        fy: it.fy, ps: it.ps, custId: String(it.custId || ""), grp: String(it.grp || ""), loai, thang: t,
+        thoiGian: Number(hl) || null,
+      };
       can.set([row.fy, row.ps, row.custId, row.grp, loai, t].join("||"), row);
     }
   }

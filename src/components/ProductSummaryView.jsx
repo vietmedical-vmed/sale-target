@@ -58,6 +58,8 @@ export function ProductSummaryView({
       onHandDt: 0,
       upcomingDt: 0,
       quotaDt: 0,
+      het: 0,
+      hetDt: 0,
       slDauNam: 0,
       dt: 0,
       slUpd: 0,
@@ -80,6 +82,7 @@ export function ProductSummaryView({
       const dOnHand = Number(r._qOnHand) || 0;
       const dUpcoming = Number(r._qUp) || 0;
       const dQuota = dOnHand + dUpcoming;
+      const dHet = Number(r._qHet) || 0; // hết hiệu lực: hiện riêng, không vào tổng
       const isOop = !!r._oop && !custInPlan(planCusts, r);
       const dMoKhDt = planUpd * price;
       const dMoActDt = dtActVal;
@@ -97,6 +100,8 @@ export function ProductSummaryView({
         o.onHandDt += dOnHand * price;
         o.upcomingDt += dUpcoming * price;
         o.quotaDt += dQuota * price;
+        o.het += dHet;
+        o.hetDt += dHet * price;
         o.slDauNam += dSlDauNam;
         o.dt += dSlDauNam * price;
         o.slUpd += updQty;
@@ -182,6 +187,8 @@ export function ProductSummaryView({
       a.onHandDt += c.onHandDt;
       a.upcomingDt += c.upcomingDt;
       a.quotaDt += c.quotaDt;
+      a.het += c.het;
+      a.hetDt += c.hetDt;
       a.slDauNam += c.slDauNam;
       a.dt += c.dt;
       a.slUpd += c.slUpd;
@@ -235,7 +242,7 @@ export function ProductSummaryView({
       ? [curIdx]
       : [];
   const N_COLS =
-    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + 5 + 4;
+    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + 6 + 4;
 
   const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
   const pctCls = (th, kh) => {
@@ -269,7 +276,8 @@ export function ProductSummaryView({
     const onHandV = isQty ? node.onHand : node.onHandDt;
     const upcomingV = isQty ? node.upcoming : node.upcomingDt;
     const quotaV = isQty ? node.quota : node.quotaDt;
-    return { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV };
+    const hetV = isQty ? node.het : node.hetDt;
+    return { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV };
   };
 
   const moHead = () => {
@@ -384,11 +392,12 @@ export function ProductSummaryView({
 
   const qBg = 'bg-indigo-50/40';
   const quotaCells = (node, extra) => {
-    const { onHandV, upcomingV, quotaV, thYtdV } = pick(node);
+    const { onHandV, upcomingV, quotaV, thYtdV, hetV } = pick(node);
     const khaDung = node.oop ? null : onHandV - thYtdV;
     return [
       <td key="qoh" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-700 ${qBg} ${extra || ''}`}>{fmt(onHandV)}</td>,
       <td key="qup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-500 ${qBg} ${extra || ''}`}>{fmt(upcomingV)}</td>,
+      <td key="qhet" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-red-500 ${qBg} ${extra || ''}`}>{fmt(hetV)}</td>,
       <td key="qtot" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-800 ${qBg} ${extra || ''}`}>{fmt(quotaV)}</td>,
       <td key="qth" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-orange-600 ${qBg} ${extra || ''}`}>{fmt(thYtdV)}</td>,
       <td key="qkd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 ${qBg} ${node.oop ? 'text-slate-300' : 'text-indigo-800'} ${extra || ''}`}>
@@ -406,7 +415,7 @@ export function ProductSummaryView({
   }, [data, onExport]);
 
   const grandCells = (node, dark) => {
-    const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV } = pick(node);
+    const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV } = pick(node);
     const cells = [];
     for (const i of monthIdxs) {
       const kh = moKh[i], act = moAct[i];
@@ -445,6 +454,7 @@ export function ProductSummaryView({
     cells.push(
       <td key="gqoh" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(onHandV)}</td>,
       <td key="gqup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(upcomingV)}</td>,
+      <td key="gqhet" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-red-200">{fmt(hetV)}</td>,
       <td key="gqtot" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(quotaV)}</td>,
       <td key="gqth" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200">{fmt(thYtdV)}</td>,
       <td key="gqkd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(onHandV - thYtdV)}</td>,
@@ -502,7 +512,7 @@ export function ProductSummaryView({
                   Target
                 </th>,
                 <th
-                  colSpan={5}
+                  colSpan={6}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-indigo-800 border-r border-b border-slate-200 bg-indigo-50/60"
                 >
                   Quota
@@ -534,6 +544,7 @@ export function ProductSummaryView({
                 </th>,
                 <th key="qoh" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">On hand</th>,
                 <th key="qup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Upcoming</th>,
+                <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Hết HL</th>,
                 <th key="qtot" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Tổng</th>,
                 <th key="qth" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">TH YTD</th>,
                 <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-r border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Khả dụng</th>,

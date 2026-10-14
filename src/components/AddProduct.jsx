@@ -117,6 +117,10 @@ export function ProductPickerForm({
   // mỗi lần chỉ thêm trong 1 nhóm nên dùng chung cho cả lô. Không bắt buộc.
   const [mMain, setMMain] = useState('');
   const [mAdd, setMAdd] = useState('');
+  // Hiệu lực thầu (số tháng) — bắt buộc khi có nhập tháng thầu tương ứng.
+  const [hlMain, setHlMain] = useState('');
+  const [hlAdd, setHlAdd] = useState('');
+  const hlOk = (m, hl) => !m || (Number.isInteger(Number(hl)) && Number(hl) >= 1 && Number(hl) <= 120);
 
   const parseTr = (v) => {
     const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
@@ -223,7 +227,9 @@ export function ProductPickerForm({
         .map(([k]) => k),
     [sel],
   );
-  const ready = !!ps && !!grp && sel.size > 0 && thieuGia.length === 0 && !busy;
+  const ready =
+    !!ps && !!grp && sel.size > 0 && thieuGia.length === 0 && !busy &&
+    hlOk(mMain, hlMain) && hlOk(mAdd, hlAdd);
   const lbl =
     'block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1';
   const sels =
@@ -246,6 +252,8 @@ export function ProductPickerForm({
         price: parseTr(priceTr),
         mMain,
         mAdd,
+        hlMain: mMain ? Number(hlMain) : null,
+        hlAdd: mAdd ? Number(hlAdd) : null,
       });
       if (!res) {
         setErr(`Dừng ở "${name}" — xem thông báo lỗi phía trên.`);
@@ -370,13 +378,23 @@ export function ProductPickerForm({
               · không bắt buộc
             </span>
           </label>
-          <input
-            type="month"
-            value={mMain}
-            onChange={(e) => setMMain(e.target.value)}
-            disabled={!grp}
-            className={sels}
-          />
+          <div className="flex gap-1.5">
+            <input
+              type="month"
+              value={mMain}
+              onChange={(e) => setMMain(e.target.value)}
+              disabled={!grp}
+              className={sels}
+            />
+            <input
+              value={hlMain}
+              onChange={(e) => setHlMain(e.target.value.replace(/[^0-9]/g, ''))}
+              disabled={!grp || !mMain}
+              placeholder="HL (tháng)"
+              title="Hiệu lực thầu chính, số tháng — bắt buộc khi có tháng thầu"
+              className={`${sels} !w-[96px] ${mMain && !hlOk(mMain, hlMain) ? '!border-red-400 !bg-red-50' : ''}`}
+            />
+          </div>
         </div>
         <div>
           <label className={lbl}>
@@ -385,13 +403,23 @@ export function ProductPickerForm({
               · không bắt buộc
             </span>
           </label>
-          <input
-            type="month"
-            value={mAdd}
-            onChange={(e) => setMAdd(e.target.value)}
-            disabled={!grp}
-            className={sels}
-          />
+          <div className="flex gap-1.5">
+            <input
+              type="month"
+              value={mAdd}
+              onChange={(e) => setMAdd(e.target.value)}
+              disabled={!grp}
+              className={sels}
+            />
+            <input
+              value={hlAdd}
+              onChange={(e) => setHlAdd(e.target.value.replace(/[^0-9]/g, ''))}
+              disabled={!grp || !mAdd}
+              placeholder="HL (tháng)"
+              title="Hiệu lực thầu bổ sung, số tháng — bắt buộc khi có tháng thầu"
+              className={`${sels} !w-[96px] ${mAdd && !hlOk(mAdd, hlAdd) ? '!border-red-400 !bg-red-50' : ''}`}
+            />
+          </div>
         </div>
       </div>
       {(mMain || mAdd) && (
@@ -399,6 +427,7 @@ export function ProductPickerForm({
           Tạo đợt thầu cho cả nhóm{' '}
           <span className="font-medium text-slate-600">{grp}</span> của khách
           hàng này (nếu nhóm chưa có đợt cùng tháng) — sửa ở mục Đợt thầu của thẻ KH.
+          Có tháng thầu thì phải nhập hiệu lực (số tháng).
         </p>
       )}
       <div className="flex gap-2">

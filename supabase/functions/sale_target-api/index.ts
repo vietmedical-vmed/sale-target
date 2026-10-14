@@ -6,7 +6,7 @@ import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
-  applyScopeTombstone, taoDotTuThangThau,
+  applyScopeTombstone, taoDotTuThangThau, kiemTraThangHieuLuc,
 } from "./helpers.ts";
 
 Deno.serve(async (req) => {
@@ -425,6 +425,7 @@ Deno.serve(async (req) => {
         const msg = String(error.message || "");
         if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
         if (msg.includes("thang_sai_dinh_dang")) return json({ ok: false, error: "thang_sai_dinh_dang" }, 400);
+        if (msg.includes("dot_thieu_thong_tin")) return json({ ok: false, error: msg.replace(/^.*dot_thieu_thong_tin:\s*/, "") }, 400);
         if (msg.includes("loai_khong_hop_le")) return json({ ok: false, error: "loai_khong_hop_le" }, 400);
         throw new Error(msg);
       }
@@ -470,6 +471,7 @@ Deno.serve(async (req) => {
         const msg = String(error.message || "");
         if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
         if (msg.includes("dot_khong_ton_tai")) return json({ ok: false, error: "dot_khong_ton_tai" }, 400);
+        if (msg.includes("dot_thieu_thong_tin")) return json({ ok: false, error: msg.replace(/^.*dot_thieu_thong_tin:\s*/, "") }, 400);
         if (msg.includes("loai_khong_hop_le")) return json({ ok: false, error: "loai_khong_hop_le" }, 400);
         throw new Error(msg);
       }
@@ -566,6 +568,8 @@ Deno.serve(async (req) => {
       if (dupCount && dupCount > 0) {
         return json({ ok: false, error: "duplicate", message: "Sản phẩm đã tồn tại trong kế hoạch" }, 409);
       }
+      const loiHieuLuc = kiemTraThangHieuLuc([s]);
+      if (loiHieuLuc) return json({ ok: false, error: loiHieuLuc }, 400);
       const prodTrim = String(s.prod || "").trim();
       const msetTrim = String(s.mset || "").trim();
       let maSp: string | null = null;
@@ -601,7 +605,7 @@ Deno.serve(async (req) => {
       const absorbed = await absorbOop(db, inserted, cols);
       // Tháng thầu → đợt thầu của nhóm (sale_target không còn lưu tháng thầu).
       const dotMoi = await taoDotTuThangThau(db, sess, [
-        { fy, ps: psName, custId: s.custId, grp: s.grp, mMain: s.mMain, mAdd: s.mAdd },
+        { fy, ps: psName, custId: s.custId, grp: s.grp, mMain: s.mMain, mAdd: s.mAdd, hlMain: s.hlMain, hlAdd: s.hlAdd },
       ]);
       await writeAuditLog(db, sess, "addProduct", inserted.length, {
         ps: psName, cust: s.cust, grp: s.grp, prod: s.prod, mset: s.mset, bu, absorbed, dotMoi,
@@ -693,6 +697,8 @@ Deno.serve(async (req) => {
         return json({ ok: false, error: "items required" }, 400);
       if (items.length > 200)
         return json({ ok: false, error: "max 200 items per batch" }, 400);
+      const loiHieuLucLo = kiemTraThangHieuLuc(items);
+      if (loiHieuLucLo) return json({ ok: false, error: loiHieuLucLo }, 400);
 
       const { data: any1 } = await db.schema("shared").from("sale_target")
         .select("nam_tai_chinh").limit(1);
@@ -727,7 +733,7 @@ Deno.serve(async (req) => {
       const candidates: {
         ps: string; bu: string; mien: string; custId: string; cust: string;
         grp: string; mset: string; prod: string; price: number | null;
-        mMain: unknown; mAdd: unknown; key: string;
+        mMain: unknown; mAdd: unknown; hlMain: unknown; hlAdd: unknown; key: string;
       }[] = [];
       const seenKeys = new Set<string>();
       for (const s of items) {
@@ -746,7 +752,7 @@ Deno.serve(async (req) => {
         seenKeys.add(key);
         candidates.push({
           ps, bu: info.bu, mien: s.region || info.mien, custId, cust: String(s.cust || ""),
-          grp, mset, prod, price, mMain: s.mMain, mAdd: s.mAdd, key,
+          grp, mset, prod, price, mMain: s.mMain, mAdd: s.mAdd, hlMain: s.hlMain, hlAdd: s.hlAdd, key,
         });
       }
 
@@ -830,7 +836,7 @@ Deno.serve(async (req) => {
       }
       const absorbed = await absorbOop(db, inserted, cols);
       const dotMoi = await taoDotTuThangThau(db, sess, toInsert.map((c) => ({
-        fy, ps: c.ps, custId: c.custId, grp: c.grp, mMain: c.mMain, mAdd: c.mAdd,
+        fy, ps: c.ps, custId: c.custId, grp: c.grp, mMain: c.mMain, mAdd: c.mAdd, hlMain: c.hlMain, hlAdd: c.hlAdd,
       })));
 
       await writeAuditLog(db, sess, "addProduct", inserted.length, {
@@ -1187,7 +1193,11 @@ Deno.serve(async (req) => {
       if (!ids.length) return json({ ok: true, dot: 0 });
       const duyet = payload.duyet === true;
       const { data, error } = await db.rpc("duyet_dot_thau", { p_ids: ids, p_duyet: duyet, p_actor: sess.u });
-      if (error) throw new Error(error.message);
+      if (error) {
+        const msg = String(error.message || "");
+        if (msg.includes("dot_thieu_thong_tin")) return json({ ok: false, error: msg.replace(/^.*dot_thieu_thong_tin:\s*/, "") }, 400);
+        throw new Error(msg);
+      }
       await writeAuditLog(db, sess, duyet ? "duyetDotThau" : "loaiDotThau", ids.length, { ids: ids.slice(0, 200) });
       return json({ ok: true, ...(data || {}) });
     }

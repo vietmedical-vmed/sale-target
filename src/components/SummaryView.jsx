@@ -84,6 +84,8 @@ export function SummaryView({
         q14Dt: 0,
         qUpcoming: 0,
         qUpcomingDt: 0,
+        qHet: 0,
+        qHetDt: 0,
         ytd: 0,
         khLeft: 0,
         khLeftDt: 0,
@@ -127,6 +129,7 @@ export function SummaryView({
       // On-hand / upcoming đã tính sẵn theo tháng đợt thầu (lib/quota.js).
       const dQ14 = Number(r._qOnHand) || 0;
       const dQUpcoming = Number(r._qUp) || 0;
+      const dQHet = Number(r._qHet) || 0; // hết hiệu lực: hiện riêng, không vào tổng
       const dQuota = dQ14 + dQUpcoming;
       const dQuotaDt = dQuota * price;
       const dQ14Dt = dQ14 * price;
@@ -147,6 +150,8 @@ export function SummaryView({
         o.q14Dt += dQ14Dt;
         o.qUpcoming += dQUpcoming;
         o.qUpcomingDt += dQUpcomingDt;
+        o.qHet += dQHet;
+        o.qHetDt += dQHet * price;
         o.ytd += dYtd;
         o.khLeft += dKhLeft;
         o.khLeftDt += dKhLeftDt;
@@ -189,6 +194,8 @@ export function SummaryView({
           q14Dt: 0,
           qUpcoming: 0,
           qUpcomingDt: 0,
+          qHet: 0,
+          qHetDt: 0,
           ytd: 0,
           khLeft: 0,
           khLeftDt: 0,
@@ -220,6 +227,8 @@ export function SummaryView({
           q14Dt: 0,
           qUpcoming: 0,
           qUpcomingDt: 0,
+          qHet: 0,
+          qHetDt: 0,
           ytd: 0,
           khLeft: 0,
           khLeftDt: 0,
@@ -249,6 +258,8 @@ export function SummaryView({
       q14Dt: 0,
       qUpcoming: 0,
       qUpcomingDt: 0,
+      qHet: 0,
+      qHetDt: 0,
       ytd: 0,
       khLeft: 0,
       khLeftDt: 0,
@@ -273,6 +284,8 @@ export function SummaryView({
       a.q14Dt += c.q14Dt;
       a.qUpcoming += c.qUpcoming;
       a.qUpcomingDt += c.qUpcomingDt;
+      a.qHet += c.qHet;
+      a.qHetDt += c.qHetDt;
       a.ytd += c.ytd;
       a.khLeft += c.khLeft;
       a.khLeftDt += c.khLeftDt;
@@ -446,8 +459,9 @@ export function SummaryView({
           KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết
           tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH
           YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH. Quota: On
-          hand = quota thầu cũ + quota chính + BS đã tới tháng; Upcoming = chưa tới
-          tháng; Khả dụng = On hand − TH YTD.
+          hand = quota thầu cũ + quota chính / BS đã tới tháng và còn hiệu lực; Upcoming
+          = chưa tới tháng hoặc đợt chưa đủ tháng / hiệu lực; Hết HL = đã quá tháng
+          thầu + hiệu lực − 1 (không vào Tổng); Khả dụng = On hand − TH YTD.
         </p>
       </div>
     </React.Fragment>
@@ -596,7 +610,7 @@ function SummaryHead() {
           Target
         </th>,
         <th
-          colSpan={5}
+          colSpan={6}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
         >
           Quota
@@ -655,6 +669,13 @@ function SummaryHead() {
           Upcoming
         </th>,
         <th
+          key="qqhet"
+          title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng quota / Khả dụng."
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
+        >
+          Hết HL
+        </th>,
+        <th
           key="qqfy"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
         >
@@ -693,6 +714,7 @@ function StatCells({ d, size, dark }) {
   const klV = isQty ? d.khLeft : d.khLeftDt;
   const q14V = isQty ? d.q14 : d.q14Dt;
   const qUpV = isQty ? d.qUpcoming : d.qUpcomingDt;
+  const qHetV = isQty ? d.qHet : d.qHetDt;
   const qFYV = isQty ? d.quotaFY : d.quotaFYDt;
   const qAvV = isQty ? d.quotaAvail : d.quotaAvailDt;
   const p =
@@ -800,6 +822,9 @@ function StatCells({ d, size, dark }) {
   );
   cells.push(
     <td key="qup" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(qUpV)}</td>,
+  );
+  cells.push(
+    <td key="qhet" className={`px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-red-200' : 'text-red-500'} ${qbg}`}>{fmt(qHetV)}</td>,
   );
   cells.push(
     <td key="q" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(qFYV)}</td>,

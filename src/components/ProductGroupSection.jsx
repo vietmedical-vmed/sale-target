@@ -5,6 +5,7 @@ import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
 import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
+import { trangThaiDot } from '../lib/quota.js';
 
 // ============ PRODUCT ROW ============
 // Inline-edit cho ô sticky (bộ vật tư / sản phẩm) — chỉ dùng cho admin.
@@ -93,25 +94,28 @@ const ProductRow = React.memo(function ProductRow({
     // trên kế hoạch chỉ thấy trong modal (có dấu ⚠), không lên lưới.
     const giaDong = Number(anchor.price) || 0;
     const cungGia = list.filter((q) => (Number(q.price) || 0) === giaDong);
-    const dotMonth = new Map();
-    for (const d of dots) dotMonth.set(`${d.loai}|${d.dot}`, d.thang || '');
+    const dotInfo = new Map();
+    for (const d of dots) dotInfo.set(`${d.loai}|${d.dot}`, d);
     let cu = 0,
       chinh = 0,
       bo_sung = 0,
-      onHand = 0;
+      onHand = 0,
+      het = 0;
     for (const q of cungGia) {
       const n = Number(q.qty) || 0;
       if (q.loai === 'cu') {
         cu += n;
         onHand += n;
       } else {
-        const thang = dotMonth.get(`${q.loai}|${q.dot}`) || '';
+        const d = dotInfo.get(`${q.loai}|${q.dot}`);
+        const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up';
         if (q.loai === 'chinh') chinh += n;
         else bo_sung += n;
-        if (thang && thang <= CURRENT_MONTH) onHand += n;
+        if (tt === 'on') onHand += n;
+        else if (tt === 'het') het += n;
       }
     }
-    return { cu, chinh, bo_sung, onHand };
+    return { cu, chinh, bo_sung, onHand, het };
   }, [quotaCtx, anchor, mset, product]);
   const prices = useMemo(() => {
     const s = new Set();
@@ -158,7 +162,9 @@ const ProductRow = React.memo(function ProductRow({
       qAdd = qInfo.bo_sung;
       onHand = qInfo.onHand;
     }
-    const totalQuota = q14 + qMain + qAdd;
+    // Quota hết hiệu lực không vào tổng (cột thầu chính / BS vẫn hiện số đã nhập).
+    const het = qInfo ? qInfo.het : 0;
+    const totalQuota = q14 + qMain + qAdd - het;
     return {
       q14,
       qMain,
@@ -168,6 +174,7 @@ const ProductRow = React.memo(function ProductRow({
       khLeft,
       price,
       totalQuota,
+      het,
       quotaAvailable: onHand - ytd,
       dtBase,
       dtUpd,
@@ -334,7 +341,10 @@ const ProductRow = React.memo(function ProductRow({
           width: 90,
         }}
       >
-        {fmtInt(stats.totalQuota)}
+        <span title={stats.het ? `Đã trừ ${fmtInt(stats.het)} quota hết hiệu lực` : undefined}>
+          {fmtInt(stats.totalQuota)}
+          {stats.het ? <span className="ml-0.5 text-[10px] text-red-500">*</span> : null}
+        </span>
       </td>
       <td
         className="px-2 py-1.5 text-[12px] text-right tabular-nums text-slate-600 border-r border-b border-slate-100 bg-orange-50/40"
@@ -578,8 +588,9 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
     // Quota cấp nhóm đọc cùng nguồn với từng dòng sản phẩm: shared.quota_thau.
     const gk = grpKey(grpFy, ps, custId || '', groupName);
     const dotsNhom = quotaCtx ? quotaCtx.dotsByGroup.get(gk) || [] : [];
-    const thangCuaDot = new Map();
-    for (const d of dotsNhom) thangCuaDot.set(`${d.loai}|${d.dot}`, d.thang || '');
+    const dotCuaNhom = new Map();
+    for (const d of dotsNhom) dotCuaNhom.set(`${d.loai}|${d.dot}`, d);
+    let hetM = 0;
     products.forEach((p) => {
       const allR = p.monthly.flatMap((c) => c.rows);
       let pQ14 = 0,
@@ -608,8 +619,10 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           } else {
             if (q.loai === 'chinh') pQMain += n;
             else pQAdd += n;
-            const thang = thangCuaDot.get(`${q.loai}|${q.dot}`) || '';
-            if (thang && thang <= CURRENT_MONTH) pOnHand += n;
+            const d = dotCuaNhom.get(`${q.loai}|${q.dot}`);
+            const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up';
+            if (tt === 'on') pOnHand += n;
+            else if (tt === 'het') hetM += n * pPrice;
           }
         }
       }
@@ -639,7 +652,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
         });
       });
     });
-    const totalQuotaM = q14M + qMainM + qAddM;
+    const totalQuotaM = q14M + qMainM + qAddM - hetM; // bỏ quota hết hiệu lực
     return {
       plan,
       dt,

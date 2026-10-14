@@ -79,12 +79,12 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
   numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
-  H1.push('Quota', '', '', '', '');
-  H2.push('On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng');
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
-  cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
-  numCols.push(c, c + 1, c + 2, c + 3, c + 4);
-  c += 5;
+  H1.push('Quota', '', '', '', '', '');
+  H2.push('On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
+  cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
+  numCols.push(c, c + 1, c + 2, c + 3, c + 4, c + 5);
+  c += 6;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -118,10 +118,11 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
     row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - dtYtdV));
     const q14V = isSL ? (d.q14 || 0) : (d.q14Dt || 0);
     const qUpV = isSL ? (d.qUpcoming || 0) : (d.qUpcomingDt || 0);
+    const qHetV = isSL ? (d.qHet || 0) : (d.qHetDt || 0);
     const qFYV = isSL ? (d.quotaFY || 0) : (d.quotaFYDt || 0);
     const qAvail = isSL ? d.quotaAvail : d.quotaAvailDt;
     const quotaRemain = qAvail == null ? '-' : tr(q14V - dtYtdV);
-    row.push(tr(q14V), tr(qUpV), tr(qFYV), tr(dtYtdV), quotaRemain);
+    row.push(tr(q14V), tr(qUpV), tr(qHetV), tr(qFYV), tr(dtYtdV), quotaRemain);
     aoa.push(row);
     levels.push(level);
   };
@@ -221,12 +222,12 @@ function _buildProdSheet(XLSX, wb, data, mode) {
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
   numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
-  H1.push('Quota', '', '', '', '');
-  H2.push('On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng');
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 4 } });
-  cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
-  numCols.push(c, c + 1, c + 2, c + 3, c + 4);
-  c += 5;
+  H1.push('Quota', '', '', '', '', '');
+  H2.push('On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng');
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
+  cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
+  numCols.push(c, c + 1, c + 2, c + 3, c + 4, c + 5);
+  c += 6;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -240,6 +241,7 @@ function _buildProdSheet(XLSX, wb, data, mode) {
     const moAct = isSL ? d.moAct : d.moActDt;
     const onHandV = isSL ? (Number(d.onHand) || 0) : (Number(d.onHandDt) || 0);
     const upcomingV = isSL ? (Number(d.upcoming) || 0) : (Number(d.upcomingDt) || 0);
+    const hetV = isSL ? (Number(d.het) || 0) : (Number(d.hetDt) || 0);
     const quotaV = isSL ? (Number(d.quota) || 0) : (Number(d.quotaDt) || 0);
     const row = ['   '.repeat(level) + label];
     if (isSL) row.push(price > 0 ? price : '');
@@ -259,7 +261,7 @@ function _buildProdSheet(XLSX, wb, data, mode) {
     );
     row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - thYtdV));
     row.push(
-      tr(onHandV), tr(upcomingV), tr(quotaV),
+      tr(onHandV), tr(upcomingV), tr(hetV), tr(quotaV),
       tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV),
     );
     aoa.push(row);
@@ -302,7 +304,7 @@ export async function exportQuotaThau(rows) {
   const LOAI = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Thầu bổ sung' };
   const H = [
     'Năm TC', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', 'Bộ vật tư',
-    'Sản phẩm', 'Đơn giá', 'Loại thầu', 'Đợt', 'Tháng thầu', 'SL quota',
+    'Sản phẩm', 'Đơn giá', 'Loại thầu', 'Đợt', 'Tháng thầu', 'Hiệu lực (tháng)', 'Hết hạn', 'SL quota',
     'Thành tiền', 'Trạng thái', 'Nguồn', 'Cảnh báo',
   ];
   const num = (v) => (v === null || v === undefined || v === '' ? '' : Number(v));
@@ -310,20 +312,20 @@ export async function exportQuotaThau(rows) {
     rows.map((r) => [
       r.nam_tai_chinh, r.bu, r.mien, r.ps, r.ma_khach_hang, r.khach_hang,
       r.nhom_san_pham, r.bo_vat_tu, r.san_pham, num(r.don_gia),
-      LOAI[r.loai] || r.loai, num(r.dot), r.thang_thau || '', num(r.so_luong),
+      LOAI[r.loai] || r.loai, num(r.dot), r.thang_thau || '', num(r.hieu_luc), r.het_han || '', num(r.so_luong),
       num(r.thanh_tien), r.trang_thai, r.nguon, r.canh_bao || '',
     ]),
   );
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [6, 6, 8, 16, 9, 30, 18, 18, 30, 13, 12, 5, 10, 10, 16, 10, 18, 30].map(
+  ws['!cols'] = [6, 6, 8, 16, 9, 30, 18, 18, 30, 13, 12, 5, 10, 9, 9, 10, 16, 12, 18, 30].map(
     (wch) => ({ wch }),
   );
   ws['!autofilter'] = { ref: `A1:${_ec(aoa.length - 1, H.length - 1)}` };
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
   for (let r = 1; r < aoa.length; r++) {
     _fmt(ws, r, 9, '#,##0');
-    _fmt(ws, r, 13, '#,##0');
-    _fmt(ws, r, 14, '#,##0');
+    _fmt(ws, r, 15, '#,##0');
+    _fmt(ws, r, 16, '#,##0');
   }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Quota thầu');

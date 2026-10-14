@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useContext } from 'react';
 import { Check, XIcon, Loader2, RefreshCw, Search, Package, AlertCircle } from './icons.jsx';
-import { TEAMS } from '../config/constants.js';
+import { TEAMS, CURRENT_MONTH } from '../config/constants.js';
+import { QuotaThauCtx, DotEditor, dotDuThongTin } from './QuotaThau.jsx';
 import { api } from '../api/client.js';
 import { fmtInt } from '../lib/format.js';
 import { deaccent } from '../lib/text.js';
@@ -240,6 +241,7 @@ export function QuotaChoDuyetView({ onChanged }) {
       {dots.length > 0 && (
         <DotChoDuyet dots={dots} busy={busy} onXuLy={xuLyDot} />
       )}
+      <DotThieuThongTin />
     </div>
   );
 }
@@ -324,6 +326,90 @@ function DotChoDuyet({ dots, busy, onXuLy }) {
                 <td className="px-3 py-2 text-right tabular-nums text-slate-700">{d.thoi_gian ?? ''}</td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Đợt chính thức còn thiếu tháng thầu / hiệu lực (dữ liệu cũ). Quota mới không nhập
+// được vào các đợt này cho tới khi điền đủ; điền ngay tại đây.
+function DotThieuThongTin() {
+  const ctx = useContext(QuotaThauCtx);
+  const [loi, setLoi] = useState('');
+  const [search, setSearch] = useState('');
+  const list = useMemo(() => {
+    if (!ctx) return [];
+    const out = [];
+    for (const ds of ctx.dotsByGroup.values())
+      for (const d of ds) if (!dotDuThongTin(d)) out.push(d);
+    const q = deaccent(search.trim());
+    return out
+      .filter((d) => !q || [d.ps, d.custId, d.grp].some((v) => deaccent(v || '').includes(q)))
+      .sort((a, b) => (a.ps + a.custId + a.grp + a.loai + a.dot).localeCompare(b.ps + b.custId + b.grp + b.loai + b.dot));
+  }, [ctx, search]);
+  if (!ctx) return null;
+  const luu = async (d, thang, thoiGian) => {
+    setLoi('');
+    try {
+      await ctx.saveDot([{ fy: d.fy, ps: d.ps, custId: d.custId, grp: d.grp, loai: d.loai, dot: d.dot, thang, thoiGian }]);
+    } catch (e) {
+      setLoi(`${d.ps} · ${d.custId} · ${d.grp}: ${e.message}`);
+    }
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
+        <div>
+          <h3 className="text-[14px] font-bold text-slate-800">
+            Đợt thiếu tháng thầu / hiệu lực
+            <span className="ml-2 text-[12px] font-normal text-slate-400">{list.length} đợt</span>
+          </h3>
+          <p className="text-[12px] text-slate-500">
+            Quota của các đợt này đang tính Upcoming và không nhập thêm được. Điền tháng thầu (yyyy-mm) và hiệu lực (số tháng) — lưu khi đủ cả hai.
+          </p>
+        </div>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Lọc PS, mã KH, nhóm…"
+          className="px-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-56 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        />
+      </div>
+      {loi && <div className="text-[12px] text-red-600">{loi}</div>}
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">PS</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Mã KH</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Nhóm SP</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Loại</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Tháng thầu · hiệu lực</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.length === 0 ? (
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">Mọi đợt đã đủ tháng thầu và hiệu lực</td></tr>
+            ) : (
+              list.map((d) => (
+                <tr key={[d.fy, d.ps, d.custId, d.grp, d.loai, d.dot].join('|')} className="border-b border-slate-100">
+                  <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap">{d.ps}</td>
+                  <td className="px-3 py-1.5 text-slate-600">{d.custId}</td>
+                  <td className="px-3 py-1.5 text-slate-600">{d.grp}</td>
+                  <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{LOAI[d.loai] || d.loai} · đợt {d.dot}</td>
+                  <td className="px-3 py-1.5">
+                    <DotEditor
+                      thang={d.thang}
+                      thoiGian={d.thoiGian}
+                      curMonth={CURRENT_MONTH}
+                      onSave={(thang, thoiGian) => luu(d, thang, thoiGian)}
+                    />
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
