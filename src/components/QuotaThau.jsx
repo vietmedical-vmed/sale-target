@@ -64,8 +64,10 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
   const keyDown = (e) => {
     if (e.key === 'Enter') e.target.blur();
   };
+  const nhan = 'text-[10.5px] text-slate-500 whitespace-nowrap';
   return (
     <span className="inline-flex items-center gap-1">
+      <span className={nhan}>Tháng thầu</span>
       <input
         value={m}
         onChange={(e) => setM(e.target.value)}
@@ -74,26 +76,27 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
         disabled={locked}
         autoFocus={autoFocus}
         placeholder="yyyy-mm"
-        title="Tháng thầu (bắt buộc)"
+        title="Tháng bắt đầu áp dụng thầu, dạng năm-tháng, ví dụ 2026-07 (bắt buộc)"
         className={`w-[80px] ${o(mOk)}`}
       />
+      <span className={`${nhan} ml-1`}>Hiệu lực</span>
       <input
         value={hl}
         onChange={(e) => setHl(e.target.value.replace(/[^0-9]/g, ''))}
         onBlur={thu}
         onKeyDown={keyDown}
         disabled={locked}
-        placeholder="HL"
-        title="Hiệu lực thầu, số tháng (bắt buộc)"
-        className={`w-[38px] text-right ${o(hlOk)}`}
+        placeholder="vd 24"
+        title="Thầu có hiệu lực bao nhiêu tháng, tính từ tháng thầu — nhập số tháng, ví dụ 12, 18, 24 (bắt buộc)"
+        className={`w-[46px] text-right ${o(hlOk)}`}
       />
-      <span className="text-[10px] text-slate-400">th</span>
+      <span className={nhan}>tháng</span>
       {het && (
         <span
-          className={`text-[10px] whitespace-nowrap ${HIEN_HET_HIEU_LUC && tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
-          title="Tháng hết hiệu lực = tháng thầu + hiệu lực − 1"
+          className={`text-[10.5px] whitespace-nowrap ${HIEN_HET_HIEU_LUC && tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
+          title="Tháng cuối còn hiệu lực = tháng thầu + số tháng hiệu lực − 1"
         >
-          {HIEN_HET_HIEU_LUC && tt === 'het' ? `hết HL ${het}` : `→ ${het}`}
+          {HIEN_HET_HIEU_LUC && tt === 'het' ? `(đã hết hiệu lực từ sau ${het})` : `(hiệu lực đến hết ${het})`}
         </span>
       )}
     </span>
@@ -426,8 +429,8 @@ export function QuotaThauModal({
                         title={c.du ? `Tháng thầu ${c.thang}, hiệu lực ${c.thoiGian} tháng, hết hạn ${c.het}` : 'Đợt chưa đủ tháng thầu / hiệu lực'}
                       >
                         {!c.du
-                          ? 'thiếu tháng / HL'
-                          : `${c.thang} · ${Number(c.thoiGian)}th${HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? ' · hết HL' : ''}`}
+                          ? 'thiếu tháng thầu / hiệu lực'
+                          : `Từ ${c.thang} · hiệu lực ${Number(c.thoiGian)} tháng${HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? ' · hết HL' : ''}`}
                       </div>
                     )}
                   </th>

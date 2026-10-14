@@ -373,9 +373,9 @@ export function ProductPickerForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={lbl}>
-            Tháng thầu chính
+            Thầu chính: tháng thầu · hiệu lực
             <span className="text-slate-400 normal-case tracking-normal">
-              · không bắt buộc
+              · không bắt buộc (nhập tháng thì phải nhập hiệu lực)
             </span>
           </label>
           <div className="flex gap-1.5">
@@ -390,17 +390,17 @@ export function ProductPickerForm({
               value={hlMain}
               onChange={(e) => setHlMain(e.target.value.replace(/[^0-9]/g, ''))}
               disabled={!grp || !mMain}
-              placeholder="HL (tháng)"
-              title="Hiệu lực thầu chính, số tháng — bắt buộc khi có tháng thầu"
-              className={`${sels} !w-[96px] ${mMain && !hlOk(mMain, hlMain) ? '!border-red-400 !bg-red-50' : ''}`}
+              placeholder="Hiệu lực: số tháng"
+              title="Thầu chính có hiệu lực bao nhiêu tháng, tính từ tháng thầu — ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu"
+              className={`${sels} !w-[150px] ${mMain && !hlOk(mMain, hlMain) ? '!border-red-400 !bg-red-50' : ''}`}
             />
           </div>
         </div>
         <div>
           <label className={lbl}>
-            Tháng thầu bổ sung
+            Thầu bổ sung: tháng thầu · hiệu lực
             <span className="text-slate-400 normal-case tracking-normal">
-              · không bắt buộc
+              · không bắt buộc (nhập tháng thì phải nhập hiệu lực)
             </span>
           </label>
           <div className="flex gap-1.5">
@@ -415,9 +415,9 @@ export function ProductPickerForm({
               value={hlAdd}
               onChange={(e) => setHlAdd(e.target.value.replace(/[^0-9]/g, ''))}
               disabled={!grp || !mAdd}
-              placeholder="HL (tháng)"
-              title="Hiệu lực thầu bổ sung, số tháng — bắt buộc khi có tháng thầu"
-              className={`${sels} !w-[96px] ${mAdd && !hlOk(mAdd, hlAdd) ? '!border-red-400 !bg-red-50' : ''}`}
+              placeholder="Hiệu lực: số tháng"
+              title="Thầu bổ sung có hiệu lực bao nhiêu tháng, tính từ tháng thầu — ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu"
+              className={`${sels} !w-[150px] ${mAdd && !hlOk(mAdd, hlAdd) ? '!border-red-400 !bg-red-50' : ''}`}
             />
           </div>
         </div>
@@ -427,7 +427,8 @@ export function ProductPickerForm({
           Tạo đợt thầu cho cả nhóm{' '}
           <span className="font-medium text-slate-600">{grp}</span> của khách
           hàng này (nếu nhóm chưa có đợt cùng tháng) — sửa ở mục Đợt thầu của thẻ KH.
-          Có tháng thầu thì phải nhập hiệu lực (số tháng).
+          Hiệu lực = thầu dùng được bao nhiêu tháng tính từ tháng thầu (vd thầu 2026-07,
+          hiệu lực 12 tháng → dùng tới hết 2027-06).
         </p>
       )}
       <div className="flex gap-2">
