@@ -1,0 +1,3 @@
+-- ROLLBACK cho 20261014100000_v_quota_thau_xuat_khop_app.sql
+-- Cột của view giữ nguyên tên/thứ tự, nên chỉ cần chạy lại nguyên văn file
+-- supabase/migrations/20261013110000_v_quota_thau_xuat.sql (CREATE OR REPLACE VIEW).
