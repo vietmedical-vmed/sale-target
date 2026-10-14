@@ -13,6 +13,7 @@ const ty = (v) => (v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 }
 // app cho tới khi admin duyệt; loại = xoá hẳn.
 export function QuotaChoDuyetView({ onChanged }) {
   const [rows, setRows] = useState([]);
+  const [dots, setDots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -26,6 +27,7 @@ export function QuotaChoDuyetView({ onChanged }) {
     try {
       const r = await api('getQuotaChoDuyet');
       setRows(r.rows || []);
+      setDots(r.dots || []);
       setChon(new Set());
     } catch (e) {
       setError('Không tải được quota chờ duyệt: ' + e.message);
@@ -87,6 +89,26 @@ export function QuotaChoDuyetView({ onChanged }) {
   };
 
   const daChon = rows.filter((r) => chon.has(r.id));
+
+  const xuLyDot = async (ids, duyet) => {
+    if (!ids.length) return;
+    const msg = duyet
+      ? `Duyệt ${ids.length} đợt thầu? Đợt sẽ hiện ở mục Đợt thầu của nhóm.`
+      : `Loại ${ids.length} đợt thầu? Đợt sẽ bị xoá hẳn.`;
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await api('duyetDotThau', { ids, duyet });
+      setNotice(`${duyet ? 'Đã duyệt' : 'Đã loại'} ${r.dot || 0} đợt thầu.`);
+      await load();
+      if (duyet) await onChanged?.();
+    } catch (e) {
+      setError((duyet ? 'Duyệt' : 'Loại') + ' đợt thất bại: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -214,6 +236,96 @@ export function QuotaChoDuyetView({ onChanged }) {
             </tbody>
           </table>
         </div>
+      </div>
+      {dots.length > 0 && (
+        <DotChoDuyet dots={dots} busy={busy} onXuLy={xuLyDot} />
+      )}
+    </div>
+  );
+}
+
+// Đợt thầu chờ duyệt không gắn quota: chỉ có tháng (và thời gian) thầu chuyển từ
+// cột cũ của kế hoạch, nhóm chưa có đợt cùng tháng.
+function DotChoDuyet({ dots, busy, onXuLy }) {
+  const [chon, setChon] = useState(() => new Set());
+  useEffect(() => { setChon(new Set()); }, [dots]);
+  const doi = (id) =>
+    setChon((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const tatCa = dots.length > 0 && dots.every((d) => chon.has(d.id));
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
+        <div>
+          <h3 className="text-[14px] font-bold text-slate-800">Đợt thầu chờ duyệt (chưa có quota)</h3>
+          <p className="text-[12px] text-slate-500">
+            Tháng thầu ghi ở cột cũ của kế hoạch mà nhóm chưa có đợt cùng tháng. Duyệt để đợt hiện ở mục Đợt thầu của nhóm.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onXuLy([...chon], true)}
+            disabled={busy || !chon.size}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
+          >
+            <Check size={13} />
+            Duyệt đợt{chon.size ? ` (${chon.size})` : ''}
+          </button>
+          <button
+            onClick={() => onXuLy([...chon], false)}
+            disabled={busy || !chon.size}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-700 bg-white border border-red-200 hover:bg-red-50 rounded-md disabled:opacity-50"
+          >
+            <XIcon size={13} />
+            Loại đợt{chon.size ? ` (${chon.size})` : ''}
+          </button>
+        </div>
+      </div>
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-3 py-2 w-8">
+                <input
+                  type="checkbox"
+                  checked={tatCa}
+                  onChange={() => setChon(tatCa ? new Set() : new Set(dots.map((d) => d.id)))}
+                />
+              </th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Team</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">PS</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Mã KH</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Nhóm SP</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Loại</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Tháng thầu</th>
+              <th className="px-3 py-2 text-right font-semibold text-slate-600">Thời gian</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dots.map((d) => (
+              <tr
+                key={d.id}
+                onClick={() => doi(d.id)}
+                className={'border-b border-slate-100 cursor-pointer ' + (chon.has(d.id) ? 'bg-emerald-50/60' : 'hover:bg-slate-50/50')}
+              >
+                <td className="px-3 py-2">
+                  <input type="checkbox" checked={chon.has(d.id)} onChange={() => doi(d.id)} onClick={(e) => e.stopPropagation()} />
+                </td>
+                <td className="px-3 py-2 text-slate-600">{(TEAMS[d.bu] && TEAMS[d.bu].label) || d.bu || ''}</td>
+                <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{d.ps}</td>
+                <td className="px-3 py-2 text-slate-600">{d.ma_khach_hang}</td>
+                <td className="px-3 py-2 text-slate-600">{d.nhom_san_pham}</td>
+                <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{LOAI[d.loai] || d.loai} · đợt {d.dot}</td>
+                <td className="px-3 py-2 text-slate-700">{d.thang_thau}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-700">{d.thoi_gian ?? ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

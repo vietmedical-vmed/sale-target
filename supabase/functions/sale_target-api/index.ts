@@ -6,7 +6,7 @@ import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
-  applyScopeTombstone,
+  applyScopeTombstone, taoDotTuThangThau,
 } from "./helpers.ts";
 
 Deno.serve(async (req) => {
@@ -552,10 +552,6 @@ Deno.serve(async (req) => {
       // area_manager: miền của dòng = miền của PS (đã kiểm tra thuộc phạm vi ở trên).
       let mien = sess.r === "area_manager" ? "" : String(s.region || "").trim();
       if (!mien) mien = await mienForPs(db, psName) || "";
-      const thangThau = (v: unknown) => {
-        const t = String(v || "").trim();
-        return /^\d{4}-\d{2}$/.test(t) ? t : null;
-      };
       let dupQ = db.schema("shared").from("sale_target")
         .select("id", { count: "exact", head: true })
         .eq("nam_tai_chinh", fy).eq("thang_ke_hoach", MONTHS[0])
@@ -591,7 +587,6 @@ Deno.serve(async (req) => {
       }
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
-        thang_thau_chinh: thangThau(s.mMain), thang_thau_bo_sung: thangThau(s.mAdd),
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
         san_pham: s.prod, bo_vat_tu: s.mset,
         ma_san_pham: maSp, ma_bo_vat_tu: maBvt,
@@ -604,8 +599,12 @@ Deno.serve(async (req) => {
       if (error) throw new Error(error.message);
       const inserted = ins || [];
       const absorbed = await absorbOop(db, inserted, cols);
+      // Tháng thầu → đợt thầu của nhóm (sale_target không còn lưu tháng thầu).
+      const dotMoi = await taoDotTuThangThau(db, sess, [
+        { fy, ps: psName, custId: s.custId, grp: s.grp, mMain: s.mMain, mAdd: s.mAdd },
+      ]);
       await writeAuditLog(db, sess, "addProduct", inserted.length, {
-        ps: psName, cust: s.cust, grp: s.grp, prod: s.prod, mset: s.mset, bu, absorbed,
+        ps: psName, cust: s.cust, grp: s.grp, prod: s.prod, mset: s.mset, bu, absorbed, dotMoi,
       });
       return json({
         ok: true,
@@ -617,6 +616,7 @@ Deno.serve(async (req) => {
         ),
         rowNums: inserted.map((r: Record<string, unknown>) => r.id),
         absorbed,
+        dotMoi,
         rev: await getRev(db, sess, payload),
       });
     }
@@ -662,8 +662,6 @@ Deno.serve(async (req) => {
         ma_bo_vat_tu: ref.ma_bo_vat_tu,
         don_gia: ref.don_gia,
         bu: ref.bu,
-        thang_thau_chinh: ref.thang_thau_chinh,
-        thang_thau_bo_sung: ref.thang_thau_bo_sung,
         sl_ke_hoach_dau_nam: rev,
         doanh_thu_kh_dau_nam: rev * price,
         sl_thuc_hien: 0,
@@ -701,10 +699,6 @@ Deno.serve(async (req) => {
       const fy = any1 && any1[0] ? any1[0].nam_tai_chinh : "FY26";
       const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
-      const thangThau = (v: unknown) => {
-        const t = String(v || "").trim();
-        return /^\d{4}-\d{2}$/.test(t) ? t : null;
-      };
 
       const psInfoCache = new Map<string, { bu: string; mien: string } | null>();
       for (const s of items) {
@@ -817,7 +811,6 @@ Deno.serve(async (req) => {
       const allRowsIns = toInsert.flatMap(c =>
         MONTHS.map(mo => ({
           nam_tai_chinh: fy, thang_ke_hoach: mo, mien: c.mien, ps: c.ps,
-          thang_thau_chinh: thangThau(c.mMain), thang_thau_bo_sung: thangThau(c.mAdd),
           khach_hang: c.cust, ma_khach_hang: c.custId, nhom_san_pham: c.grp,
           san_pham: c.prod, bo_vat_tu: c.mset,
           ma_san_pham: maSpMap.get(c.prod) || null,
@@ -836,9 +829,12 @@ Deno.serve(async (req) => {
         inserted.push(...(ins || []));
       }
       const absorbed = await absorbOop(db, inserted, cols);
+      const dotMoi = await taoDotTuThangThau(db, sess, toInsert.map((c) => ({
+        fy, ps: c.ps, custId: c.custId, grp: c.grp, mMain: c.mMain, mAdd: c.mAdd,
+      })));
 
       await writeAuditLog(db, sess, "addProduct", inserted.length, {
-        batch: items.length, inserted: toInsert.length, skipped, absorbed,
+        batch: items.length, inserted: toInsert.length, skipped, absorbed, dotMoi,
       });
       return json({
         ok: true,
@@ -847,6 +843,7 @@ Deno.serve(async (req) => {
         rowRevs: inserted.map((r) => Number(r._rev) || 0),
         skipped,
         absorbed,
+        dotMoi,
         rev: await getRev(db, sess, payload),
       });
     }
@@ -1143,12 +1140,27 @@ Deno.serve(async (req) => {
       const k = (r: Record<string, unknown>) =>
         [r.nam_tai_chinh, r.ps, r.ma_khach_hang, r.nhom_san_pham, r.loai, r.dot].join("||");
       const dotMap = new Map(dots.map((d) => [k(d), d]));
+      // Đợt chờ duyệt không gắn quota nào (chỉ có tháng thầu chuyển từ cột cũ).
+      const dangDung = new Set<string>();
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db.schema("shared").from("quota_thau")
+          .select("nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,dot").neq("loai", "cu")
+          .order("id", { ascending: true }).range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        for (const q of data || []) dangDung.add(k(q));
+        if (!data || data.length < PAGE) break;
+      }
+      const { data: dotCho, error: dErr } = await db.schema("shared").from("dot_thau")
+        .select("id,nam_tai_chinh,bu,ps,ma_khach_hang,nhom_san_pham,loai,dot,thang_thau,thoi_gian")
+        .eq("trang_thai", "cho_duyet").order("id", { ascending: true });
+      if (dErr) throw new Error(dErr.message);
       return json({
         ok: true,
         rows: rows.map((r) => {
           const d = r.loai === "cu" ? null : dotMap.get(k(r));
           return { ...r, thang_thau: d ? d.thang_thau : null, dot_cho_duyet: d ? d.trang_thai === "cho_duyet" : false };
         }),
+        dots: (dotCho || []).filter((d) => !dangDung.has(k(d))),
       });
     }
 
@@ -1165,6 +1177,18 @@ Deno.serve(async (req) => {
       await writeAuditLog(db, sess, duyet ? "duyetQuotaThau" : "loaiQuotaThau", ids.length, {
         ids: ids.slice(0, 200),
       });
+      return json({ ok: true, ...(data || {}) });
+    }
+
+    if (action === "duyetDotThau") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ids = (Array.isArray(payload.ids) ? payload.ids : [])
+        .map((x: unknown) => Number(x)).filter((x: number) => Number.isFinite(x));
+      if (!ids.length) return json({ ok: true, dot: 0 });
+      const duyet = payload.duyet === true;
+      const { data, error } = await db.rpc("duyet_dot_thau", { p_ids: ids, p_duyet: duyet, p_actor: sess.u });
+      if (error) throw new Error(error.message);
+      await writeAuditLog(db, sess, duyet ? "duyetDotThau" : "loaiDotThau", ids.length, { ids: ids.slice(0, 200) });
       return json({ ok: true, ...(data || {}) });
     }
 

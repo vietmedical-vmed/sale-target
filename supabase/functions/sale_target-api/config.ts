@@ -14,7 +14,8 @@ export const FIELDS = [
   "qOld","mMain","dMain","qMain","mAdd","qAdd","rev","revUpd","price","act","dtAct","dt","bu","oop",
 ];
 
-export const EDITABLE = new Set(["qOld","mMain","dMain","qMain","mAdd","qAdd","revUpd","price"]);
+// Quota / tháng / thời gian thầu không còn sửa trên sale_target (quota_thau / dot_thau).
+export const EDITABLE = new Set(["revUpd","price"]);
 export const ADMIN_EDITABLE = new Set(["mset","prod","rev","dt"]);
 
 export const DEMO_BU = "test";

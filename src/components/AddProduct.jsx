@@ -396,9 +396,9 @@ export function ProductPickerForm({
       </div>
       {(mMain || mAdd) && (
         <p className="text-[11px] text-slate-400 -mt-1">
-          Tháng thầu ghi cho cả nhóm{' '}
-          <span className="font-medium text-slate-600">{grp}</span>của khách
-          hàng này — sửa lại được ở thẻ KH sau khi thêm.
+          Tạo đợt thầu cho cả nhóm{' '}
+          <span className="font-medium text-slate-600">{grp}</span> của khách
+          hàng này (nếu nhóm chưa có đợt cùng tháng) — sửa ở mục Đợt thầu của thẻ KH.
         </p>
       )}
       <div className="flex gap-2">

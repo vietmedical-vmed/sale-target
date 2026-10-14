@@ -2181,12 +2181,6 @@ export function App() {
     prod: 'Sản phẩm',
     mset: 'Bộ vật tư',
     mcnt: 'Bộ',
-    qOld: 'Quota Thầu cũ còn lại',
-    mMain: 'Tháng Thầu chính',
-    dMain: 'Thời gian Thầu chính',
-    qMain: 'Quota Thầu chính',
-    mAdd: 'Tháng Thầu bổ sung',
-    qAdd: 'Quota thầu bổ sung',
     rev: 'SL Kế hoạch đầu năm',
     price: 'Đơn giá',
     dt: 'DT',
@@ -2195,8 +2189,11 @@ export function App() {
     revUpd: 'SL Kế hoạch Update',
     act: 'SL thực hiện',
   };
+  // Quota / tháng / thời gian thầu không còn trên sale_target → không xuất ở đây
+  // (dùng "Xuất quota thầu").
+  const COT_QUOTA_CU = new Set(['qOld', 'mMain', 'dMain', 'qMain', 'mAdd', 'qAdd']);
   const exportCsv = () => {
-    const cols =
+    const cols = (
       fields && fields.length
         ? fields
         : [
@@ -2209,18 +2206,14 @@ export function App() {
             'grp',
             'prod',
             'mset',
-            'qOld',
-            'mMain',
-            'qMain',
-            'mAdd',
-            'qAdd',
             'ytd',
             'rev',
             'revUpd',
             'act',
             'price',
             'dt',
-          ];
+          ]
+    ).filter((f) => !COT_QUOTA_CU.has(f));
     const header = cols.map((f) => FIELD_LABEL[f] || f);
     const esc = (v) => {
       if (v == null) return '';

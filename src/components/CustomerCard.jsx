@@ -63,19 +63,12 @@ export const CustomerCard = React.memo(function CustomerCard({
       const grpFy = allGroupRows.length ? allGroupRows[0].fy : '';
       const gk = grpKey(grpFy, g.ps, custId || '', g.name);
       const dotsNhom = quotaCtx ? quotaCtx.dotsByGroup.get(gk) || [] : [];
-      const nhomCoDot = dotsNhom.length > 0;
       const thangCuaDot = new Map();
       for (const d of dotsNhom) thangCuaDot.set(`${d.loai}|${d.dot}`, d.thang || '');
       g.products.forEach((p) => {
         let pOnHand = 0, pPrice = 0;
         const allR = p.monthly.flatMap((c) => c.rows);
         allR.forEach((r) => {
-          const rQOld = Number(r.qOld) || 0;
-          const rQMain = Number(r.qMain) || 0;
-          const rQAdd = Number(r.qAdd) || 0;
-          const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
-          const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
-          pOnHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
           if (!pPrice && r.price) pPrice = Number(r.price) || 0;
         });
         const quotaSp = quotaCtx
@@ -83,8 +76,7 @@ export const CustomerCard = React.memo(function CustomerCard({
               prodKey(grpFy, g.ps, custId || '', g.name, p.mset, p.product),
             ) || []).filter((q) => (Number(q.price) || 0) === (Number(p.pPrice) || 0))
           : [];
-        if (nhomCoDot || quotaSp.length) {
-          pOnHand = 0;
+        {
           for (const q of quotaSp) {
             const n = Number(q.qty) || 0;
             if (q.loai === 'cu') { pOnHand += n; }

@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Trash2 } from './icons.jsx';
 import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
-import { GroupMonthField, QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
+import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
 
 // ============ PRODUCT ROW ============
@@ -77,21 +77,16 @@ const ProductRow = React.memo(function ProductRow({
 }) {
   const allRows = useMemo(() => monthly.flatMap((c) => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
-  // Quota nay đọc từ shared.quota_thau (tách theo mức giá và theo đợt).
-  // Nhóm SP đã khai báo đợt thầu (dot_thau) coi như đã transition sang bảng mới
-  // → tin quota_thau tuyệt đối, sản phẩm không có row bên đó thì hiện 0.
-  // Nhóm SP chưa khai đợt thầu → fallback số cũ trên sale_target để không phá
-  // dữ liệu legacy chưa migrate.
+  // Quota chỉ đọc từ shared.quota_thau (tách theo mức giá và theo đợt);
+  // sale_target không còn lưu quota. Sản phẩm không có dòng quota thì hiện 0.
   const quotaCtx = useContext(QuotaThauCtx);
   const qInfo = useMemo(() => {
     if (!quotaCtx || !anchor) return null;
     const gk = grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp);
     const dots = quotaCtx.dotsByGroup.get(gk) || [];
-    const groupHasDot = dots.length > 0;
     const list = quotaCtx.quotasByProduct.get(
       prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product),
     ) || [];
-    if (!groupHasDot && !list.length) return null;
     // Dòng trên lưới là MỘT mức giá (khoá sản phẩm gồm cả đơn giá), nên chỉ lấy
     // quota của đúng mức giá đó. Cộng cả sản phẩm thì mọi dòng giá của sản phẩm
     // đều hiện cùng một con số, nhìn như bị nhân đôi. Quota ở mức giá không còn
@@ -130,15 +125,6 @@ const ProductRow = React.memo(function ProductRow({
       onHand = 0,
       price = 0;
     allRows.forEach((r) => {
-      const rQOld = Number(r.qOld) || 0;
-      const rQMain = Number(r.qMain) || 0;
-      const rQAdd = Number(r.qAdd) || 0;
-      q14 += rQOld;
-      qMain += rQMain;
-      qAdd += rQAdd;
-      const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
-      const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
-      onHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
       if (!price && r.price) price = Number(r.price) || 0;
     });
     let revBase = 0,
@@ -188,26 +174,6 @@ const ProductRow = React.memo(function ProductRow({
       chenh: dtUpd - dtBase,
     };
   }, [allRows, monthly, qInfo]);
-  const commitProductField = (key, value, isText = false) => {
-    if (!anchor) return;
-    const updates = [
-      {
-        row: anchor._row,
-        key,
-        value,
-      },
-    ];
-    allRows.forEach((r) => {
-      if (r._row !== anchor._row)
-        updates.push({
-          row: r._row,
-          key,
-          value: isText ? '' : 0,
-        });
-    });
-    onCommit(updates);
-  };
-
   // edit SL update cell → write revUpd to first row, zero others
   const commitRevUpd = (monthIdx, newVal) => {
     const cell = monthly[monthIdx];
@@ -252,8 +218,7 @@ const ProductRow = React.memo(function ProductRow({
       })),
     );
   };
-  // Cột nhận diện (bộ vật tư / sản phẩm): ghi CÙNG một giá trị vào MỌI dòng của SP
-  // (khác commitProductField — cái đó gộp về dòng anchor và zero dòng khác).
+  // Cột nhận diện (bộ vật tư / sản phẩm): ghi CÙNG một giá trị vào MỌI dòng của SP.
   const commitIdentity = (key, value) => {
     if (!allRows.length) return;
     onCommit(allRows.map((r) => ({ row: r._row, key, value })));
@@ -338,39 +303,30 @@ const ProductRow = React.memo(function ProductRow({
       />
       <QuotaCell
         value={stats.q14}
-        pending={pend('qOld')}
         width={72}
         onOpen={
           quotaCtx && anchor && onOpenQuota
             ? () => onOpenQuota({ mset, prod: product, price: prices[0] || 0 })
             : null
         }
-        fallbackLocked={!canEdit}
-        onCommit={(v) => commitProductField('qOld', v)}
       />
       <QuotaCell
         value={stats.qMain}
-        pending={pend('qMain')}
         width={80}
         onOpen={
           quotaCtx && anchor && onOpenQuota
             ? () => onOpenQuota({ mset, prod: product, price: prices[0] || 0 })
             : null
         }
-        fallbackLocked={!canEdit}
-        onCommit={(v) => commitProductField('qMain', v)}
       />
       <QuotaCell
         value={stats.qAdd}
-        pending={pend('qAdd')}
         width={72}
         onOpen={
           quotaCtx && anchor && onOpenQuota
             ? () => onOpenQuota({ mset, prod: product, price: prices[0] || 0 })
             : null
         }
-        fallbackLocked={!canEdit}
-        onCommit={(v) => commitProductField('qAdd', v)}
       />
       <td
         className="px-2 py-1.5 text-[12px] text-right tabular-nums text-slate-700 font-medium border-r border-b border-slate-100 bg-slate-50/60"
@@ -586,7 +542,6 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       window.removeEventListener('resize', schedule);
     };
   }, [open]);
-  // Tháng thầu chính / bổ sung: 1 ô áp cho cả nhóm SP (ghi vào mọi dòng của nhóm).
   const groupRows = useMemo(
     () => products.flatMap((p) => p.monthly.flatMap((c) => c.rows)),
     [products],
@@ -608,16 +563,6 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       })),
     [products],
   );
-  const readGroupField = (key) => {
-    for (const r of groupRows) if (r[key]) return r[key];
-    return '';
-  };
-  const pendGroupField = (key) =>
-    groupRows.some((r) => pendingKeys.has(`${r._row}:${key}`));
-  const commitGroupField = (key, value) => {
-    if (!groupRows.length) return;
-    onCommit(groupRows.map((r) => ({ row: r._row, key, value })));
-  };
   // thống kê cấp nhóm SP
   const gs = useMemo(() => {
     let plan = 0,
@@ -630,13 +575,9 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       ytdM = 0;
     const mDtBase = Array(12).fill(0);
     const mDtUpd = Array(12).fill(0);
-    // Quota cấp nhóm đọc cùng nguồn với từng dòng sản phẩm: nhóm đã khai đợt thầu
-    // thì tin shared.quota_thau, chưa khai thì giữ số cũ trên sale_target. Trước
-    // đây chỗ này chỉ cộng cột cũ, mà luồng lưu quota mới không ghi về cột đó nữa
-    // nên dòng tổng của nhóm đứng im trong khi từng sản phẩm đã có số.
+    // Quota cấp nhóm đọc cùng nguồn với từng dòng sản phẩm: shared.quota_thau.
     const gk = grpKey(grpFy, ps, custId || '', groupName);
     const dotsNhom = quotaCtx ? quotaCtx.dotsByGroup.get(gk) || [] : [];
-    const nhomCoDot = dotsNhom.length > 0;
     const thangCuaDot = new Map();
     for (const d of dotsNhom) thangCuaDot.set(`${d.loai}|${d.dot}`, d.thang || '');
     products.forEach((p) => {
@@ -647,15 +588,6 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
         pOnHand = 0,
         pPrice = 0;
       allR.forEach((r) => {
-        const rQOld = Number(r.qOld) || 0;
-        const rQMain = Number(r.qMain) || 0;
-        const rQAdd = Number(r.qAdd) || 0;
-        pQ14 += rQOld;
-        pQMain += rQMain;
-        pQAdd += rQAdd;
-        const mainOn = r.mMain && r.mMain <= CURRENT_MONTH;
-        const addOn = r.mAdd && r.mAdd <= CURRENT_MONTH;
-        pOnHand += rQOld + (mainOn ? rQMain : 0) + (addOn ? rQAdd : 0);
         if (!pPrice && r.price) pPrice = Number(r.price) || 0;
       });
       // Dòng sản phẩm là MỘT mức giá nên chỉ lấy quota của đúng mức giá đó,
@@ -667,11 +599,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
             ) || []
           ).filter((q) => (Number(q.price) || 0) === (Number(p.pPrice) || 0))
         : [];
-      if (nhomCoDot || quotaSp.length) {
-        pQ14 = 0;
-        pQMain = 0;
-        pQAdd = 0;
-        pOnHand = 0;
+      {
         for (const q of quotaSp) {
           const n = Number(q.qty) || 0;
           if (q.loai === 'cu') {
@@ -826,7 +754,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
             />
           )}
           <div className="meta-sticky-l px-4 py-2 bg-blue-50/40 border-b border-blue-100 flex flex-wrap items-center gap-x-6 gap-y-2">
-            {quotaCtx && grpFy ? (
+            {quotaCtx && grpFy && (
               <DotThauPanel
                 fy={grpFy}
                 ps={ps}
@@ -834,23 +762,6 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                 grp={groupName}
                 locked={!canEdit}
               />
-            ) : (
-              <React.Fragment>
-                <GroupMonthField
-                  label="Tháng thầu chính"
-                  value={readGroupField('mMain')}
-                  pending={pendGroupField('mMain')}
-                  locked={!canEdit}
-                  onCommit={(v) => commitGroupField('mMain', v)}
-                />
-                <GroupMonthField
-                  label="Tháng thầu bổ sung"
-                  value={readGroupField('mAdd')}
-                  pending={pendGroupField('mAdd')}
-                  locked={!canEdit}
-                  onCommit={(v) => commitGroupField('mAdd', v)}
-                />
-              </React.Fragment>
             )}
             <button
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 ml-auto"

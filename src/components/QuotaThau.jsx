@@ -2,50 +2,7 @@ import React, { useState, useEffect, useMemo, useContext } from 'react';
 import ReactDOM from 'react-dom';
 import { Trash2 } from './icons.jsx';
 import { fmtInt } from '../lib/format.js';
-import { EditableCell } from './EditableCell.jsx';
 import { Modal } from './Modal.jsx';
-
-// ============ Ô nhập tháng thầu (áp cho cả nhóm SP) — định dạng bắt buộc yyyy-mm ============
-export function GroupMonthField({ label, value, pending, locked, onCommit }) {
-  const [draft, setDraft] = useState(value || '');
-  const [err, setErr] = useState(false);
-  useEffect(() => {
-    setDraft(value || '');
-  }, [value]);
-  const commit = () => {
-    const v = (draft || '').trim();
-    if (v === (value || '')) {
-      setErr(false);
-      return;
-    }
-    if (v !== '' && !/^\d{4}-\d{2}$/.test(v)) {
-      setErr(true);
-      return;
-    } // giữ định dạng yyyy-mm
-    setErr(false);
-    onCommit(v);
-  };
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10.5px] font-semibold text-blue-800 uppercase tracking-wide whitespace-nowrap">
-        {label}
-      </span>
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        disabled={locked}
-        placeholder="yyyy-mm"
-        className={`w-[92px] text-[12px] px-2 py-1 rounded-md border outline-none ${err ? 'border-red-400 bg-red-50 ring-1 ring-red-200' : pending ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100'}`}
-      />
-      {err && (
-        <span className="text-[10px] text-red-500 whitespace-nowrap">
-          yyyy-mm
-        </span>
-      )}
-    </div>
-  );
-}
 
 // ============ ĐỢT THẦU & QUOTA (shared.dot_thau / shared.quota_thau) ============
 // Quota đã tách khỏi sale_target: 1 nhóm SP có thể có NHIỀU đợt thầu bổ sung trong
@@ -486,24 +443,17 @@ export function QuotaThauModal({
 
 // Ô quota trên dòng sản phẩm. Có bảng quota mới thì bấm vào mở modal nhập theo
 // mức giá và theo đợt; chưa có thì rơi về ô sửa tại chỗ như trước.
-export function QuotaCell({
-  value,
-  pending,
-  width,
-  onOpen,
-  fallbackLocked,
-  onCommit,
-}) {
+export function QuotaCell({ value, pending, width, onOpen }) {
+  // Quota chỉ nhập qua modal theo mức giá × đợt (shared.quota_thau). Không có
+  // onOpen (chưa nạp xong ngữ cảnh quota) thì chỉ hiện số.
   if (!onOpen) {
     return (
-      <EditableCell
-        value={value}
-        pending={pending}
-        locked={fallbackLocked}
-        onCommit={onCommit}
-        width={width}
-        bg="bg-blue-50/20"
-      />
+      <td
+        className="px-1.5 py-1.5 text-[12px] text-right tabular-nums text-slate-700 border-r border-b border-slate-100 bg-blue-50/20"
+        style={{ width, minWidth: width }}
+      >
+        {value ? fmtInt(value) : '·'}
+      </td>
     );
   }
   return (

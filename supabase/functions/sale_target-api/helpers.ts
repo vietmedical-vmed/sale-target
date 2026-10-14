@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import type { Session } from "../_shared/auth.ts";
 import { json } from "../_shared/cors.ts";
 import { COL, FIELDS, PAGE, CONCURRENCY } from "./config.ts";
-import { applyScope, readScopeParams, parseGroups, mienScope } from "./scope.ts";
+import { applyScope, readScopeParams, parseGroups, mienScope, scopeParams } from "./scope.ts";
 
 export function diaBanErr(error: { message?: string }, req?: Request) {
   const msg = String(error && error.message || "");
@@ -369,4 +369,46 @@ export async function absorbOop(
     if (error) throw new Error(error.message);
   }
   return absorbedIds.length;
+}
+
+// Tháng thầu nhập lúc thêm sản phẩm → đợt thầu (shared.dot_thau) của nhóm SP.
+// sale_target không còn lưu tháng thầu. Chỉ tạo đợt mới khi nhóm chưa có đợt cùng
+// loại cùng tháng (số đợt do upsert_dot_thau tự đánh tiếp). Trả về số đợt đã tạo.
+export async function taoDotTuThangThau(
+  db: ReturnType<typeof createClient>,
+  sess: Session,
+  items: { fy: string; ps: string; custId: unknown; grp: unknown; mMain: unknown; mAdd: unknown }[],
+) {
+  const thang = (v: unknown) => {
+    const t = String(v || "").trim();
+    return /^\d{4}-\d{2}$/.test(t) ? t : null;
+  };
+  const can = new Map<string, Record<string, unknown>>();
+  for (const it of items) {
+    for (const [loai, v] of [["chinh", it.mMain], ["bo_sung", it.mAdd]] as const) {
+      const t = thang(v);
+      if (!t) continue;
+      const row = { fy: it.fy, ps: it.ps, custId: String(it.custId || ""), grp: String(it.grp || ""), loai, thang: t };
+      can.set([row.fy, row.ps, row.custId, row.grp, loai, t].join("||"), row);
+    }
+  }
+  if (!can.size) return 0;
+  const grps = [...new Set([...can.values()].map((r) => String(r.grp)))];
+  const coSan = new Set<string>();
+  for (let i = 0; i < grps.length; i += 50) {
+    const { data, error } = await db.schema("shared").from("dot_thau")
+      .select("nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,thang_thau")
+      .in("nhom_san_pham", grps.slice(i, i + 50));
+    if (error) throw new Error(error.message);
+    for (const d of data || []) {
+      coSan.add([d.nam_tai_chinh, d.ps, d.ma_khach_hang, d.nhom_san_pham, d.loai, d.thang_thau].join("||"));
+    }
+  }
+  const rows = [...can.entries()].filter(([k]) => !coSan.has(k)).map(([, r]) => r);
+  if (!rows.length) return 0;
+  const { data, error } = await db.rpc("upsert_dot_thau", {
+    p_rows: rows, ...scopeParams(sess), p_actor: sess.u,
+  });
+  if (error) throw new Error(error.message);
+  return Number(data) || rows.length;
 }
