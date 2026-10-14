@@ -2189,9 +2189,6 @@ export function App() {
     revUpd: 'SL Kế hoạch Update',
     act: 'SL thực hiện',
   };
-  // Quota / tháng / thời gian thầu không còn trên sale_target → không xuất ở đây
-  // (dùng "Xuất quota thầu").
-  const COT_QUOTA_CU = new Set(['qOld', 'mMain', 'dMain', 'qMain', 'mAdd', 'qAdd']);
   const exportCsv = () => {
     const cols = (
       fields && fields.length
@@ -2213,7 +2210,7 @@ export function App() {
             'price',
             'dt',
           ]
-    ).filter((f) => !COT_QUOTA_CU.has(f));
+    );
     const header = cols.map((f) => FIELD_LABEL[f] || f);
     const esc = (v) => {
       if (v == null) return '';
