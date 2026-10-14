@@ -14,6 +14,11 @@ export const getCurIdx = () => MONTHS.indexOf(CURRENT_MONTH);
 export const getNoteMonth = () => MONTHS[Math.max(0, getCurIdx() - 1)];
 export const isYtdMonth = (mo) => (mo || '') <= CURRENT_MONTH;
 
+// Quota hết hiệu lực (quá tháng thầu + hiệu lực − 1): luôn KHÔNG tính vào on hand /
+// tổng quota / khả dụng. Cờ này chỉ quyết định có HIỆN riêng phần đó (cột "Hết HL",
+// nhãn "hết HL") hay ẩn đi. Tạm ẩn (15/10) vì gây hoang mang cho user.
+export const HIEN_HET_HIEU_LUC = false;
+
 export const NO_MSET = '(Không phân loại)';
 export const TOK_KEY = 'sp_tok';
 

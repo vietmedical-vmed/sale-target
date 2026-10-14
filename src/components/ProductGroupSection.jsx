@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Trash2 } from './icons.jsx';
-import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth } from '../config/constants.js';
+import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth, HIEN_HET_HIEU_LUC } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
 import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
@@ -109,10 +109,14 @@ const ProductRow = React.memo(function ProductRow({
       } else {
         const d = dotInfo.get(`${q.loai}|${q.dot}`);
         const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up';
+        if (tt === 'het') {
+          het += n;
+          // Đang ẩn phần hết hiệu lực: không cộng vào cột chính / BS để Tổng = cũ + chính + BS.
+          if (!HIEN_HET_HIEU_LUC) continue;
+        }
         if (q.loai === 'chinh') chinh += n;
         else bo_sung += n;
         if (tt === 'on') onHand += n;
-        else if (tt === 'het') het += n;
       }
     }
     return { cu, chinh, bo_sung, onHand, het };
@@ -163,7 +167,7 @@ const ProductRow = React.memo(function ProductRow({
       onHand = qInfo.onHand;
     }
     // Quota hết hiệu lực không vào tổng (cột thầu chính / BS vẫn hiện số đã nhập).
-    const het = qInfo ? qInfo.het : 0;
+    const het = qInfo && HIEN_HET_HIEU_LUC ? qInfo.het : 0;
     const totalQuota = q14 + qMain + qAdd - het;
     return {
       q14,
@@ -617,12 +621,15 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
             pQ14 += n;
             pOnHand += n;
           } else {
-            if (q.loai === 'chinh') pQMain += n;
-            else pQAdd += n;
             const d = dotCuaNhom.get(`${q.loai}|${q.dot}`);
             const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up';
+            if (tt === 'het') {
+              if (!HIEN_HET_HIEU_LUC) continue; // ẩn: bỏ khỏi cột chính / BS luôn
+              hetM += n * pPrice;
+            }
+            if (q.loai === 'chinh') pQMain += n;
+            else pQAdd += n;
             if (tt === 'on') pOnHand += n;
-            else if (tt === 'het') hetM += n * pPrice;
           }
         }
       }

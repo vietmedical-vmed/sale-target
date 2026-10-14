@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Trash2 } from './icons.jsx';
 import { fmtInt } from '../lib/format.js';
 import { Modal } from './Modal.jsx';
-import { CURRENT_MONTH } from '../config/constants.js';
+import { CURRENT_MONTH, HIEN_HET_HIEU_LUC } from '../config/constants.js';
 import { hetHanDot, trangThaiDot } from '../lib/quota.js';
 
 // ============ ĐỢT THẦU & QUOTA (shared.dot_thau / shared.quota_thau) ============
@@ -90,10 +90,10 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
       <span className="text-[10px] text-slate-400">th</span>
       {het && (
         <span
-          className={`text-[10px] whitespace-nowrap ${tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
+          className={`text-[10px] whitespace-nowrap ${HIEN_HET_HIEU_LUC && tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
           title="Tháng hết hiệu lực = tháng thầu + hiệu lực − 1"
         >
-          {tt === 'het' ? `hết HL ${het}` : `→ ${het}`}
+          {HIEN_HET_HIEU_LUC && tt === 'het' ? `hết HL ${het}` : `→ ${het}`}
         </span>
       )}
     </span>
@@ -422,12 +422,12 @@ export function QuotaThauModal({
                     {c.label}
                     {c.loai !== 'cu' && (
                       <div
-                        className={`text-[10px] font-normal ${!c.du ? 'text-red-600' : c.trangThai === 'het' ? 'text-red-500' : 'text-slate-400'}`}
+                        className={`text-[10px] font-normal ${!c.du ? 'text-red-600' : HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? 'text-red-500' : 'text-slate-400'}`}
                         title={c.du ? `Tháng thầu ${c.thang}, hiệu lực ${c.thoiGian} tháng, hết hạn ${c.het}` : 'Đợt chưa đủ tháng thầu / hiệu lực'}
                       >
                         {!c.du
                           ? 'thiếu tháng / HL'
-                          : `${c.thang} · ${Number(c.thoiGian)}th${c.trangThai === 'het' ? ' · hết HL' : ''}`}
+                          : `${c.thang} · ${Number(c.thoiGian)}th${HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? ' · hết HL' : ''}`}
                       </div>
                     )}
                   </th>

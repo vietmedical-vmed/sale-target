@@ -1,4 +1,4 @@
-import { MONTHS, MONTH_LABELS, CURRENT_MONTH } from '../config/constants.js';
+import { MONTHS, MONTH_LABELS, CURRENT_MONTH, HIEN_HET_HIEU_LUC } from '../config/constants.js';
 
 let _XLSX = null;
 export async function loadXLSX() {
@@ -79,12 +79,14 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
   numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
-  H1.push('Quota', '', '', '', '', '');
-  H2.push('On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng');
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
-  cols.push({ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 });
-  numCols.push(c, c + 1, c + 2, c + 3, c + 4, c + 5);
-  c += 6;
+  const qCols = HIEN_HET_HIEU_LUC
+    ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng']
+    : ['On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng'];
+  H1.push('Quota', ...qCols.slice(1).map(() => ''));
+  H2.push(...qCols);
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + qCols.length - 1 } });
+  qCols.forEach((_, k) => { cols.push({ wch: k === qCols.length - 1 ? 16 : 14 }); numCols.push(c + k); });
+  c += qCols.length;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -122,7 +124,7 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
     const qFYV = isSL ? (d.quotaFY || 0) : (d.quotaFYDt || 0);
     const qAvail = isSL ? d.quotaAvail : d.quotaAvailDt;
     const quotaRemain = qAvail == null ? '-' : tr(q14V - dtYtdV);
-    row.push(tr(q14V), tr(qUpV), tr(qHetV), tr(qFYV), tr(dtYtdV), quotaRemain);
+    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(dtYtdV), quotaRemain);
     aoa.push(row);
     levels.push(level);
   };
@@ -222,12 +224,14 @@ function _buildProdSheet(XLSX, wb, data, mode) {
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
   numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
-  H1.push('Quota', '', '', '', '', '');
-  H2.push('On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng');
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
-  cols.push({ wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 });
-  numCols.push(c, c + 1, c + 2, c + 3, c + 4, c + 5);
-  c += 6;
+  const qCols = HIEN_HET_HIEU_LUC
+    ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng']
+    : ['On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng'];
+  H1.push('Quota', ...qCols.slice(1).map(() => ''));
+  H2.push(...qCols);
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + qCols.length - 1 } });
+  qCols.forEach((_, k) => { cols.push({ wch: k === qCols.length - 1 ? 13 : 11 }); numCols.push(c + k); });
+  c += qCols.length;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
   const levels = [null, null];
@@ -261,7 +265,7 @@ function _buildProdSheet(XLSX, wb, data, mode) {
     );
     row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - thYtdV));
     row.push(
-      tr(onHandV), tr(upcomingV), tr(hetV), tr(quotaV),
+      tr(onHandV), tr(upcomingV), ...(HIEN_HET_HIEU_LUC ? [tr(hetV)] : []), tr(quotaV),
       tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV),
     );
     aoa.push(row);

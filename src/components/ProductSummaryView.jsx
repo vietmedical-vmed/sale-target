@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Filter } from './icons.jsx';
 import {
-  MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY, isYtdMonth,
+  MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY, isYtdMonth, HIEN_HET_HIEU_LUC,
 } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
@@ -242,7 +242,7 @@ export function ProductSummaryView({
       ? [curIdx]
       : [];
   const N_COLS =
-    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + 6 + 4;
+    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + (HIEN_HET_HIEU_LUC ? 6 : 5) + 4;
 
   const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
   const pctCls = (th, kh) => {
@@ -397,7 +397,7 @@ export function ProductSummaryView({
     return [
       <td key="qoh" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-700 ${qBg} ${extra || ''}`}>{fmt(onHandV)}</td>,
       <td key="qup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-500 ${qBg} ${extra || ''}`}>{fmt(upcomingV)}</td>,
-      <td key="qhet" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-red-500 ${qBg} ${extra || ''}`}>{fmt(hetV)}</td>,
+      HIEN_HET_HIEU_LUC && <td key="qhet" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-red-500 ${qBg} ${extra || ''}`}>{fmt(hetV)}</td>,
       <td key="qtot" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-800 ${qBg} ${extra || ''}`}>{fmt(quotaV)}</td>,
       <td key="qth" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-orange-600 ${qBg} ${extra || ''}`}>{fmt(thYtdV)}</td>,
       <td key="qkd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 ${qBg} ${node.oop ? 'text-slate-300' : 'text-indigo-800'} ${extra || ''}`}>
@@ -454,7 +454,7 @@ export function ProductSummaryView({
     cells.push(
       <td key="gqoh" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(onHandV)}</td>,
       <td key="gqup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(upcomingV)}</td>,
-      <td key="gqhet" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-red-200">{fmt(hetV)}</td>,
+      HIEN_HET_HIEU_LUC && <td key="gqhet" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-red-200">{fmt(hetV)}</td>,
       <td key="gqtot" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(quotaV)}</td>,
       <td key="gqth" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200">{fmt(thYtdV)}</td>,
       <td key="gqkd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(onHandV - thYtdV)}</td>,
@@ -512,7 +512,7 @@ export function ProductSummaryView({
                   Target
                 </th>,
                 <th
-                  colSpan={6}
+                  colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-indigo-800 border-r border-b border-slate-200 bg-indigo-50/60"
                 >
                   Quota
@@ -544,7 +544,7 @@ export function ProductSummaryView({
                 </th>,
                 <th key="qoh" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">On hand</th>,
                 <th key="qup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Upcoming</th>,
-                <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Hết HL</th>,
+                HIEN_HET_HIEU_LUC && <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Hết HL</th>,
                 <th key="qtot" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Tổng</th>,
                 <th key="qth" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">TH YTD</th>,
                 <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-r border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Khả dụng</th>,

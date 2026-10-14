@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Filter } from './icons.jsx';
 import {
-  MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY,
+  MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY, HIEN_HET_HIEU_LUC,
   getCurIdx, isYtdMonth,
 } from '../config/constants.js';
 import { fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
@@ -460,8 +460,8 @@ export function SummaryView({
           tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH
           YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH. Quota: On
           hand = quota thầu cũ + quota chính / BS đã tới tháng và còn hiệu lực; Upcoming
-          = chưa tới tháng hoặc đợt chưa đủ tháng / hiệu lực; Hết HL = đã quá tháng
-          thầu + hiệu lực − 1 (không vào Tổng); Khả dụng = On hand − TH YTD.
+          = chưa tới tháng hoặc đợt chưa đủ tháng / hiệu lực; quota đã quá hiệu lực
+          không tính; Khả dụng = On hand − TH YTD.
         </p>
       </div>
     </React.Fragment>
@@ -610,7 +610,7 @@ function SummaryHead() {
           Target
         </th>,
         <th
-          colSpan={6}
+          colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
         >
           Quota
@@ -668,7 +668,7 @@ function SummaryHead() {
         >
           Upcoming
         </th>,
-        <th
+        HIEN_HET_HIEU_LUC && <th
           key="qqhet"
           title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng quota / Khả dụng."
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
@@ -823,7 +823,7 @@ function StatCells({ d, size, dark }) {
   cells.push(
     <td key="qup" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(qUpV)}</td>,
   );
-  cells.push(
+  if (HIEN_HET_HIEU_LUC) cells.push(
     <td key="qhet" className={`px-3 ${p} text-right tabular-nums font-medium ${dark ? 'text-red-200' : 'text-red-500'} ${qbg}`}>{fmt(qHetV)}</td>,
   );
   cells.push(
