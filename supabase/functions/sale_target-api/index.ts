@@ -1117,6 +1117,57 @@ Deno.serve(async (req) => {
       return json({ ok: true, rows });
     }
 
+    // ---- Quota chờ duyệt (chuyển từ cột cũ sale_target, app chưa hiện) — chỉ admin ----
+    if (action === "getQuotaChoDuyet") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const rows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db.schema("shared").from("quota_thau")
+          .select("id,nam_tai_chinh,bu,mien,ps,ma_khach_hang,khach_hang,nhom_san_pham,bo_vat_tu,san_pham,don_gia,loai,dot,so_luong,nguon")
+          .eq("trang_thai", "cho_duyet").order("id", { ascending: true }).range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        if (!data || data.length === 0) break;
+        rows.push(...data);
+        if (data.length < PAGE) break;
+      }
+      // Tháng thầu theo đợt (kể cả đợt chờ duyệt) của các nhóm có quota chờ duyệt.
+      const nhoms = [...new Set(rows.map((r) => String(r.nhom_san_pham)))];
+      const dots: Record<string, unknown>[] = [];
+      for (let i = 0; i < nhoms.length; i += 50) {
+        const { data, error } = await db.schema("shared").from("dot_thau")
+          .select("nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,dot,thang_thau,trang_thai")
+          .in("nhom_san_pham", nhoms.slice(i, i + 50));
+        if (error) throw new Error(error.message);
+        dots.push(...(data || []));
+      }
+      const k = (r: Record<string, unknown>) =>
+        [r.nam_tai_chinh, r.ps, r.ma_khach_hang, r.nhom_san_pham, r.loai, r.dot].join("||");
+      const dotMap = new Map(dots.map((d) => [k(d), d]));
+      return json({
+        ok: true,
+        rows: rows.map((r) => {
+          const d = r.loai === "cu" ? null : dotMap.get(k(r));
+          return { ...r, thang_thau: d ? d.thang_thau : null, dot_cho_duyet: d ? d.trang_thai === "cho_duyet" : false };
+        }),
+      });
+    }
+
+    if (action === "duyetQuotaThau") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ids = (Array.isArray(payload.ids) ? payload.ids : [])
+        .map((x: unknown) => Number(x)).filter((x: number) => Number.isFinite(x));
+      if (!ids.length) return json({ ok: true, quota: 0, dot: 0 });
+      const duyet = payload.duyet === true;
+      const { data, error } = await db.rpc("duyet_quota_thau", {
+        p_ids: ids, p_duyet: duyet, p_actor: sess.u,
+      });
+      if (error) throw new Error(error.message);
+      await writeAuditLog(db, sess, duyet ? "duyetQuotaThau" : "loaiQuotaThau", ids.length, {
+        ids: ids.slice(0, 200),
+      });
+      return json({ ok: true, ...(data || {}) });
+    }
+
     // ---- Loại trừ hóa đơn khỏi thực hiện (app_sale.hoa_don_loai_tru) ----
     // Đổi cấu hình chỉ có hiệu lực sau "Đồng bộ thực hiện" (cap_nhat_thuc_hien).
     if (action === "getHoaDonLoaiTru") {

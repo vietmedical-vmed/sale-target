@@ -17,6 +17,8 @@ const ACTION_LABELS = {
   setAppConfig: 'Đổi cấu hình',
   saveGiaiTrinh: 'Giải trình',
   syncThucHien: 'Đồng bộ thực hiện',
+  duyetQuotaThau: 'Duyệt quota',
+  loaiQuotaThau: 'Loại quota',
 };
 const ACTION_COLORS = {
   updateCells: 'bg-blue-100 text-blue-700',
@@ -28,6 +30,8 @@ const ACTION_COLORS = {
   setAppConfig: 'bg-amber-100 text-amber-700',
   saveGiaiTrinh: 'bg-amber-100 text-amber-700',
   syncThucHien: 'bg-blue-100 text-blue-700',
+  duyetQuotaThau: 'bg-emerald-100 text-emerald-700',
+  loaiQuotaThau: 'bg-red-100 text-red-700',
 };
 const DB_COL_LABELS = {
   quota_thau_cu_con_lai: 'Quota thầu cũ',

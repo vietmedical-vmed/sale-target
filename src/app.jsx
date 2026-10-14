@@ -25,6 +25,7 @@ import { LoginGate } from './components/LoginGate.jsx';
 import { Modal } from './components/Modal.jsx';
 import { MultiSelect } from './components/MultiSelect.jsx';
 import { AuditLogView } from './components/AuditLogView.jsx';
+import { QuotaChoDuyetView } from './components/QuotaChoDuyetView.jsx';
 import { TeamSummaryBar } from './components/TeamBar.jsx';
 import { AccountBar, ThYtdBar } from './components/StatBars.jsx';
 import { WaterfallChart } from './components/Charts.jsx';
@@ -158,7 +159,7 @@ export function App() {
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'audit'
+  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'quotaduyet' | 'audit'
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -2525,6 +2526,13 @@ export function App() {
               onClick={() => setTab('diaban')}
               label="Cấu hình địa bàn"
             />
+            {isAdmin && (
+              <TabBtn
+                active={tab === 'quotaduyet'}
+                onClick={() => setTab('quotaduyet')}
+                label="Quota chờ duyệt"
+              />
+            )}
             {(auth.role === 'admin' || auth.role === 'manager') && (
               <TabBtn
                 active={tab === 'audit'}
@@ -2610,7 +2618,7 @@ export function App() {
             </div>
           )}
         </header>
-        {tab !== 'audit' && (
+        {tab !== 'audit' && tab !== 'quotaduyet' && (
           <div className="px-6 pt-4">
             {canSwitchTeam(auth.role) && (
               <TeamSummaryBar
@@ -2755,6 +2763,8 @@ export function App() {
         )}
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
+        ) : tab === 'quotaduyet' && isAdmin ? (
+          <QuotaChoDuyetView onChanged={napLaiQuota} />
         ) : tab === 'diaban' ? (
           <DiaBanView
             rows={teamRows}
