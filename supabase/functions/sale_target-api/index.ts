@@ -663,11 +663,13 @@ Deno.serve(async (req) => {
         .eq("ma_khach_hang", ref.ma_khach_hang)
         .eq("nhom_san_pham", ref.nhom_san_pham)
         .eq("bo_vat_tu", ref.bo_vat_tu)
-        .eq("san_pham", ref.san_pham);
+        .eq("san_pham", ref.san_pham)
+        .not("ngoai_ke_hoach", "is", true);
       if (ref.don_gia !== null) dupQ = dupQ.eq("don_gia", ref.don_gia);
       else dupQ = dupQ.is("don_gia", null);
-      const { data: existing } = await dupQ;
-      if (existing && (existing as unknown as { count: number }).count > 0) {
+      // head:true không trả data — số dòng nằm ở `count`.
+      const { count: dupCount } = await dupQ;
+      if (dupCount && dupCount > 0) {
         return json({ ok: false, error: "row_exists" }, 409);
       }
       const price = Number(ref.don_gia) || 0;
@@ -1306,6 +1308,14 @@ Deno.serve(async (req) => {
       level: "error", requestId, action: _action, user: _user, role: _role,
       error: msg, duration: Date.now() - t0,
     }));
+    // Ràng buộc uq_sale_target_khoa (migration 20261017100000): thao tác sẽ tạo 2 dòng
+    // cùng KH × PS × nhóm × bộ VT × SP × mã SP × đơn giá × tháng.
+    if (msg.includes("uq_sale_target_khoa")) {
+      return json({
+        ok: false,
+        error: "Trùng dòng kế hoạch: đã có sản phẩm cùng bộ vật tư, mã SP và đơn giá cho khách hàng/PS này. Chưa ghi thay đổi.",
+      }, 409);
+    }
     return json({ ok: false, error: "internal_error" }, 500);
   }
 });
