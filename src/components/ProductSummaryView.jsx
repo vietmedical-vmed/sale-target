@@ -23,6 +23,7 @@ export function ProductSummaryView({
   onExport,
 }) {
   const [open, setOpen] = useState(() => new Set());
+  const initedRef = React.useRef(false);
   const [showMonths, setShowMonths] = useState(false);
   const [viewMode, setViewMode] = useState('money');
   const boxRef = useFitHeight();
@@ -226,6 +227,19 @@ export function ProductSummaryView({
     regs.sort((a, b) => a.region.localeCompare(b.region, 'vi'));
     return { regs, grand: regs.reduce(add, fold()) };
   }, [rows, psFilter, regionFilter, custFilter, groupFilter, search]);
+
+  useEffect(() => {
+    if (!initedRef.current && data.regs.length > 0) {
+      initedRef.current = true;
+      const keys = [];
+      for (const r of data.regs) {
+        const rk = 'r:' + r.region;
+        keys.push(rk);
+        for (const g of r.grps) keys.push(rk + '||' + g.grp);
+      }
+      setOpen(new Set(keys));
+    }
+  }, [data]);
 
   const toggle = (k) =>
     setOpen((prev) => {
