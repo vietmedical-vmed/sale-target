@@ -98,9 +98,17 @@ function HelpModal({ open, onClose, content, isAdmin, onSave }) {
 }
 
 function VirtualCardList({ items, scrollRef, cardKey, renderCard }) {
+  // Khung cuộn (DetailScrollBox) là cha nên gắn ref SAU layout effect của list này.
+  // Khi cả hai cùng mount (quay lại tab Chi tiết từ tab khác), virtualizer đọc ref
+  // lúc còn null rồi không render thẻ nào cho tới lần re-render sau. Giữ element
+  // trong state và cập nhật ở passive effect (lúc ref đã gắn) để ép render lại.
+  const [scrollEl, setScrollEl] = useState(null);
+  useEffect(() => {
+    if (scrollRef.current !== scrollEl) setScrollEl(scrollRef.current);
+  });
   const virtualizer = useVirtualizer({
     count: items.length,
-    getScrollElement: () => scrollRef.current,
+    getScrollElement: () => scrollEl,
     observeElementOffset: observeVerticalOffset,
     estimateSize: () => 72,
     overscan: 5,
