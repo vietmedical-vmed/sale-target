@@ -877,7 +877,7 @@ export function App() {
       const n = uniq.length;
       if (
         !confirm(
-          `Thêm ${n} sản phẩm thiếu vào kế hoạch?\n\nMỗi SP tạo 12 dòng (T4→T3), SL = 0.\nĐơn giá lấy từ hoá đơn thực hiện.`,
+          `Thêm ${n} sản phẩm thiếu vào kế hoạch?\n\nMỗi SP tạo 12 dòng (T4→T3), SL = 0.\nĐơn giá: SP CTTM & CTUT lấy giá thầu mới theo danh mục vật tư (giữ VAT); SP khác hoặc chưa có trong danh mục lấy từ hoá đơn thực hiện.`,
         )
       )
         return;
@@ -1591,10 +1591,16 @@ export function App() {
     });
     return Array.from(s).sort();
   }, [rows, psDir]);
-  // Đơn giá gợi ý khi thêm sản phẩm. Danh mục (dm_bo_vat_tu / _mapping) KHÔNG có
-  // cột đơn giá — giá chỉ nằm trên từng dòng sale_target, nên lấy theo giá đang
-  // dùng nhiều nhất cho đúng (nhóm | bộ vật tư | sản phẩm) đó.
+  // Đơn giá gợi ý khi thêm sản phẩm. SP CTTM & CTUT có giá danh mục (giaDm =
+  // dm_vat_tu.don_gia_thau_moi, giữ VAT) — backend luôn ghi giá này nên gợi ý luôn nó.
+  // BU khác: danh mục (dm_bo_vat_tu / _mapping) KHÔNG có cột đơn giá — giá chỉ nằm
+  // trên từng dòng sale_target, nên lấy theo giá đang dùng nhiều nhất cho đúng
+  // (nhóm | bộ vật tư | sản phẩm) đó.
   const priceOf = useMemo(() => {
+    const giaDm = new Map();
+    for (const c of catalog) {
+      if (c.giaDm > 0) giaDm.set(`${c.grp || ''}||${c.mset || ''}||${c.prod}`, c.giaDm);
+    }
     const cnt = new Map(); // key -> Map(giá -> số dòng)
     for (const r of rows) {
       const p = Number(r.price) || 0;
@@ -1619,9 +1625,13 @@ export function App() {
       });
       best.set(k, top);
     });
-    return (grp, mset, prod) =>
-      best.get(`${grp || ''}||${mset || ''}||${prod}`) || null;
-  }, [rows]);
+    const k = (grp, mset, prod) => `${grp || ''}||${mset || ''}||${prod}`;
+    const fn = (grp, mset, prod) =>
+      giaDm.get(k(grp, mset, prod)) || best.get(k(grp, mset, prod)) || null;
+    // true khi giá gợi ý là giá danh mục (CTTM) — màn thêm SP khoá ô giá.
+    fn.tuDanhMuc = (grp, mset, prod) => giaDm.has(k(grp, mset, prod));
+    return fn;
+  }, [rows, catalog]);
   // Ngành hàng để khai báo địa bàn: gộp danh mục SP + kế hoạch + khai báo đã có,
   // vì có thể phải gán một ngành hàng chưa từng xuất hiện trong kế hoạch.
   const allGroupNames = useMemo(() => {

@@ -208,6 +208,50 @@ export async function buForPs(
   return fallback;
 }
 
+// Đơn giá kế hoạch BU CTTM & CTUT lấy theo danh mục: dm_vat_tu.don_gia_thau_moi, giữ
+// nguyên (không trừ VAT) — cùng cách khớp với migration 20261016150000:
+//   1. tên SP; 2. mã SP (bỏ 'Chưa có'); 3. tên không phân biệt hoa thường;
+// mỗi bước chỉ dùng khi ra đúng 1 giá. Tên trước mã vì mã M0013941xxxxx dùng chung
+// cho Transend và Truselect. Trả hàm tra giá; không khớp → null (giữ giá cũ).
+export const BU_GIA_DANH_MUC = "cttm";
+export async function giaDanhMucCttm(db: ReturnType<typeof createClient>) {
+  const theoTen = new Map<string, Set<number>>();
+  const theoMa = new Map<string, Set<number>>();
+  const theoTenThuong = new Map<string, Set<number>>();
+  const add = (m: Map<string, Set<number>>, k: string, g: number) => {
+    let s = m.get(k);
+    if (!s) m.set(k, s = new Set());
+    s.add(g);
+  };
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.schema("shared").from("dm_vat_tu")
+      .select("id, san_pham, ma_san_pham, don_gia_thau_moi")
+      .eq("bu_code", BU_GIA_DANH_MUC).gt("don_gia_thau_moi", 0)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    for (const r of data || []) {
+      const g = Number(r.don_gia_thau_moi);
+      if (!Number.isFinite(g) || g <= 0) continue;
+      if (r.san_pham != null) {
+        add(theoTen, String(r.san_pham), g);
+        add(theoTenThuong, String(r.san_pham).trim().toLowerCase(), g);
+      }
+      const ma = String(r.ma_san_pham ?? "").trim();
+      if (ma && ma !== "Chưa có") add(theoMa, ma, g);
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  const mot = (s: Set<number> | undefined) => (s && s.size === 1 ? [...s][0] : null);
+  return (sanPham: unknown, maSanPham: unknown): number | null => {
+    const ten = sanPham == null ? "" : String(sanPham);
+    const ma = String(maSanPham ?? "").trim();
+    return mot(theoTen.get(ten)) ??
+      (ma && ma !== "Chưa có" ? mot(theoMa.get(ma)) : null) ??
+      mot(theoTenThuong.get(ten.trim().toLowerCase()));
+  };
+}
+
 export async function mienForPs(db: ReturnType<typeof createClient>, psName: string) {
   const info = await psInfo(db, psName);
   if (info && info.area) return info.area;

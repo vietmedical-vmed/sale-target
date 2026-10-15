@@ -473,6 +473,12 @@ export function ProductPickerForm({
               const dup = isDup(name);
               const on = sel.has(name);
               const goiY = priceOf ? priceOf(grp, msetVal, name) : null;
+              // CTTM & CTUT: giá danh mục, backend luôn ghi giá này — không cho sửa tay.
+              const giaDm = !!(
+                goiY &&
+                priceOf.tuDanhMuc &&
+                priceOf.tuDanhMuc(grp, msetVal, name)
+              );
               return (
                 <div
                   key={name}
@@ -507,12 +513,15 @@ export function ProductPickerForm({
                         value={on ? sel.get(name) || '' : fmtTr(goiY)}
                         onChange={(e) => setPrice(name, e.target.value)}
                         disabled={!on || busy}
+                        readOnly={giaDm}
                         inputMode="decimal"
                         placeholder={goiY ? '' : 'nhập giá'}
                         title={
-                          goiY
-                            ? 'Giá đang dùng cho vật tư này trong kế hoạch'
-                            : 'Vật tư này chưa có đơn giá trong kế hoạch — nhập tay'
+                          giaDm
+                            ? 'Giá thầu mới theo danh mục vật tư (giữ VAT) — áp cố định cho SP CTTM & CTUT'
+                            : goiY
+                              ? 'Giá đang dùng cho vật tư này trong kế hoạch'
+                              : 'Vật tư này chưa có đơn giá trong kế hoạch — nhập tay'
                         }
                         className={
                           'w-24 px-2 py-1 text-[12.5px] text-right border rounded-md outline-none focus:border-emerald-500 ' +

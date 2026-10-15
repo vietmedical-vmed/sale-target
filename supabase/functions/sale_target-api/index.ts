@@ -7,6 +7,7 @@ import {
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone, taoDotTuThangThau, kiemTraThangHieuLuc,
+  BU_GIA_DANH_MUC, giaDanhMucCttm,
 } from "./helpers.ts";
 
 Deno.serve(async (req) => {
@@ -196,6 +197,19 @@ Deno.serve(async (req) => {
           });
         }
         if (data.length < PAGE) break;
+      }
+      // SP của BU CTTM & CTUT kèm đơn giá danh mục (giaDm) để màn thêm SP gợi ý đúng giá
+      // addProduct/addProducts sẽ ghi. Mapping lưu nhãn BU dài ("CTTM & CTUT") → tra qua dm_ps.
+      const { data: psBu } = await db.schema("shared").from("dm_ps")
+        .select("bu").eq("bu_code", BU_GIA_DANH_MUC).limit(500);
+      const nhanCttm = new Set((psBu || []).map((r: Record<string, unknown>) => String(r.bu || "")).filter(Boolean));
+      if (nhanCttm.size) {
+        const giaDm = await giaDanhMucCttm(db);
+        for (const c of catalog) {
+          if (!nhanCttm.has(String(c.bu))) continue;
+          const g = giaDm(c.prod || "", c.maSp || null);
+          if (g !== null) c.giaDm = g;
+        }
       }
       return json({ ok: true, catalog });
     }
@@ -526,7 +540,7 @@ Deno.serve(async (req) => {
       const psName = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
       if (!psName) return json({ ok: false, error: "Chưa chọn PS phụ trách" }, 400);
       const priceNum = Number(s.price);
-      const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
+      let price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
       let bu: string;
       try {
         bu = await buForPs(db, psName, sess.b);
@@ -554,22 +568,6 @@ Deno.serve(async (req) => {
       // area_manager: miền của dòng = miền của PS (đã kiểm tra thuộc phạm vi ở trên).
       let mien = sess.r === "area_manager" ? "" : String(s.region || "").trim();
       if (!mien) mien = await mienForPs(db, psName) || "";
-      let dupQ = db.schema("shared").from("sale_target")
-        .select("id", { count: "exact", head: true })
-        .eq("nam_tai_chinh", fy).eq("thang_ke_hoach", MONTHS[0])
-        .eq("ps", psName).eq("ma_khach_hang", s.custId || "")
-        .eq("nhom_san_pham", s.grp || "").eq("bo_vat_tu", s.mset || "")
-        .eq("san_pham", s.prod || "")
-        // Dòng OOP (đồng bộ thực hiện) không phải kế hoạch — hấp thụ sau insert.
-        .not("ngoai_ke_hoach", "is", true);
-      if (price !== null) dupQ = dupQ.eq("don_gia", price);
-      else dupQ = dupQ.is("don_gia", null);
-      const { count: dupCount } = await dupQ;
-      if (dupCount && dupCount > 0) {
-        return json({ ok: false, error: "duplicate", message: "Sản phẩm đã tồn tại trong kế hoạch" }, 409);
-      }
-      const loiHieuLuc = kiemTraThangHieuLuc([s]);
-      if (loiHieuLuc) return json({ ok: false, error: loiHieuLuc }, 400);
       const prodTrim = String(s.prod || "").trim();
       const msetTrim = String(s.mset || "").trim();
       let maSp: string | null = null;
@@ -589,6 +587,27 @@ Deno.serve(async (req) => {
           .select("ma_bo_vat_tu").ilike("bo_vat_tu", prodTrim).limit(1);
         if (dbvtSp && dbvtSp[0]) maSp = dbvtSp[0].ma_bo_vat_tu || null;
       }
+      // CTTM & CTUT: đơn giá theo danh mục vật tư, thay giá nhập tay khi khớp.
+      if (bu === BU_GIA_DANH_MUC) {
+        const giaDm = (await giaDanhMucCttm(db))(s.prod || "", maSp);
+        if (giaDm !== null) price = giaDm;
+      }
+      let dupQ = db.schema("shared").from("sale_target")
+        .select("id", { count: "exact", head: true })
+        .eq("nam_tai_chinh", fy).eq("thang_ke_hoach", MONTHS[0])
+        .eq("ps", psName).eq("ma_khach_hang", s.custId || "")
+        .eq("nhom_san_pham", s.grp || "").eq("bo_vat_tu", s.mset || "")
+        .eq("san_pham", s.prod || "")
+        // Dòng OOP (đồng bộ thực hiện) không phải kế hoạch — hấp thụ sau insert.
+        .not("ngoai_ke_hoach", "is", true);
+      if (price !== null) dupQ = dupQ.eq("don_gia", price);
+      else dupQ = dupQ.is("don_gia", null);
+      const { count: dupCount } = await dupQ;
+      if (dupCount && dupCount > 0) {
+        return json({ ok: false, error: "duplicate", message: "Sản phẩm đã tồn tại trong kế hoạch" }, 409);
+      }
+      const loiHieuLuc = kiemTraThangHieuLuc([s]);
+      if (loiHieuLuc) return json({ ok: false, error: loiHieuLuc }, 400);
       const rowsIns = MONTHS.map((mo) => ({
         nam_tai_chinh: fy, thang_ke_hoach: mo, mien, ps: psName,
         khach_hang: s.cust, ma_khach_hang: s.custId, nhom_san_pham: s.grp,
@@ -730,12 +749,11 @@ Deno.serve(async (req) => {
       }
 
       const gLimits = parseGroups(sess.g);
-      const candidates: {
+      const raws: {
         ps: string; bu: string; mien: string; custId: string; cust: string;
         grp: string; mset: string; prod: string; price: number | null;
-        mMain: unknown; mAdd: unknown; hlMain: unknown; hlAdd: unknown; key: string;
+        mMain: unknown; mAdd: unknown; hlMain: unknown; hlAdd: unknown;
       }[] = [];
-      const seenKeys = new Set<string>();
       for (const s of items) {
         const ps = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
         const info = psInfoCache.get(ps);
@@ -744,16 +762,62 @@ Deno.serve(async (req) => {
         if (gLimits.length && !gLimits.includes(grp)) continue;
         const priceNum = Number(s.price);
         const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
-        const custId = String(s.custId || "");
-        const mset = String(s.mset || "");
-        const prod = String(s.prod || "");
-        const key = `${ps}\0${custId}\0${grp}\0${mset}\0${prod}\0${price}`;
+        raws.push({
+          ps, bu: info.bu, mien: s.region || info.mien, custId: String(s.custId || ""),
+          cust: String(s.cust || ""), grp, mset: String(s.mset || ""), prod: String(s.prod || ""),
+          price, mMain: s.mMain, mAdd: s.mAdd, hlMain: s.hlMain, hlAdd: s.hlAdd,
+        });
+      }
+
+      const uniqProds = [...new Set(raws.map(c => c.prod).filter(Boolean))];
+      const uniqMsets = [...new Set(raws.map(c => c.mset).filter(Boolean))];
+      const maSpMap = new Map<string, string>();
+      const maBvtMap = new Map<string, string>();
+      if (uniqProds.length) {
+        const { data: dvt } = await db.schema("shared").from("dm_vat_tu")
+          .select("san_pham, ma_san_pham").in("san_pham", uniqProds);
+        for (const r of dvt || []) {
+          if (r.san_pham && r.ma_san_pham && !maSpMap.has(r.san_pham))
+            maSpMap.set(r.san_pham, r.ma_san_pham);
+        }
+      }
+      if (uniqMsets.length) {
+        const { data: dbvt } = await db.schema("shared").from("dm_bo_vat_tu")
+          .select("bo_vat_tu, ma_bo_vat_tu").in("bo_vat_tu", uniqMsets);
+        for (const r of dbvt || []) {
+          if (r.bo_vat_tu && r.ma_bo_vat_tu && !maBvtMap.has(r.bo_vat_tu))
+            maBvtMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
+        }
+      }
+      const prodsNeedFallback = uniqProds.filter(p => !maSpMap.has(p));
+      if (prodsNeedFallback.length) {
+        const { data: dbvtSp } = await db.schema("shared").from("dm_bo_vat_tu")
+          .select("bo_vat_tu, ma_bo_vat_tu").in("bo_vat_tu", prodsNeedFallback);
+        for (const r of dbvtSp || []) {
+          if (r.bo_vat_tu && r.ma_bo_vat_tu && !maSpMap.has(r.bo_vat_tu))
+            maSpMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
+        }
+      }
+
+      // CTTM & CTUT: đơn giá theo danh mục vật tư thay cho giá hoá đơn (ex-VAT) gửi lên,
+      // để không sinh lại dòng lệch giá danh mục. Không khớp danh mục → giữ giá cũ.
+      if (raws.some(c => c.bu === BU_GIA_DANH_MUC)) {
+        const giaDm = await giaDanhMucCttm(db);
+        for (const c of raws) {
+          if (c.bu !== BU_GIA_DANH_MUC) continue;
+          const g = giaDm(c.prod, maSpMap.get(c.prod) || null);
+          if (g !== null) c.price = g;
+        }
+      }
+
+      // Khoá dedup / trùng kế hoạch tính theo giá SAU khi thay.
+      const candidates: (typeof raws[number] & { key: string })[] = [];
+      const seenKeys = new Set<string>();
+      for (const c of raws) {
+        const key = `${c.ps}\0${c.custId}\0${c.grp}\0${c.mset}\0${c.prod}\0${c.price}`;
         if (seenKeys.has(key)) continue;
         seenKeys.add(key);
-        candidates.push({
-          ps, bu: info.bu, mien: s.region || info.mien, custId, cust: String(s.cust || ""),
-          grp, mset, prod, price, mMain: s.mMain, mAdd: s.mAdd, hlMain: s.hlMain, hlAdd: s.hlAdd, key,
-        });
+        candidates.push({ ...c, key });
       }
 
       const existSet = new Set<string>();
@@ -785,35 +849,6 @@ Deno.serve(async (req) => {
         return json({ ok: true, rows: [], rowNums: [], rowRevs: [], skipped, rev: await getRev(db, sess, payload) });
       }
 
-      const uniqProds = [...new Set(toInsert.map(c => c.prod).filter(Boolean))];
-      const uniqMsets = [...new Set(toInsert.map(c => c.mset).filter(Boolean))];
-      const maSpMap = new Map<string, string>();
-      const maBvtMap = new Map<string, string>();
-      if (uniqProds.length) {
-        const { data: dvt } = await db.schema("shared").from("dm_vat_tu")
-          .select("san_pham, ma_san_pham").in("san_pham", uniqProds);
-        for (const r of dvt || []) {
-          if (r.san_pham && r.ma_san_pham && !maSpMap.has(r.san_pham))
-            maSpMap.set(r.san_pham, r.ma_san_pham);
-        }
-      }
-      if (uniqMsets.length) {
-        const { data: dbvt } = await db.schema("shared").from("dm_bo_vat_tu")
-          .select("bo_vat_tu, ma_bo_vat_tu").in("bo_vat_tu", uniqMsets);
-        for (const r of dbvt || []) {
-          if (r.bo_vat_tu && r.ma_bo_vat_tu && !maBvtMap.has(r.bo_vat_tu))
-            maBvtMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
-        }
-      }
-      const prodsNeedFallback = uniqProds.filter(p => !maSpMap.has(p));
-      if (prodsNeedFallback.length) {
-        const { data: dbvtSp } = await db.schema("shared").from("dm_bo_vat_tu")
-          .select("bo_vat_tu, ma_bo_vat_tu").in("bo_vat_tu", prodsNeedFallback);
-        for (const r of dbvtSp || []) {
-          if (r.bo_vat_tu && r.ma_bo_vat_tu && !maSpMap.has(r.bo_vat_tu))
-            maSpMap.set(r.bo_vat_tu, r.ma_bo_vat_tu);
-        }
-      }
       const allRowsIns = toInsert.flatMap(c =>
         MONTHS.map(mo => ({
           nam_tai_chinh: fy, thang_ke_hoach: mo, mien: c.mien, ps: c.ps,
