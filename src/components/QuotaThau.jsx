@@ -87,14 +87,14 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
         onKeyDown={keyDown}
         disabled={locked}
         placeholder="vd 24"
-        title="Thầu có hiệu lực bao nhiêu tháng, tính từ tháng thầu — nhập số tháng, ví dụ 12, 18, 24 (bắt buộc)"
+        title="Số tháng hiệu lực của thầu, ví dụ 12, 18, 24 (bắt buộc). Hết hạn = tháng thầu + 3 tháng + hiệu lực − 1"
         className={`w-[46px] text-right ${o(hlOk)}`}
       />
       <span className={nhan}>tháng</span>
       {het && (
         <span
           className={`text-[10.5px] whitespace-nowrap ${HIEN_HET_HIEU_LUC && tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
-          title="Tháng cuối còn hiệu lực = tháng thầu + số tháng hiệu lực − 1"
+          title="Tháng cuối còn hiệu lực = tháng thầu + 3 tháng + số tháng hiệu lực − 1"
         >
           {HIEN_HET_HIEU_LUC && tt === 'het' ? `(đã hết hiệu lực từ sau ${het})` : `(hiệu lực đến hết ${het})`}
         </span>

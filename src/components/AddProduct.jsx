@@ -391,7 +391,7 @@ export function ProductPickerForm({
               onChange={(e) => setHlMain(e.target.value.replace(/[^0-9]/g, ''))}
               disabled={!grp || !mMain}
               placeholder="Hiệu lực: số tháng"
-              title="Thầu chính có hiệu lực bao nhiêu tháng, tính từ tháng thầu — ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu"
+              title="Số tháng hiệu lực của thầu chính, ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu. Hết hạn = tháng thầu + 3 tháng + hiệu lực − 1"
               className={`${sels} !w-[150px] ${mMain && !hlOk(mMain, hlMain) ? '!border-red-400 !bg-red-50' : ''}`}
             />
           </div>
@@ -416,7 +416,7 @@ export function ProductPickerForm({
               onChange={(e) => setHlAdd(e.target.value.replace(/[^0-9]/g, ''))}
               disabled={!grp || !mAdd}
               placeholder="Hiệu lực: số tháng"
-              title="Thầu bổ sung có hiệu lực bao nhiêu tháng, tính từ tháng thầu — ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu"
+              title="Số tháng hiệu lực của thầu bổ sung, ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu. Hết hạn = tháng thầu + 3 tháng + hiệu lực − 1"
               className={`${sels} !w-[150px] ${mAdd && !hlOk(mAdd, hlAdd) ? '!border-red-400 !bg-red-50' : ''}`}
             />
           </div>
@@ -427,8 +427,8 @@ export function ProductPickerForm({
           Tạo đợt thầu cho cả nhóm{' '}
           <span className="font-medium text-slate-600">{grp}</span> của khách
           hàng này (nếu nhóm chưa có đợt cùng tháng) — sửa ở mục Đợt thầu của thẻ KH.
-          Hiệu lực = thầu dùng được bao nhiêu tháng tính từ tháng thầu (vd thầu 2026-07,
-          hiệu lực 12 tháng → dùng tới hết 2027-06).
+          Hiệu lực = số tháng hiệu lực của thầu; hết hạn = tháng thầu + 3 tháng + hiệu
+          lực − 1 (vd thầu 2026-03, hiệu lực 24 tháng → còn hiệu lực đến hết 2028-05).
         </p>
       )}
       <div className="flex gap-2">

@@ -670,7 +670,7 @@ function SummaryHead() {
         </th>,
         HIEN_HET_HIEU_LUC && <th
           key="qqhet"
-          title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng quota / Khả dụng."
+          title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + 3 + hiệu lực − 1). Không tính vào Tổng quota / Khả dụng."
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
         >
           Hết HL

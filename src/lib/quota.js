@@ -5,12 +5,14 @@ const grpKey = (fy, ps, custId, grp) =>
 const prodKey = (fy, ps, custId, grp, mset, prod) =>
   [fy || '', ps || '', custId || '', grp || '', mset || '', prod || ''].join('||');
 
-// Hiệu lực thầu = số tháng (dot_thau.thoi_gian). Hết hạn = tháng thầu + hiệu lực − 1.
+// Hiệu lực thầu = số tháng (dot_thau.thoi_gian). Tháng cuối còn hiệu lực (hết hạn)
+// = tháng thầu + 3 tháng + hiệu lực − 1 (user chốt 16/10; vd 2026-03, 24 tháng → 2028-05).
+export const THANG_CONG_THEM_HIEU_LUC = 3;
 export function hetHanDot(thang, hieuLuc) {
   const n = Number(hieuLuc);
   if (!/^\d{4}-\d{2}$/.test(thang || '') || !(n > 0)) return '';
   const [y, m] = thang.split('-').map(Number);
-  const t = y * 12 + (m - 1) + Math.trunc(n) - 1;
+  const t = y * 12 + (m - 1) + THANG_CONG_THEM_HIEU_LUC + Math.trunc(n) - 1;
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 }
 

@@ -558,7 +558,7 @@ export function ProductSummaryView({
                 </th>,
                 <th key="qoh" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">On hand</th>,
                 <th key="qup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Upcoming</th>,
-                HIEN_HET_HIEU_LUC && <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Hết HL</th>,
+                HIEN_HET_HIEU_LUC && <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + 3 + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Hết HL</th>,
                 <th key="qtot" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Tổng</th>,
                 <th key="qth" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">TH YTD</th>,
                 <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-r border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Khả dụng</th>,
