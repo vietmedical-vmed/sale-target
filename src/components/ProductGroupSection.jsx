@@ -68,6 +68,7 @@ const ProductRow = React.memo(function ProductRow({
   onCommit,
   canEdit,
   isAdmin,
+  canEditBasePlan,
   onDeleteProduct,
   showBasePlan,
   productCode,
@@ -199,7 +200,7 @@ const ProductRow = React.memo(function ProductRow({
     );
     onCommit(updates);
   };
-  // admin sửa SL KH đầu năm → cập nhật rev + dt (doanh thu = SL × đơn giá)
+  // admin / manager sửa SL KH đầu năm → cập nhật rev + dt (doanh thu = SL × đơn giá)
   const commitRevDauNam = async (monthIdx, newVal) => {
     const cell = monthly[monthIdx];
     if (!cell) return;
@@ -371,11 +372,11 @@ const ProductRow = React.memo(function ProductRow({
             <EditableCell
               key={'b' + mo}
               value={monthly[i].rev}
-              locked={!isAdmin || (!anchor && monthly[i].rows.length === 0)}
-              pending={isAdmin ? pendDauNam(monthly[i]) : false}
+              locked={!canEditBasePlan || (!anchor && monthly[i].rows.length === 0)}
+              pending={canEditBasePlan ? pendDauNam(monthly[i]) : false}
               width={58}
-              bg={isAdmin && (monthly[i].rows.length > 0 || anchor) ? 'bg-amber-50/50' : 'bg-slate-50/40'}
-              onCommit={isAdmin && (monthly[i].rows.length > 0 || anchor) ? (nv) => commitRevDauNam(i, nv) : undefined}
+              bg={canEditBasePlan && (monthly[i].rows.length > 0 || anchor) ? 'bg-amber-50/50' : 'bg-slate-50/40'}
+              onCommit={canEditBasePlan && (monthly[i].rows.length > 0 || anchor) ? (nv) => commitRevDauNam(i, nv) : undefined}
             />
           ))
         : [
@@ -481,6 +482,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
   onCommit,
   canEdit,
   isAdmin,
+  canEditBasePlan,
   onDeleteProduct,
   showBasePlan,
   onToggleBasePlan,
@@ -904,7 +906,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                         <ChevronRight size={11} />
                       )}
                       {showBasePlan
-                        ? isAdmin
+                        ? canEditBasePlan
                           ? 'SL Kế hoạch đầu năm ✏'
                           : 'SL Kế hoạch đầu năm (cố định)'
                         : 'SL đầu năm'}
@@ -1088,6 +1090,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                       onCommit={onCommit}
                       canEdit={canEdit}
                       isAdmin={isAdmin}
+                      canEditBasePlan={canEditBasePlan}
                       onDeleteProduct={onDeleteProduct}
                       showBasePlan={showBasePlan}
                       productCode={

@@ -1,6 +1,6 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
-import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, PAGE } from "./config.ts";
+import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE } from "./config.ts";
 import { applyScope, scopeParams, parseGroups, mienScope } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
@@ -358,17 +358,37 @@ Deno.serve(async (req) => {
     if (action === "updateCells") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const isAdmin = sess.r === "admin";
+      const isManager = sess.r === "manager";
       const updates = payload.updates || [];
       const rowRevs: Record<number, number> = payload.rowRevs || {};
       const byRow = new Map<number, Record<string, unknown>>();
       for (const u of updates) {
-        const allowed = EDITABLE.has(u.key) || (isAdmin && ADMIN_EDITABLE.has(u.key));
+        const allowed = EDITABLE.has(u.key)
+          || (isAdmin && ADMIN_EDITABLE.has(u.key))
+          || (isManager && MANAGER_EDITABLE.has(u.key));
         if (!allowed) continue;
         const id = Number(u.row);
         if (!Number.isFinite(id)) continue;
         let patch = byRow.get(id);
         if (!patch) { patch = {}; byRow.set(id, patch); }
         patch[COL[u.key]] = u.value === "" ? null : u.value;
+      }
+      // Manager không được ghi thẳng doanh thu đầu năm: server tự tính = SL × đơn giá
+      // (đơn giá mới trong cùng lượt sửa nếu có, không thì đơn giá trên dòng).
+      if (isManager) {
+        const revIds = [...byRow].filter(([, p]) => COL.rev in p).map(([id]) => id);
+        if (revIds.length) {
+          const { data: priceRows, error: priceErr } = await db.schema("shared").from("sale_target")
+            .select("id, don_gia").in("id", revIds);
+          if (priceErr) throw new Error(priceErr.message);
+          const priceMap = new Map<number, unknown>();
+          for (const r of priceRows || []) priceMap.set(r.id, r.don_gia);
+          for (const id of revIds) {
+            const patch = byRow.get(id)!;
+            const price = COL.price in patch ? patch[COL.price] : priceMap.get(id);
+            patch[COL.dt] = (Number(patch[COL.rev]) || 0) * (Number(price) || 0);
+          }
+        }
       }
       let conflicts: Record<string, unknown>[] = [];
       if (byRow.size > 0) {
@@ -645,8 +665,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "ensureMonthRow") {
-      const isAdmin = sess.r === "admin";
-      if (!isAdmin) return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const refRow = Number(payload.refRow);
       const month = String(payload.month || "");
       const rev = Number(payload.rev) || 0;
@@ -655,6 +674,11 @@ Deno.serve(async (req) => {
       const { data: ref, error: refErr } = await db.schema("shared").from("sale_target")
         .select(cols).eq("id", refRow).single();
       if (refErr || !ref) return json({ ok: false, error: "ref row not found" }, 404);
+      // Manager chỉ trong nhóm SP được giao (scopeParams.p_groups); admin không giới hạn.
+      const { p_groups } = scopeParams(sess);
+      if (p_groups && !p_groups.includes(String(ref.nhom_san_pham))) {
+        return json({ ok: false, error: "forbidden_rows" }, 403);
+      }
       let dupQ = db.schema("shared").from("sale_target")
         .select("id", { count: "exact", head: true })
         .eq("nam_tai_chinh", ref.nam_tai_chinh)

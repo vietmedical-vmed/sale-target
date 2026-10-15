@@ -129,7 +129,25 @@ function VirtualCardList({ items, scrollRef, cardKey, renderCard }) {
   );
 }
 
+// Đổi tài khoản (đăng xuất A rồi đăng nhập B) phải về trạng thái ban đầu: remount
+// AppInner để mọi state UI (bộ lọc, tab, thẻ đang mở, bản nháp đã khôi phục…) khởi
+// tạo lại. Đăng nhập lại CÙNG tài khoản (token hết hạn) thì giữ nguyên.
 export function App() {
+  const [mount, setMount] = useState({ key: 0, auth: null });
+  const lastUserRef = useRef('');
+  const onLogin = useCallback((a) => {
+    const prev = lastUserRef.current;
+    lastUserRef.current = a.username || '';
+    if (prev && prev !== lastUserRef.current) {
+      setMount((m) => ({ key: m.key + 1, auth: a }));
+      return true;
+    }
+    return false;
+  }, []);
+  return <AppInner key={mount.key} initialAuth={mount.auth} onLogin={onLogin} />;
+}
+
+function AppInner({ initialAuth, onLogin }) {
   const [authed, setAuthed] = useState(false);
   const [auth, setAuth] = useState({
     role: '',
@@ -213,6 +231,8 @@ export function App() {
     auth.role,
   );
   const isAdmin = auth.role === 'admin';
+  // SL kế hoạch đầu năm: admin + manager (server chốt phạm vi nhóm SP của manager).
+  const canEditBasePlan = isAdmin || auth.role === 'manager';
   // --- Đợt thầu & quota thầu -------------------------------------------------
   // Hai bảng mới là nguồn CHUẨN cho quota, nhưng các cột quota cũ trên sale_target
   // vẫn được ghi đè bằng số tổng sau mỗi lần lưu: hai màn tổng hợp và các report
@@ -280,17 +300,30 @@ export function App() {
     }),
     [dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota],
   );
+  const applyLogin = (a) => {
+    setAuth(a);
+    setViewBu(canSwitchTeam(a.role) ? '' : a.bu || '');
+    setSentryUser(a.username, a.role);
+    setInitialLoading(true);
+    setAuthed(true);
+  };
   useEffect(() => {
     onSessionExpired(() => {
       setAuthed(false);
       setInitialLoading(false);
     });
+    // Vừa remount vì đổi tài khoản: đã có thông tin đăng nhập, không ping lại.
+    if (initialAuth) {
+      applyLogin(initialAuth);
+      return;
+    }
     const shared = localStorage.getItem('vmed_token');
     if (shared && !sessionStorage.getItem(TOK_KEY))
       sessionStorage.setItem(TOK_KEY, shared);
     if (sessionStorage.getItem(TOK_KEY)) {
       api('ping')
         .then((r) => {
+          onLogin({ username: r.username });
           setAuth({
             role: r.role,
             scope: r.scope,
@@ -2268,11 +2301,8 @@ export function App() {
     return (
       <LoginGate
         onAuth={(a) => {
-          setAuth(a);
-          setViewBu(canSwitchTeam(a.role) ? '' : a.bu || '');
-          setSentryUser(a.username, a.role);
-          setInitialLoading(true);
-          setAuthed(true);
+          if (onLogin(a)) return; // tài khoản khác -> App remount với state mới
+          applyLogin(a);
         }}
       />
     );
@@ -2917,6 +2947,7 @@ export function App() {
                         onCommit={commit}
                         canEdit={canEdit}
                         isAdmin={isAdmin}
+                        canEditBasePlan={canEditBasePlan}
                         onDeleteProduct={deleteProduct}
                         open={openCards.has(cardKey(c))}
                         onToggle={() => toggleCard(cardKey(c))}

@@ -15,6 +15,8 @@ export const FIELDS = [
 // Quota / tháng / thời gian thầu nằm ở quota_thau / dot_thau; sale_target không còn các cột đó.
 export const EDITABLE = new Set(["revUpd","price"]);
 export const ADMIN_EDITABLE = new Set(["mset","prod","rev","dt"]);
+// Manager chỉ sửa SL đầu năm; doanh thu đầu năm do server tính = SL × đơn giá.
+export const MANAGER_EDITABLE = new Set(["rev"]);
 
 export const DEMO_BU = "test";
 export const OOP_CUST = "Ngoài kế hoạch";

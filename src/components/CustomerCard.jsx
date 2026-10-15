@@ -20,6 +20,7 @@ export const CustomerCard = React.memo(function CustomerCard({
   onCommit,
   canEdit,
   isAdmin,
+  canEditBasePlan,
   onDeleteProduct,
   open,
   onToggle,
@@ -272,6 +273,7 @@ export const CustomerCard = React.memo(function CustomerCard({
               onCommit={onCommit}
               canEdit={canEdit}
               isAdmin={isAdmin}
+              canEditBasePlan={canEditBasePlan}
               onDeleteProduct={onDeleteProduct}
               showBasePlan={showBasePlan}
               onToggleBasePlan={onToggleBasePlan}
