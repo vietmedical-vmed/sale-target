@@ -231,13 +231,7 @@ export function ProductSummaryView({
   useEffect(() => {
     if (!initedRef.current && data.regs.length > 0) {
       initedRef.current = true;
-      const keys = [];
-      for (const r of data.regs) {
-        const rk = 'r:' + r.region;
-        keys.push(rk);
-        for (const g of r.grps) keys.push(rk + '||' + g.grp);
-      }
-      setOpen(new Set(keys));
+      setOpen(new Set(data.regs.map((r) => 'r:' + r.region)));
     }
   }, [data]);
 
