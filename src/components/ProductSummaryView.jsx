@@ -211,7 +211,7 @@ export function ProductSummaryView({
           const aUnk = a.prod === '(Không rõ SP)' ? 1 : 0;
           const bUnk = b.prod === '(Không rõ SP)' ? 1 : 0;
           if (aUnk !== bUnk) return aUnk - bUnk;
-          return a.prod.localeCompare(b.prod, 'vi');
+          return (b.dtUpd || 0) - (a.dtUpd || 0);
         });
         return { ...g, prods };
       });
@@ -219,7 +219,7 @@ export function ProductSummaryView({
         const aUnk = a.grp.startsWith('(') ? 1 : 0;
         const bUnk = b.grp.startsWith('(') ? 1 : 0;
         if (aUnk !== bUnk) return aUnk - bUnk;
-        return a.grp.localeCompare(b.grp, 'vi');
+        return (b.dtUpd || 0) - (a.dtUpd || 0);
       });
       return { ...reg, grps };
     });

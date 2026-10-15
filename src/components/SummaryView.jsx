@@ -330,7 +330,7 @@ export function SummaryView({
               quotaAvail: avail(pp),
               quotaAvailDt: availDt(pp),
             }));
-            prods.sort((a, b) => (b.dtUpd || 0) - (a.dtUpd || 0));
+            prods.sort((a, b) => b.dt - a.dt);
             return {
               ...gp,
               _ps: ps.ps,
@@ -341,7 +341,7 @@ export function SummaryView({
               quotaAvailDt: availDt(gp),
             };
           });
-          grps.sort((a, b) => (b.dtUpd || 0) - (a.dtUpd || 0));
+          grps.sort((a, b) => b.dt - a.dt);
           const subs = Array.from(c.subMap.values()).map(buildCust);
           subs.sort((a, b) => b.ytd - a.ytd); // KH ngoài kế hoạch: xếp theo SL thực hiện
           return {
@@ -380,27 +380,6 @@ export function SummaryView({
       };
     });
     regions.sort((a, b) => b.dt - a.dt);
-    for (const reg of regions) {
-      const rgm = new Map();
-      const collectGrps = (custs) => {
-        for (const c of custs) {
-          for (const gp of c.grps) {
-            if (!rgm.has(gp.grp)) rgm.set(gp.grp, fold());
-            add(rgm.get(gp.grp), gp);
-          }
-          if (c.subs) collectGrps(c.subs);
-        }
-      };
-      for (const ps of reg.psList) collectGrps(ps.custs);
-      reg.regGrps = Array.from(rgm.entries())
-        .map(([grp, tot]) => ({
-          grp,
-          ...tot,
-          quotaAvail: tot.q14 - tot.ytd,
-          quotaAvailDt: tot.q14Dt - tot.dtYtd,
-        }))
-        .sort((a, b) => (b.dtUpd || 0) - (a.dtUpd || 0));
-    }
     const grand = regions.reduce((a, rg) => {
       add(a, rg);
       a.custCount += rg.custCount;
@@ -882,21 +861,6 @@ function SummaryRegionRow({ reg }) {
         <StatCells d={reg} />
         <td className="border-b border-slate-100" />
       </tr>
-      {open && (reg.regGrps || []).map((rg) => (
-        <tr
-          key={'rg:' + rg.grp}
-          className="bg-emerald-50/40 border-b border-slate-100"
-        >
-          <td className="px-3 py-1.5 pl-8 text-[12px] font-medium text-emerald-800 border-r border-slate-100 sticky left-0 z-10 bg-emerald-50/40">
-            <span className="inline-flex items-center gap-1">
-              <span style={{ width: 12, display: 'inline-block' }} />
-              {rg.grp}
-            </span>
-          </td>
-          <StatCells d={rg} size="sm" />
-          <td className="border-b border-slate-100" />
-        </tr>
-      ))}
       {open && reg.psList.map((ps) => <SummaryPSRow key={ps.ps} ps={ps} />)}
     </React.Fragment>
   );
