@@ -481,12 +481,7 @@ const pctTxtSum = (th, kh) =>
   kh > 0 ? Math.round((th / kh) * 100) + '%' : '—';
 const pctClsSum = (th, kh) => {
   if (!(kh > 0)) return 'text-slate-300';
-  const r = th / kh;
-  return r >= 1
-    ? 'text-green-700'
-    : r >= 0.8
-      ? 'text-amber-600'
-      : 'text-red-600';
+  return Math.round((th / kh) * 100) >= 90 ? 'text-green-700' : 'text-red-600';
 };
 // Nút "chi tiết theo tháng": khi false chỉ hiện THÁNG HIỆN TẠI + Luỹ kế YTD; khi true hiện đủ 12 tháng.
 // SummaryView set biến này trước khi render con (giống cơ chế MASK_MONEY).

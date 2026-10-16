@@ -257,12 +257,7 @@ export function ProductSummaryView({
   const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
   const pctCls = (th, kh) => {
     if (!(kh > 0)) return 'text-slate-300';
-    const r = th / kh;
-    return r >= 1
-      ? 'text-green-700'
-      : r >= 0.8
-        ? 'text-amber-600'
-        : 'text-red-600';
+    return Math.round((th / kh) * 100) >= 90 ? 'text-green-700' : 'text-red-600';
   };
   const moBg = (i) =>
     MONTHS[i] === CURRENT_MONTH
