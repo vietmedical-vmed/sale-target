@@ -8,6 +8,18 @@ const FN_API = SUPABASE_URL + '/functions/v1/sale_target-api';
 
 const EXP_KEY = TOK_KEY + '_exp';
 const REFRESH_MARGIN_SEC = 10 * 60;
+// Chỉ đặt timeout cho action CHỈ ĐỌC: khi DB quá tải, fetch không bao giờ trả
+// về khiến màn "Đang tải dữ liệu" quay mãi. Action ghi không cắt ngang vì
+// server có thể vẫn đang ghi -> user bấm lại dễ ghi trùng.
+const READ_TIMEOUT_MS = 60 * 1000;
+const READ_ACTIONS = new Set([
+  'getData',
+  'getChanges',
+  'ping',
+  'getCatalog',
+  'getCustomers',
+  'getPs',
+]);
 
 let _onSessionExpired = null;
 
@@ -69,25 +81,36 @@ export async function api(action, payload = {}) {
 
   const currentToken = sessionStorage.getItem(TOK_KEY) || token;
   const bodyObj = isLogin ? payload : { action, token: currentToken, payload };
+  const ctrl = READ_ACTIONS.has(action) ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), READ_TIMEOUT_MS) : null;
   let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify(bodyObj),
-    });
-  } catch (e) {
-    throw new Error('Không kết nối được máy chủ: ' + ((e && e.message) || e), { cause: e });
-  }
   let data = null;
   try {
-    data = await res.json();
-  } catch {
-    /* body rỗng / không phải JSON */
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(bodyObj),
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+    } catch (e) {
+      if (ctrl && ctrl.signal.aborted)
+        throw new Error('Máy chủ phản hồi quá lâu, thử tải lại sau ít phút', { cause: e });
+      throw new Error('Không kết nối được máy chủ: ' + ((e && e.message) || e), { cause: e });
+    }
+    try {
+      data = await res.json();
+    } catch (e) {
+      if (ctrl && ctrl.signal.aborted)
+        throw new Error('Máy chủ phản hồi quá lâu, thử tải lại sau ít phút', { cause: e });
+      /* body rỗng / không phải JSON */
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   if (!res.ok || (data && data.ok === false)) {
     const err = (data && data.error) || 'HTTP ' + res.status;

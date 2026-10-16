@@ -302,6 +302,12 @@ export async function fetchOopClassify(
   payload: Record<string, unknown> = {},
 ) {
   const scope = readScopeParams(sess, payload);
+  // Bản _json trả cả mảng trong 1 lần gọi; phân trang .range() thì mỗi trang
+  // chạy lại toàn bộ hàm phân loại. Lỗi (DB chưa có hàm) -> rơi về cách cũ.
+  const one = await db.rpc("classify_oop_sale_target_json", scope);
+  if (!one.error && Array.isArray(one.data)) {
+    return new Map((one.data as Record<string, unknown>[]).map((c) => [c.target_id, c]));
+  }
   const out: Record<string, unknown>[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await db.rpc("classify_oop_sale_target", scope)
