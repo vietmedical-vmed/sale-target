@@ -155,13 +155,14 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
                 </span>
                 <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
               </div>
-              <div className="shrink-0" title="Dthu dự kiến / Target đầu năm">
-                <span
-                  className={`text-[18px] font-bold tabular-nums px-1.5 rounded ${masked || s.dt <= 0 ? 'text-slate-400 bg-slate-100' : updPctColor}`}
-                >
+              <div
+                className={`shrink-0 px-1.5 rounded ${masked || s.dt <= 0 ? 'text-slate-400 bg-slate-100' : updPctColor}`}
+                title="Dthu dự kiến / Target đầu năm"
+              >
+                <span className="text-[18px] font-bold tabular-nums">
                   {masked ? '**' : s.dt > 0 ? updPct + '%' : '—'}
                 </span>
-                <span className="text-[11px] text-slate-400 ml-1">Target</span>
+                <span className="text-[11px] font-medium ml-1">Target</span>
               </div>
             </div>
             <div className="leading-tight mb-1">
