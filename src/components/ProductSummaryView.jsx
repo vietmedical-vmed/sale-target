@@ -79,7 +79,9 @@ export function ProductSummaryView({
         r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
           ? Number(r.revUpd) || 0
           : Number(r.rev) || 0;
-      const updQty = (i < curIdx) ? actQty : planUpd;
+      // Tháng đã qua, hoặc tháng hiện tại đã có thực hiện → lấy thực hiện (giống màn PS).
+      const useAct = i < curIdx || (i === curIdx && actQty !== 0);
+      const updQty = useAct ? actQty : planUpd;
       const dOnHand = Number(r._qOnHand) || 0;
       const dUpcoming = Number(r._qUp) || 0;
       const dQuota = dOnHand + dUpcoming;
@@ -106,7 +108,7 @@ export function ProductSummaryView({
         o.slDauNam += dSlDauNam;
         o.dt += dSlDauNam * price;
         o.slUpd += updQty;
-        o.dtUpd += (i < curIdx) ? dtActVal : updQty * price;
+        o.dtUpd += useAct ? dtActVal : updQty * price;
         if (isPast) {
           o.thYtd += actQty;
           o.dtYtd += dtActVal;
