@@ -148,19 +148,21 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
                 {t.label}
               </span>
             </div>
-            <div className="flex items-baseline justify-between gap-1 leading-tight mb-0.5">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-1 leading-tight mb-0.5">
               <div>
                 <span className="text-[18px] font-bold tabular-nums text-slate-800">
                   {masked ? '**' : moneyTy3(s.dtUpd)}
                 </span>
                 <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
               </div>
-              <span
-                className={`shrink-0 text-[11px] font-semibold tabular-nums px-1.5 py-px rounded ${masked || s.dt <= 0 ? 'text-slate-400 bg-slate-100' : updPctColor}`}
-                title="Dthu dự kiến / Target đầu năm"
-              >
-                {masked ? '**' : s.dt > 0 ? updPct + '%' : '—'}
-              </span>
+              <div className="shrink-0" title="Dthu dự kiến / Target đầu năm">
+                <span
+                  className={`text-[18px] font-bold tabular-nums px-1.5 rounded ${masked || s.dt <= 0 ? 'text-slate-400 bg-slate-100' : updPctColor}`}
+                >
+                  {masked ? '**' : s.dt > 0 ? updPct + '%' : '—'}
+                </span>
+                <span className="text-[11px] text-slate-400 ml-1">Target</span>
+              </div>
             </div>
             <div className="leading-tight mb-1">
               <span className="text-[18px] font-bold tabular-nums text-slate-800">
