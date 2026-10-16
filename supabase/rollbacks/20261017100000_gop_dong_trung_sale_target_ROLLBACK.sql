@@ -1,3 +1,4 @@
+-- 2026-10-16: các bảng bak_* đã chuyển sang schema backup (Data/Supabase/sql/20261016_db_cleanup_backup_schema.sql).
 -- Hoàn tác 20261017100000: bỏ ràng buộc trùng, trả apply_dia_ban_to_plan bản cũ,
 -- dựng lại các dòng trùng từ bản chụp bak_20261017_gop_trung (cả dòng giữ lẫn dòng đã xoá).
 -- Lưu ý: số thực hiện / KH update ghi SAU khi gộp lên dòng giữ sẽ bị thay bằng bản chụp;
@@ -8,7 +9,7 @@ BEGIN;
 ALTER TABLE shared.sale_target DROP CONSTRAINT IF EXISTS uq_sale_target_khoa;
 
 DELETE FROM shared.sale_target s
-USING shared.bak_20261017_gop_trung b
+USING backup.bak_20261017_gop_trung b
 WHERE s.id = b.id;
 
 INSERT INTO shared.sale_target OVERRIDING SYSTEM VALUE
@@ -20,7 +21,7 @@ SELECT id, nam_tai_chinh, thang_ke_hoach, mien, ps, khach_hang, ma_khach_hang, n
        bo_vat_tu, sl_ke_hoach_dau_nam, sl_ke_hoach_update, don_gia, doanh_thu_kh_dau_nam,
        doanh_thu_kh_update, chenh_lech_doanh_thu_kh, sl_thuc_hien, now(), bu, bo, ma_bo_vat_tu,
        ma_chung, ma_san_pham, doanh_thu_thuc_hien, ngoai_ke_hoach, _rev
-FROM shared.bak_20261017_gop_trung;
+FROM backup.bak_20261017_gop_trung;
 
 CREATE OR REPLACE FUNCTION public.apply_dia_ban_to_plan(p_ids bigint[])
  RETURNS jsonb
