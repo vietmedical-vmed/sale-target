@@ -121,6 +121,13 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
             : pct >= 80
               ? 'text-amber-600'
               : 'text-slate-400';
+        const updPct = s.dt > 0 ? Math.round((s.dtUpd / s.dt) * 100) : 0;
+        const updPctColor =
+          updPct >= 100
+            ? 'text-emerald-700 bg-emerald-50'
+            : updPct >= 90
+              ? 'text-amber-700 bg-amber-50'
+              : 'text-rose-700 bg-rose-50';
         const active = value === t.key;
         const masked = value !== '' && !active;
         return (
@@ -141,11 +148,19 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
                 {t.label}
               </span>
             </div>
-            <div className="leading-tight mb-0.5">
-              <span className="text-[18px] font-bold tabular-nums text-slate-800">
-                {masked ? '**' : moneyTy3(s.dtUpd)}
+            <div className="flex items-baseline justify-between gap-1 leading-tight mb-0.5">
+              <div>
+                <span className="text-[18px] font-bold tabular-nums text-slate-800">
+                  {masked ? '**' : moneyTy3(s.dtUpd)}
+                </span>
+                <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
+              </div>
+              <span
+                className={`shrink-0 text-[11px] font-semibold tabular-nums px-1.5 py-px rounded ${masked || s.dt <= 0 ? 'text-slate-400 bg-slate-100' : updPctColor}`}
+                title="Dthu dự kiến / Target đầu năm"
+              >
+                {masked ? '**' : s.dt > 0 ? updPct + '%' : '—'}
               </span>
-              <span className="text-[11px] text-slate-400 ml-1">Dthu dự kiến</span>
             </div>
             <div className="leading-tight mb-1">
               <span className="text-[18px] font-bold tabular-nums text-slate-800">
