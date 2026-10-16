@@ -123,11 +123,9 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
               : 'text-slate-400';
         const updPct = s.dt > 0 ? Math.round((s.dtUpd / s.dt) * 100) : 0;
         const updPctColor =
-          updPct >= 100
+          updPct >= 90
             ? 'text-emerald-700 bg-emerald-50'
-            : updPct >= 90
-              ? 'text-amber-700 bg-amber-50'
-              : 'text-rose-700 bg-rose-50';
+            : 'text-rose-700 bg-rose-50';
         const active = value === t.key;
         const masked = value !== '' && !active;
         return (
