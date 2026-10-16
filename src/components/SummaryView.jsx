@@ -533,7 +533,7 @@ function SummaryHead() {
     </th>,
     <th
       key={key + 'a'}
-      className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 ${tone}`}
+      className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 ${tone}`}
     >
       TH
     </th>,
@@ -555,7 +555,7 @@ function SummaryHead() {
     </th>,
     <th
       key="yta"
-      className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 ${ybg}`}
+      className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 ${ybg}`}
     >
       TH
     </th>,
@@ -683,7 +683,7 @@ function SummaryHead() {
         </th>,
         <th
           key="qqth"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
         >
           TH YTD
         </th>,
@@ -728,11 +728,11 @@ function StatCells({ d, size, dark }) {
     : size === 'sm'
       ? 'text-slate-600'
       : 'text-slate-700';
-  const orange = dark
-    ? 'text-orange-200'
+  const green = dark
+    ? 'text-green-300'
     : size === 'sm'
-      ? 'text-orange-600'
-      : 'text-orange-700';
+      ? 'text-green-600'
+      : 'text-green-700';
   const blue = dark
     ? 'text-blue-200'
     : size === 'sm'
@@ -754,7 +754,7 @@ function StatCells({ d, size, dark }) {
       <td key={'k' + i} className={`px-2 ${p} text-right tabular-nums ${base} ${bg}`}>{fmt(kh)}</td>,
     );
     cells.push(
-      <td key={'a' + i} className={`px-2 ${p} text-right tabular-nums ${orange} ${bg}`}>{fmt(act)}</td>,
+      <td key={'a' + i} className={`px-2 ${p} text-right tabular-nums ${green} ${bg}`}>{fmt(act)}</td>,
     );
     cells.push(
       <td key={'pc' + i} className={`px-2 ${p} text-right tabular-nums border-r border-slate-200 ${dark ? 'text-slate-300' : pctClsSum(act, kh)} ${bg}`}>
@@ -772,7 +772,7 @@ function StatCells({ d, size, dark }) {
     <td key="yk" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${ybg}`}>{fmt(khYtdV)}</td>,
   );
   cells.push(
-    <td key="ya" className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${ybg}`}>{fmt(dtYtdV)}</td>,
+    <td key="ya" className={`px-3 ${p} text-right tabular-nums font-medium ${green} ${ybg}`}>{fmt(dtYtdV)}</td>,
   );
   cells.push(
     <td key="yp" className={`px-3 ${p} text-right tabular-nums font-semibold ${dark ? 'text-slate-300' : pctClsSum(dtYtdV, khYtdV)} ${ybg}`}>
@@ -830,7 +830,7 @@ function StatCells({ d, size, dark }) {
     <td key="q" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(qFYV)}</td>,
   );
   cells.push(
-    <td key="qth" className={`px-3 ${p} text-right tabular-nums font-medium ${orange} ${qbg}`}>{fmt(dtYtdV)}</td>,
+    <td key="qth" className={`px-3 ${p} text-right tabular-nums font-medium ${green} ${qbg}`}>{fmt(dtYtdV)}</td>,
   );
   cells.push(
     <td key="qav" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}>

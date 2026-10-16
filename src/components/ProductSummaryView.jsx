@@ -322,7 +322,7 @@ export function ProductSummaryView({
     </th>,
     <th
       key={key + 'a'}
-      className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 ${tone}`}
+      className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 ${tone}`}
     >
       TH
     </th>,
@@ -335,32 +335,39 @@ export function ProductSummaryView({
   ];
   const ytdSubHead = [
     <th key="sytdk" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 bg-amber-50/40">KH</th>,
-    <th key="sytda" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-amber-50/40">TH</th>,
+    <th key="sytda" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 bg-amber-50/40">TH</th>,
     <th key="sytdp" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">% TH YTD</th>,
     <th key="sytdtd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">tốc độ TH YTD</th>,
     <th key="sytdkp" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">tốc độ KH YTD</th>,
     <th key="sytdcl" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-r border-b border-slate-200 whitespace-nowrap bg-amber-50/40">CL tốc độ</th>,
   ];
 
+  // Màu chữ giống màn PS: dòng Miền / Nhóm SP (có extra) như cỡ thường, dòng SP / KH như cỡ nhỏ.
+  const tone = (extra) =>
+    extra
+      ? { base: 'text-slate-700', th: 'text-green-700' }
+      : { base: 'text-slate-600', th: 'text-green-600' };
+
   const moCells = (node, extra) => {
     const { moKh, moAct } = pick(node);
+    const t = tone(extra);
     const out = [];
     for (const i of monthIdxs) {
       const bg = moBg(i);
       const kh = moKh[i], act = moAct[i];
       if (!hasAct(i)) {
         out.push(
-          <td key={'k' + i} className={`px-2 py-1.5 text-right text-[12px] tabular-nums border-r border-slate-100 ${bg} ${extra || ''}`}>
+          <td key={'k' + i} className={`px-2 py-1.5 text-right text-[12px] tabular-nums border-r border-slate-100 ${t.base} ${bg} ${extra || ''}`}>
             {fmt(kh)}
           </td>,
         );
         continue;
       }
       out.push(
-        <td key={'k' + i} className={`px-2 py-1.5 text-right text-[12px] tabular-nums ${bg} ${extra || ''}`}>{fmt(kh)}</td>,
+        <td key={'k' + i} className={`px-2 py-1.5 text-right text-[12px] tabular-nums ${t.base} ${bg} ${extra || ''}`}>{fmt(kh)}</td>,
       );
       out.push(
-        <td key={'a' + i} className={`px-2 py-1.5 text-right text-[12px] tabular-nums text-orange-600 ${bg} ${extra || ''}`}>{fmt(act)}</td>,
+        <td key={'a' + i} className={`px-2 py-1.5 text-right text-[12px] tabular-nums ${t.th} ${bg} ${extra || ''}`}>{fmt(act)}</td>,
       );
       out.push(
         <td key={'p' + i} className={`px-2 py-1.5 text-right text-[11.5px] tabular-nums border-r border-slate-200 ${pctCls(act, kh)} ${bg}`}>
@@ -373,12 +380,13 @@ export function ProductSummaryView({
 
   const ytdCells = (node, extra) => {
     const { khYtdV, thYtdV, dtUpdV } = pick(node);
+    const t = tone(extra);
     const tdTh = dtUpdV > 0 ? thYtdV / dtUpdV : null;
     const tdKh = dtUpdV > 0 ? khYtdV / dtUpdV : null;
     const clVal = tdTh != null && tdKh != null ? Math.round((tdTh - tdKh) * 100) : null;
     return [
-      <td key="yk" className={`px-3 py-1.5 text-right text-[12px] tabular-nums bg-amber-50/40 ${extra || ''}`}>{fmt(khYtdV)}</td>,
-      <td key="ya" className={`px-3 py-1.5 text-right text-[12px] tabular-nums text-orange-700 bg-amber-50/40 ${extra || ''}`}>{fmt(thYtdV)}</td>,
+      <td key="yk" className={`px-3 py-1.5 text-right text-[12px] tabular-nums ${t.base} bg-amber-50/40 ${extra || ''}`}>{fmt(khYtdV)}</td>,
+      <td key="ya" className={`px-3 py-1.5 text-right text-[12px] tabular-nums ${t.th} bg-amber-50/40 ${extra || ''}`}>{fmt(thYtdV)}</td>,
       <td key="yp" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold bg-amber-50/40 ${pctCls(thYtdV, khYtdV)}`}>{pctTxt(thYtdV, khYtdV)}</td>,
       <td key="ytd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-500 bg-amber-50/40`}>{pctTxt(thYtdV, dtUpdV)}</td>,
       <td key="ykp" className={`px-3 py-1.5 text-right text-[12px] tabular-nums text-slate-500 bg-amber-50/40`}>{pctTxt(khYtdV, dtUpdV)}</td>,
@@ -388,29 +396,31 @@ export function ProductSummaryView({
     ];
   };
 
-  const tBg = 'bg-emerald-50/40';
+  const tBg = 'bg-emerald-50/30';
   const targetCells = (node, extra) => {
     const { dtV, dtUpdV, thYtdV } = pick(node);
+    const t = tone(extra);
     const ch = dtUpdV - dtV;
     return [
-      <td key="tdn" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${tBg} ${extra || ''}`}>{fmt(dtV)}</td>,
+      <td key="tdn" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${tBg} ${extra || ''}`}>{fmt(dtV)}</td>,
       <td key="tup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-blue-600 ${tBg} ${extra || ''}`}>{fmt(dtUpdV)}</td>,
       <td key="tch" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold ${tBg} ${chCls(ch)}`}>{fmtCh(ch)}</td>,
       <td key="tkl" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 text-purple-600 ${tBg} ${extra || ''}`}>{fmt(dtUpdV - thYtdV)}</td>,
     ];
   };
 
-  const qBg = 'bg-indigo-50/40';
+  const qBg = 'bg-teal-50/30';
   const quotaCells = (node, extra) => {
     const { onHandV, upcomingV, quotaV, thYtdV, hetV } = pick(node);
     const khaDung = node.oop ? null : onHandV - thYtdV;
+    const t = tone(extra);
     return [
-      <td key="qoh" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-700 ${qBg} ${extra || ''}`}>{fmt(onHandV)}</td>,
-      <td key="qup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-500 ${qBg} ${extra || ''}`}>{fmt(upcomingV)}</td>,
+      <td key="qoh" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${qBg} ${extra || ''}`}>{fmt(onHandV)}</td>,
+      <td key="qup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${qBg} ${extra || ''}`}>{fmt(upcomingV)}</td>,
       HIEN_HET_HIEU_LUC && <td key="qhet" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-red-500 ${qBg} ${extra || ''}`}>{fmt(hetV)}</td>,
-      <td key="qtot" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-indigo-800 ${qBg} ${extra || ''}`}>{fmt(quotaV)}</td>,
-      <td key="qth" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-orange-600 ${qBg} ${extra || ''}`}>{fmt(thYtdV)}</td>,
-      <td key="qkd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 ${qBg} ${node.oop ? 'text-slate-300' : 'text-indigo-800'} ${extra || ''}`}>
+      <td key="qtot" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${qBg} ${extra || ''}`}>{fmt(quotaV)}</td>,
+      <td key="qth" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.th} ${qBg} ${extra || ''}`}>{fmt(thYtdV)}</td>,
+      <td key="qkd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 ${qBg} ${node.oop ? 'text-slate-300' : t.base} ${extra || ''}`}>
         {khaDung == null ? '—' : fmt(khaDung)}
       </td>,
     ];
@@ -434,7 +444,7 @@ export function ProductSummaryView({
       );
       if (hasAct(i)) {
         cells.push(
-          <td key={'ga' + i} className="px-2 py-2.5 text-right text-[12px] tabular-nums text-orange-200">{fmt(act)}</td>,
+          <td key={'ga' + i} className="px-2 py-2.5 text-right text-[12px] tabular-nums text-green-300">{fmt(act)}</td>,
         );
         cells.push(
           <td key={'gp' + i} className="px-2 py-2.5 text-right text-[11.5px] tabular-nums text-slate-300">{pctTxt(act, kh)}</td>,
@@ -446,11 +456,11 @@ export function ProductSummaryView({
     const clVal = tdTh != null && tdKh != null ? Math.round((tdTh - tdKh) * 100) : null;
     cells.push(
       <td key="gyk" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(khYtdV)}</td>,
-      <td key="gya" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200">{fmt(thYtdV)}</td>,
-      <td key="gyp" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{pctTxt(thYtdV, khYtdV)}</td>,
+      <td key="gya" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-green-300">{fmt(thYtdV)}</td>,
+      <td key="gyp" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300">{pctTxt(thYtdV, khYtdV)}</td>,
       <td key="gytd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300">{pctTxt(thYtdV, dtUpdV)}</td>,
       <td key="gykp" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300">{pctTxt(khYtdV, dtUpdV)}</td>,
-      <td key="gycl" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">
+      <td key="gycl" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300">
         {clVal == null ? '—' : (clVal > 0 ? '+' : '') + clVal + '%'}
       </td>,
     );
@@ -458,7 +468,7 @@ export function ProductSummaryView({
     cells.push(
       <td key="gtdn" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(dtV)}</td>,
       <td key="gtup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200">{fmt(dtUpdV)}</td>,
-      <td key="gtch" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmtCh(ch)}</td>,
+      <td key="gtch" className={`px-3 py-2.5 text-right text-[12.5px] tabular-nums ${ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : ''}`}>{fmtCh(ch)}</td>,
       <td key="gtkl" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-purple-200">{fmt(dtUpdV - thYtdV)}</td>,
     );
     cells.push(
@@ -466,7 +476,7 @@ export function ProductSummaryView({
       <td key="gqup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(upcomingV)}</td>,
       HIEN_HET_HIEU_LUC && <td key="gqhet" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-red-200">{fmt(hetV)}</td>,
       <td key="gqtot" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(quotaV)}</td>,
-      <td key="gqth" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-orange-200">{fmt(thYtdV)}</td>,
+      <td key="gqth" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-green-300">{fmt(thYtdV)}</td>,
       <td key="gqkd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(onHandV - thYtdV)}</td>,
     );
     return cells;
@@ -523,7 +533,7 @@ export function ProductSummaryView({
                 </th>,
                 <th
                   colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
-                  className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-indigo-800 border-r border-b border-slate-200 bg-indigo-50/60"
+                  className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
                 >
                   Quota
                 </th>,
@@ -552,12 +562,12 @@ export function ProductSummaryView({
                 <th key="tkl" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
                   KH còn lại
                 </th>,
-                <th key="qoh" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">On hand</th>,
-                <th key="qup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Upcoming</th>,
-                HIEN_HET_HIEU_LUC && <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + 3 + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Hết HL</th>,
-                <th key="qtot" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Tổng</th>,
-                <th key="qth" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-orange-600 border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">TH YTD</th>,
-                <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-indigo-600 border-r border-b border-slate-200 bg-indigo-50/40 whitespace-nowrap">Khả dụng</th>,
+                <th key="qoh" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">On hand</th>,
+                <th key="qup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Upcoming</th>,
+                HIEN_HET_HIEU_LUC && <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + 3 + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Hết HL</th>,
+                <th key="qtot" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Tổng</th>,
+                <th key="qth" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">TH YTD</th>,
+                <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Khả dụng</th>,
               )}
             </thead>
             <tbody>
