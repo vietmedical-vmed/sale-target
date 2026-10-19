@@ -104,7 +104,10 @@ export function ThYtdBar({ dtYtd, khYtdDt }) {
 export function GroupRankCard({ rank }) {
   const top = rank.slice(0, 5);
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col">
+    // md+: nội dung absolute nên khung không tự cao thêm, chỉ lấp chiều cao hàng
+    // (do cột 2 thanh quyết định) -> 5 nhóm giãn đều vừa khung, waterfall giữ nguyên.
+    <div className="bg-white border border-slate-200 rounded-xl relative min-h-[200px]">
+      <div className="md:absolute md:inset-0 p-3.5 flex flex-col overflow-hidden">
       <div className="text-[11px] text-slate-400 mb-2 tracking-wide">
         Top 5 nhóm SP · % Thực hiện YTD
       </div>
@@ -113,41 +116,45 @@ export function GroupRankCard({ rank }) {
           Chưa có KH YTD
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        // Giãn đều 5 dòng cho vừa chiều cao khung (khung cao theo hàng của lưới).
+        <div className="flex-1 flex flex-col justify-between gap-1.5">
           {top.map((g, i) => {
-            const ok = g.pct >= 90;
+            const color = g.pct >= 90 ? '#10b981' : '#ef4444';
             return (
-              <div
-                key={g.name}
-                className="flex items-center gap-2"
-                title={`${g.name}: ${moneyTy3(g.th)} / ${moneyTy3(g.kh)}`}
-              >
-                <span className="w-3 shrink-0 text-[11px] text-slate-400 tabular-nums">
+              <div key={g.name} className="flex gap-2" title={g.name}>
+                <span className="w-3 shrink-0 text-[11px] text-slate-400 tabular-nums leading-[18px]">
                   {i + 1}
                 </span>
-                <span className="w-[38%] min-w-0 truncate text-[12px] text-slate-700">
-                  {g.name}
-                </span>
-                <div className="flex-1 h-1.5 bg-slate-100 rounded overflow-hidden">
-                  <div
-                    className="h-full rounded"
-                    style={{
-                      width: Math.min(g.pct, 100) + '%',
-                      background: ok ? '#10b981' : '#ef4444',
-                    }}
-                  />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="flex-1 min-w-0 truncate text-[12px] font-medium text-slate-700">
+                      {g.name}
+                    </span>
+                    <span
+                      className="shrink-0 text-[13px] font-bold tabular-nums"
+                      style={{ color }}
+                    >
+                      {g.pct + '%'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded overflow-hidden">
+                      <div
+                        className="h-full rounded"
+                        style={{ width: Math.min(g.pct, 100) + '%', background: color }}
+                      />
+                    </div>
+                    <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
+                      {moneyTy3(g.th) + ' / ' + moneyTy3(g.kh)}
+                    </span>
+                  </div>
                 </div>
-                <span
-                  className="w-10 shrink-0 text-right text-[12px] font-bold tabular-nums"
-                  style={{ color: ok ? '#10b981' : '#ef4444' }}
-                >
-                  {g.pct + '%'}
-                </span>
               </div>
             );
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
