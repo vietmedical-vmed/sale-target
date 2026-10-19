@@ -27,7 +27,7 @@ import { MultiSelect } from './components/MultiSelect.jsx';
 import { AuditLogView } from './components/AuditLogView.jsx';
 import { QuotaChoDuyetView } from './components/QuotaChoDuyetView.jsx';
 import { TeamSummaryBar } from './components/TeamBar.jsx';
-import { AccountBar, ThYtdBar } from './components/StatBars.jsx';
+import { AccountBar, ThYtdBar, GroupRankCard } from './components/StatBars.jsx';
 import { WaterfallChart } from './components/Charts.jsx';
 import { useStickyBars, DetailScrollBox } from './hooks/useLayout.jsx';
 import { ProductSummaryView } from './components/ProductSummaryView.jsx';
@@ -1978,9 +1978,17 @@ function AppInner({ initialAuth, onLogin }) {
       q14Dt = 0, // Quota on-hand (tiền) = quota đã tới tháng thầu * giá
       productCount = 0;
     const treeRows = [];
+    // % TH YTD theo nhóm SP (bảng xếp hạng cạnh 2 thanh): cùng công thức với thanh YTD.
+    const grpYtd = new Map();
+    const grpAcc = (name) => {
+      let e = grpYtd.get(name);
+      if (!e) grpYtd.set(name, (e = { name, th: 0, kh: 0 }));
+      return e;
+    };
     tree.forEach((c) =>
       c.groups.forEach((g) => {
         productCount += g.products.length;
+        const ge = grpAcc(g.name || '');
         g.products.forEach((p) => {
           p.monthly.forEach((cell, i) => {
             plan += cell.rev;
@@ -2002,6 +2010,8 @@ function AppInner({ initialAuth, onLogin }) {
               if (inYtd) {
                 dtYtd += dtActR;
                 khYtdDt += rawUpd * pr;
+                ge.th += dtActR;
+                ge.kh += rawUpd * pr;
               }
               treeRows.push(r);
             });
@@ -2042,8 +2052,13 @@ function AppInner({ initialAuth, onLogin }) {
       dtUpd += past ? dtActR : rawUpd * pr;
       if (inYtd) {
         dtYtd += dtActR;
+        grpAcc(r.grp || '').th += dtActR;
       }
     }
+    const grpRank = Array.from(grpYtd.values())
+      .filter((e) => e.name && e.kh > 0)
+      .map((e) => ({ ...e, pct: Math.round((e.th / e.kh) * 100) }))
+      .sort((a, b) => b.pct - a.pct || b.th - a.th);
     return {
       plan,
       dt,
@@ -2051,6 +2066,7 @@ function AppInner({ initialAuth, onLogin }) {
       dtYtd,
       khYtdDt,
       q14Dt,
+      grpRank,
       chenh: dtUpd - dt,
       customers: tree.length,
       productCount,
@@ -2667,8 +2683,9 @@ function AppInner({ initialAuth, onLogin }) {
               />
             )}
             {tab !== 'diaban' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
+                {/* Lưới 4 cột thẳng hàng với thẻ BU: 2 thanh | top 5 nhóm SP | waterfall (2 cột) */}
+                <div className="flex flex-col gap-2">
                   <AccountBar
                     customers={accountsAssigned - missingAccounts.length}
                     assigned={accountsAssigned}
@@ -2677,7 +2694,10 @@ function AppInner({ initialAuth, onLogin }) {
                   />
                   <ThYtdBar dtYtd={stats.dtYtd} khYtdDt={stats.khYtdDt} />
                 </div>
-                <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
+                <GroupRankCard rank={stats.grpRank} />
+                <div className="md:col-span-2 grid">
+                  <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
+                </div>
               </div>
             )}
           </div>
