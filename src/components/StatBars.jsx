@@ -116,17 +116,22 @@ export function GroupRankCard({ rank }) {
           Chưa có KH YTD
         </div>
       ) : (
-        // Giãn đều 5 dòng cho vừa chiều cao khung (khung cao theo hàng của lưới).
-        <div className="flex-1 flex flex-col justify-between gap-1.5">
+        // Chia khung thành 5 ô cao bằng nhau, nhóm xếp từ trên xuống: ít hơn 5 nhóm
+        // (vd BU chỉ có 2 nhóm) thì ô thừa để trống, không bị đẩy ra 2 đầu khung.
+        <div className="flex-1 flex flex-col min-h-0">
           {top.map((g, i) => {
             const color = g.pct >= 90 ? '#10b981' : '#ef4444';
             return (
-              <div key={g.name} className="flex gap-2" title={g.name}>
-                <span className="w-3 shrink-0 text-[11px] text-slate-400 tabular-nums leading-[18px]">
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
+              <div
+                key={g.name}
+                className="flex-1 basis-0 min-h-0 flex flex-col justify-center"
+                style={{ maxHeight: '20%' }}
+                title={g.name}
+              >
                   <div className="flex items-baseline gap-2">
+                    <span className="w-3 shrink-0 text-[11px] text-slate-400 tabular-nums">
+                      {i + 1}
+                    </span>
                     <span className="flex-1 min-w-0 truncate text-[12px] font-medium text-slate-700">
                       {g.name}
                     </span>
@@ -137,7 +142,7 @@ export function GroupRankCard({ rank }) {
                       {g.pct + '%'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pl-5">
                     <div className="flex-1 h-1.5 bg-slate-100 rounded overflow-hidden">
                       <div
                         className="h-full rounded"
@@ -148,7 +153,6 @@ export function GroupRankCard({ rank }) {
                       {moneyTy3(g.th) + ' / ' + moneyTy3(g.kh)}
                     </span>
                   </div>
-                </div>
               </div>
             );
           })}
