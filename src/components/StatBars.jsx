@@ -3,7 +3,7 @@ import { fmtInt, moneyTy3 } from '../lib/format.js';
 
 export function AccountBar({ customers, assigned, missing, onShowMissing }) {
   const pct = assigned > 0 ? Math.round((customers / assigned) * 100) : 0;
-  const barColor = pct >= 100 ? '#10b981' : '#f59e0b';
+  const barColor = pct >= 90 ? '#10b981' : '#ef4444';
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3.5">
       <div className="text-[11px] text-slate-400 mb-2 tracking-wide">
@@ -50,8 +50,7 @@ export function AccountBar({ customers, assigned, missing, onShowMissing }) {
 
 export function ThYtdBar({ dtYtd, khYtdDt }) {
   const thPct = khYtdDt > 0 ? Math.round((dtYtd / khYtdDt) * 100) : 0;
-  const barColor =
-    thPct >= 100 ? '#10b981' : thPct >= 80 ? '#f59e0b' : '#ef4444';
+  const barColor = thPct >= 90 ? '#10b981' : '#ef4444';
   const barWidth = Math.min(thPct, 150);
   const markPos = thPct > 100 ? Math.round((100 / thPct) * 100) : 100;
   return (
