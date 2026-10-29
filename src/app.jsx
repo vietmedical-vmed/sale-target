@@ -1128,6 +1128,11 @@ function AppInner({ initialAuth, onLogin }) {
         if (draftRef.current === 0) {
           const changedRows = parseChangedRows(r, fields);
           patchRowsFromChanges(changedRows, r.deleted || []);
+          // Patch trên chỉ áp cho dòng kế hoạch; dòng ngoài KH về riêng ở r.oopRows.
+          // Pipeline thực hiện chuyển số qua lại giữa 2 loại (xoá/tạo lại dòng OOP) →
+          // không tải lại list OOP thì số cũ còn nằm trong oopRows và bị đếm 2 lần.
+          if ((r.oopRows && r.oopRows.length) || (r.deleted && r.deleted.length))
+            await reloadOop();
         } else {
           setStale(true);
         }
@@ -1145,7 +1150,7 @@ function AppInner({ initialAuth, onLogin }) {
         }
       } catch {}
     }
-  }, [fetchAppVersion, loadData, auth.role, loadScope, fields, parseChangedRows, patchRowsFromChanges]);
+  }, [fetchAppVersion, loadData, reloadOop, auth.role, loadScope, fields, parseChangedRows, patchRowsFromChanges]);
   checkForUpdatesRef.current = checkForUpdates;
   useEffect(() => {
     if (!authed) return;
