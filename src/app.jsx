@@ -40,6 +40,7 @@ import { ganQuotaTheoDot } from './lib/quota.js';
 import { exportQuotaThau } from './lib/excel.js';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
+import { OopCustomerCard, gomOopTheoKh, oopTheoTeam } from './components/OopBlock.jsx';
 import { useVirtualizer, observeElementOffset } from '@tanstack/react-virtual';
 
 const VIRTUAL_THRESHOLD = 30;
@@ -214,6 +215,9 @@ function AppInner({ initialAuth, onLogin }) {
   const [showHelp, setShowHelp] = useState(false);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
+  // Màn Chi tiết: hiện thực hiện ngoài kế hoạch dưới từng thẻ KH (+ thẻ riêng cho KH
+  // chưa có kế hoạch). Mặc định tắt cho màn gọn.
+  const [showOop, setShowOop] = useState(false);
   const [teamOpen, setTeamOpen] = useState(() => new Set());
   // Hàm xuất Excel do màn tổng hợp đang mở đăng ký lên (nút nằm trên thanh bộ lọc).
   // setState với hàm phải bọc thêm 1 lớp, không React sẽ tưởng là updater.
@@ -2147,6 +2151,54 @@ function AppInner({ initialAuth, onLogin }) {
   const [diaBanPrefill, setDiaBanPrefill] = useState(null);
   const [showMissing, setShowMissing] = useState(false);
 
+  // Ngoài KH trên màn Chi tiết: cùng bộ lọc + tìm kiếm với cây KH, gom theo khoá thẻ KH.
+  const oopTheoKh = useMemo(
+    () =>
+      gomOopTheoKh(
+        viewBu && viewBu !== 'test'
+          ? teamBarOop.filter((r) => r.bu === viewBu)
+          : teamBarOop,
+      ),
+    [teamBarOop, viewBu],
+  );
+  const oopSpCount = useMemo(() => {
+    let n = 0;
+    oopTheoKh.forEach((e) => (n += e.items.length));
+    return n;
+  }, [oopTheoKh]);
+  // KH có thực hiện ngoài KH nhưng không có thẻ kế hoạch nào → thẻ riêng ở cuối.
+  const oopKhongCoThe = useMemo(() => {
+    if (!showOop) return [];
+    const keys = new Set(tree.map((c) => c.custId || c.customer));
+    return Array.from(oopTheoKh.values())
+      .filter((e) => !keys.has(e.key))
+      .sort((a, b) => {
+        const oa = a.cust === OOP_CUST ? 1 : 0,
+          ob = b.cust === OOP_CUST ? 1 : 0;
+        return oa - ob || b.dt - a.dt;
+      });
+  }, [showOop, tree, oopTheoKh]);
+  const oopActions = useMemo(
+    () => ({
+      canAdd: canAddCust,
+      isAdmin,
+      busy: oopFixBusy,
+      // Dùng lại luồng prefill của modal đối chiếu: mở form Thêm SP nhảy thẳng bước 2.
+      onAdd: (it, e) =>
+        setAddProductPrefill({
+          custId: e.custId,
+          cust: e.cust,
+          grp: it.grp,
+          ps: it.psDiaBan || it.ps,
+          mset: it.mset,
+          prod: it.prod,
+        }),
+      onAddAll: (e) => bulkAddProducts(e.items.flatMap((it) => it.rows)),
+      onFix: (ly) => setOopDetailReason(ly),
+    }),
+    [canAddCust, isAdmin, oopFixBusy, bulkAddProducts],
+  );
+
   // Mẫu số của thẻ "Số lượng account": số khách hàng ĐƯỢC PHÂN CHIA theo cấu hình
   // địa bàn (dm_dia_ban), lọc theo đúng bộ lọc đang áp dụng cho tử số (KH có kế hoạch).
   const accountsAssigned = useMemo(() => {
@@ -2488,6 +2540,21 @@ function AppInner({ initialAuth, onLogin }) {
               >
                 {showBasePlan ? <EyeOff size={14} /> : <Eye size={14} />}
                 {showBasePlan ? 'Ẩn SL đầu năm' : 'Hiện SL đầu năm'}
+              </button>
+            )}
+            {tab === 'detail' && oopSpCount > 0 && (
+              <button
+                onClick={() => setShowOop((v) => !v)}
+                title={
+                  showOop
+                    ? 'Ẩn các sản phẩm có thực hiện nhưng chưa có trong kế hoạch'
+                    : 'Hiện các sản phẩm có thực hiện nhưng chưa có trong kế hoạch, ngay dưới thẻ từng khách hàng'
+                }
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] rounded-md border ${showOop ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+              >
+                {showOop ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showOop ? 'Ẩn ngoài KH' : 'Hiện ngoài KH'}
+                <span className="tabular-nums text-[12px] opacity-80">· {oopSpCount} SP</span>
               </button>
             )}
             {canAddCust && (
@@ -2972,7 +3039,17 @@ function AppInner({ initialAuth, onLogin }) {
                         n.has(k) ? n.delete(k) : n.add(k);
                         return n;
                       });
-                    const renderOneCard = (c) => (
+                    // tk: đang ở chế độ chia theo team → chỉ lấy SP ngoài KH của team đó.
+                    const oopOf = (c, tk) => {
+                      if (!showOop) return undefined;
+                      const e = oopTheoKh.get(c.custId || c.customer);
+                      if (!e || !tk) return e;
+                      const teamsCoThe = Object.keys(TEAMS).filter(
+                        (k) => k !== 'test' && (c.buList || []).includes(k),
+                      );
+                      return oopTheoTeam(e, tk, teamsCoThe);
+                    };
+                    const renderOneCard = (c, tk) => (
                       <CustomerCard
                         key={cardKey(c)}
                         {...c}
@@ -2994,9 +3071,12 @@ function AppInner({ initialAuth, onLogin }) {
                         conflicts={conflicts}
                         onResolveConflict={resolveConflict}
                         onEnsureMonthRow={ensureMonthRow}
+                        oop={oopOf(c, tk)}
+                        oopActions={oopActions}
                       />
                     );
-                    const renderCards = (list) => list.map(renderOneCard);
+                    const renderCards = (list, tk) =>
+                      list.map((c) => renderOneCard(c, tk));
                     if (!viewBu && canSwitchTeam(auth.role)) {
                       const realTeams = Object.keys(TEAMS).filter(
                         (k) => k !== 'test',
@@ -3064,7 +3144,7 @@ function AppInner({ initialAuth, onLogin }) {
                               }
                             </button>
                             {isOpen && (
-                              <div className="mt-1.5">{renderCards(custs)}</div>
+                              <div className="mt-1.5">{renderCards(custs, tk)}</div>
                             )}
                           </div>
                         );
@@ -3082,6 +3162,31 @@ function AppInner({ initialAuth, onLogin }) {
                     }
                     return renderCards(tree);
                   })()}
+              {oopKhongCoThe.length > 0 && (
+                <div className="mt-4">
+                  <div className="px-1 pb-2 text-[12px] font-semibold uppercase tracking-wide text-amber-700">
+                    Khách hàng chưa có trong kế hoạch · {oopKhongCoThe.length} KH
+                  </div>
+                  {oopKhongCoThe.map((e) => {
+                    const k = 'oop:' + e.key;
+                    return (
+                      <OopCustomerCard
+                        key={k}
+                        oop={e}
+                        open={openCards.has(k)}
+                        onToggle={() =>
+                          setOpenCards((prev) => {
+                            const n = new Set(prev);
+                            n.has(k) ? n.delete(k) : n.add(k);
+                            return n;
+                          })
+                        }
+                        {...oopActions}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </DetailScrollBox>
           </React.Fragment>
         )}

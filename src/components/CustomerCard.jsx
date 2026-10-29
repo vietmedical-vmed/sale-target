@@ -7,6 +7,7 @@ import { ProductGroupSection } from './ProductGroupSection.jsx';
 import { ProductPickerForm } from './AddProduct.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './QuotaThau.jsx';
 import { trangThaiDot } from '../lib/quota.js';
+import { OopBlock, OopChip } from './OopBlock.jsx';
 
 
 // ============ CUSTOMER CARD ============
@@ -34,6 +35,8 @@ export const CustomerCard = React.memo(function CustomerCard({
   conflicts,
   onResolveConflict,
   onEnsureMonthRow,
+  oop,
+  oopActions,
 }) {
   const [adding, setAdding] = useState(false);
   // Khoá chống thêm trùng — chỉ tính khi form thêm SP đang mở (tránh chạy cho mọi thẻ).
@@ -147,10 +150,11 @@ export const CustomerCard = React.memo(function CustomerCard({
                 className="text-slate-400 flex-shrink-0"
               />
             )}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 flex items-center gap-2">
               <h3 className="text-[14px] font-semibold text-slate-900 truncate">
                 {customer}
               </h3>
+              {oop && <OopChip oop={oop} />}
             </div>
             <div className="hidden md:flex items-center gap-5 flex-shrink-0">
               <div className="text-right">
@@ -283,6 +287,7 @@ export const CustomerCard = React.memo(function CustomerCard({
               onEnsureMonthRow={onEnsureMonthRow}
             />
           ))}
+          {oop && <OopBlock oop={oop} embedded {...oopActions} />}
         </div>
       )}
     </div>
