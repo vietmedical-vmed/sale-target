@@ -2822,7 +2822,7 @@ function AppInner({ initialAuth, onLogin }) {
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
         ) : tab === 'dotthieu' && isAdmin ? (
-          <DotThieuThongTinView />
+          <DotThieuThongTinView customers={custSource} />
         ) : tab === 'diaban' ? (
           <DiaBanView
             rows={teamRows}
