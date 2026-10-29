@@ -10,6 +10,8 @@ import {
   BU_GIA_DANH_MUC, giaDanhMucCttm,
 } from "./helpers.ts";
 
+const QUIET_ACTIONS = new Set(["getChanges", "getRev"]);
+
 Deno.serve(async (req) => {
   const _origin = getAllowedOrigin(req);
   const requestId = crypto.randomUUID().slice(0, 8);
@@ -18,7 +20,8 @@ Deno.serve(async (req) => {
   let _user = "";
   let _role = "";
   const json = (body: Record<string, unknown>, status = 200) => {
-    if (_action) {
+    // Poll thành công (client gọi mỗi 45s/tab) không ghi log — chiếm phần lớn Log Ingestion.
+    if (_action && !(status < 400 && QUIET_ACTIONS.has(_action))) {
       console.log(JSON.stringify({
         requestId, action: _action, user: _user, role: _role,
         status, duration: Date.now() - t0,
@@ -460,6 +463,7 @@ Deno.serve(async (req) => {
         if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
         if (msg.includes("thang_sai_dinh_dang")) return json({ ok: false, error: "thang_sai_dinh_dang" }, 400);
         if (msg.includes("dot_thieu_thong_tin")) return json({ ok: false, error: msg.replace(/^.*dot_thieu_thong_tin:\s*/, "") }, 400);
+        if (msg.includes("dot_moi_phai_kem_quota")) return json({ ok: false, error: msg.replace(/^.*dot_moi_phai_kem_quota:\s*/, "") }, 400);
         if (msg.includes("loai_khong_hop_le")) return json({ ok: false, error: "loai_khong_hop_le" }, 400);
         throw new Error(msg);
       }
@@ -497,22 +501,28 @@ Deno.serve(async (req) => {
     if (action === "saveQuotaThau") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      // Đợt mới đi cùng quota của nó trong một lần lưu (luu_quota_thau kiểm đủ tháng,
+      // hiệu lực và quota > 0).
+      const dots = Array.isArray(payload.dots) ? payload.dots : [];
       if (!rows.length) return json({ ok: false, error: "no_rows" }, 400);
-      const { data, error } = await db.rpc("upsert_quota_thau", {
-        p_rows: rows, ...scopeParams(sess), p_actor: sess.u,
+      const { data, error } = await db.rpc("luu_quota_thau", {
+        p_dots: dots, p_rows: rows, ...scopeParams(sess), p_actor: sess.u,
       });
       if (error) {
         const msg = String(error.message || "");
         if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403);
         if (msg.includes("dot_khong_ton_tai")) return json({ ok: false, error: "dot_khong_ton_tai" }, 400);
-        if (msg.includes("dot_thieu_thong_tin")) return json({ ok: false, error: msg.replace(/^.*dot_thieu_thong_tin:\s*/, "") }, 400);
+        const loi = msg.match(/(dot_thieu_thong_tin|dot_khong_co_quota|dot_da_ton_tai|dot_moi_thieu_so|thang_sai_dinh_dang):\s*(.*)$/s);
+        if (loi) return json({ ok: false, error: loi[2] }, 400);
         if (msg.includes("loai_khong_hop_le")) return json({ ok: false, error: "loai_khong_hop_le" }, 400);
         throw new Error(msg);
       }
-      await writeAuditLog(db, sess, "saveQuotaThau", Number(data) || rows.length, {
+      const saved = Number(data?.quota) || 0;
+      await writeAuditLog(db, sess, "saveQuotaThau", saved || rows.length, {
         rows: rows.slice(0, 50),
+        ...(dots.length ? { dots } : {}),
       });
-      return json({ ok: true, saved: Number(data) || 0 });
+      return json({ ok: true, saved, dot: Number(data?.dot) || 0 });
     }
 
     if (action === "deleteProduct") {

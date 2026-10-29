@@ -295,8 +295,8 @@ function AppInner({ initialAuth, onLogin }) {
     [napLaiQuota],
   );
   const saveQuota = useCallback(
-    async (rowsIn) => {
-      await api('saveQuotaThau', { rows: rowsIn });
+    async (rowsIn, dotsIn = []) => {
+      await api('saveQuotaThau', { rows: rowsIn, dots: dotsIn });
       await napLaiQuota();
       await checkForUpdatesRef.current?.();
     },
@@ -1165,7 +1165,10 @@ function AppInner({ initialAuth, onLogin }) {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVis);
     // Vẫn giữ interval để phát hiện xung đột khi user để tab mở lâu, không focus.
-    const id = setInterval(checkForUpdates, 45000);
+    // Tab ẩn thì bỏ qua (đỡ edge invocation + log); hiện lại đã có onVis kiểm tra ngay.
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') checkForUpdates();
+    }, 45000);
     return () => {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVis);

@@ -783,6 +783,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                 custId={custId || ''}
                 grp={groupName}
                 locked={!canEdit}
+                onThemDot={(loai) => openQuota({ themDot: loai })}
               />
             )}
             <button

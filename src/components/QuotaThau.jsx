@@ -104,12 +104,12 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
 }
 
 // Danh sách đợt thầu của 1 nhóm SP, thay cho 2 ô tháng cố định trước đây.
-// Mỗi đợt bắt buộc có tháng thầu + hiệu lực (số tháng).
-export function DotThauPanel({ fy, ps, custId, grp, locked }) {
+// Mỗi đợt bắt buộc có tháng thầu + hiệu lực (số tháng). Thêm đợt thì mở bảng nhập
+// quota (onThemDot): đợt mới lưu cùng quota, không tạo đợt rỗng.
+export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
   const ctx = useContext(QuotaThauCtx);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [dangThem, setDangThem] = useState(null); // loai đang thêm đợt
   if (!ctx) return null;
   const all = ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || [];
   const cua = (loai) =>
@@ -131,10 +131,6 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
       setBusy(false);
     }
   };
-  const them = async (loai, thang, thoiGian) => {
-    const ok = await run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, thang, thoiGian }]));
-    if (ok) setDangThem(null);
-  };
   const sua = (loai, dot, thang, thoiGian) =>
     run(() => ctx.saveDot([{ fy, ps, custId, grp, loai, dot, thang, thoiGian }]));
   const xoa = (loai, dot, nhan) => {
@@ -152,7 +148,7 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
       <span className="text-[10.5px] font-semibold text-blue-800 uppercase tracking-wide whitespace-nowrap">
         {LOAI_LABEL[loai]}
       </span>
-      {list.length === 0 && dangThem !== loai && (
+      {list.length === 0 && (
         <span className="text-[11px] text-slate-400">chưa có đợt nào</span>
       )}
       {list.map((d) => (
@@ -180,34 +176,14 @@ export function DotThauPanel({ fy, ps, custId, grp, locked }) {
           )}
         </span>
       ))}
-      {!locked && dangThem === loai && (
-        <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded-md bg-blue-50 border border-blue-200">
-          <span className="text-[10px] text-blue-700">Đợt mới</span>
-          <DotEditor
-            thang=""
-            thoiGian=""
-            locked={busy}
-            autoFocus
-            curMonth={CURRENT_MONTH}
-            onSave={(t, h) => them(loai, t, h)}
-          />
-          <button
-            onClick={() => setDangThem(null)}
-            className="text-[11px] text-slate-500 hover:text-slate-700 px-1"
-            title="Huỷ thêm đợt"
-          >
-            ✕
-          </button>
-        </span>
-      )}
-      {!locked && dangThem !== loai && (
+      {!locked && onThemDot && (
         <button
           onClick={() => {
             setErr('');
-            setDangThem(loai);
+            onThemDot(loai);
           }}
           disabled={busy}
-          title="Thêm đợt: nhập tháng thầu và hiệu lực (số tháng)"
+          title="Thêm đợt: mở bảng nhập quota, điền tháng thầu, hiệu lực và quota rồi lưu một lần"
           className="text-[11px] font-semibold px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
         >
           + đợt
@@ -249,17 +225,25 @@ export function QuotaThauModal({
   const dots = ctx
     ? ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || []
     : [];
-  // Cột: thầu cũ luôn có (không thuộc đợt nào), rồi tới từng đợt đã khai báo.
+  // Đợt đang thêm trong modal: chưa có trên DB, lưu cùng quota của nó khi bấm Lưu.
+  // Số đợt chốt lúc thêm (max + 1) để khoá ô nhập không đổi khi bỏ đợt khác.
+  const [moi, setMoi] = useState(() =>
+    focus && focus.themDot
+      ? [{ loai: focus.themDot, dot: dots.filter((d) => d.loai === focus.themDot).reduce((m, d) => Math.max(m, d.dot), 0) + 1, thang: '', thoiGian: '' }]
+      : [],
+  );
+  // Cột: thầu cũ luôn có (không thuộc đợt nào), rồi tới từng đợt đã khai báo / đang thêm.
   const cols = useMemo(() => {
-    const nChinh = dots.filter((d) => d.loai === 'chinh').length;
-    const nBs = dots.filter((d) => d.loai === 'bo_sung').length;
-    const ds = [...dots].sort((a, b) =>
+    const ds = [...dots, ...moi.map((m) => ({ ...m, moi: true }))].sort((a, b) =>
       a.loai === b.loai ? a.dot - b.dot : a.loai === 'chinh' ? -1 : 1,
     );
+    const nChinh = ds.filter((d) => d.loai === 'chinh').length;
+    const nBs = ds.filter((d) => d.loai === 'bo_sung').length;
     return [{ loai: 'cu', dot: 1, label: LOAI_LABEL.cu, thang: '', du: true }].concat(
       ds.map((d) => ({
         loai: d.loai,
         dot: d.dot,
+        moi: !!d.moi,
         thang: d.thang,
         thoiGian: d.thoiGian,
         du: dotDuThongTin(d),
@@ -268,7 +252,26 @@ export function QuotaThauModal({
         label: dotLabel(d.loai, d.dot, d.loai === 'chinh' ? nChinh : nBs),
       })),
     );
-  }, [dots]);
+  }, [dots, moi]);
+  const themDot = (loai) =>
+    setMoi((ms) => [
+      ...ms,
+      {
+        loai,
+        dot: [...dots, ...ms].filter((d) => d.loai === loai).reduce((m, d) => Math.max(m, d.dot), 0) + 1,
+        thang: '',
+        thoiGian: '',
+      },
+    ]);
+  const suaDotMoi = (loai, dot, patch) =>
+    setMoi((ms) => ms.map((m) => (m.loai === loai && m.dot === dot ? { ...m, ...patch } : m)));
+  // Chỉ bỏ được đợt mới thêm sau cùng của mỗi loại, để số đợt không bị thủng.
+  const boDotMoi = (loai, dot) => {
+    setMoi((ms) => ms.filter((m) => !(m.loai === loai && m.dot === dot)));
+    setDraft((d) => Object.fromEntries(Object.entries(d).filter(([k]) => !k.endsWith(`|${loai}|${dot}`))));
+  };
+  const laDotMoiCuoi = (c) =>
+    c.moi && !moi.some((m) => m.loai === c.loai && m.dot > c.dot);
 
   // Một dòng = 1 sản phẩm ở 1 mức giá. Ngoài các mức giá đang có trên kế hoạch,
   // thêm mức giá chỉ còn tồn tại bên quota để số đã nhập không bị giấu mất.
@@ -324,6 +327,7 @@ export function QuotaThauModal({
   };
   const laDongDangXem = (line) =>
     !!focus &&
+    focus.prod != null &&
     (focus.mset || '') === line.mset &&
     (focus.prod || '') === line.prod &&
     (Number(focus.price) || 0) === line.price;
@@ -372,6 +376,20 @@ export function QuotaThauModal({
         qty: d.qty,
       });
     }
+    // Đợt mới phải đủ tháng thầu, hiệu lực và có giá trị thầu (ít nhất 1 quota > 0).
+    const dotsMoi = [];
+    for (const c of cols) {
+      if (!c.moi) continue;
+      if (!c.du) {
+        setErr(`${c.label} (mới): điền tháng thầu (yyyy-mm) và hiệu lực (số tháng) ở đầu cột.`);
+        return;
+      }
+      if (!rows.some((r) => r.loai === c.loai && r.dot === c.dot && r.qty > 0)) {
+        setErr(`${c.label} (mới): nhập quota cho ít nhất một sản phẩm — đợt không có quota sẽ không được lưu.`);
+        return;
+      }
+      dotsMoi.push({ fy, ps, custId, grp, loai: c.loai, dot: c.dot, thang: c.thang.trim(), thoiGian: Number(c.thoiGian) });
+    }
     if (!rows.length) {
       onClose();
       return;
@@ -379,7 +397,7 @@ export function QuotaThauModal({
     setBusy(true);
     setErr('');
     try {
-      await ctx.saveQuota(rows, { fy, ps, custId, grp });
+      await ctx.saveQuota(rows, dotsMoi);
       onClose();
     } catch (e) {
       setErr(e.message || 'Lưu không được');
@@ -397,14 +415,31 @@ export function QuotaThauModal({
       icon={<span className="text-[14px]">📦</span>}
     >
       <div className="px-4 py-3">
-        <div className="text-[11.5px] text-slate-500 mb-2">
-          Nhập cho mọi sản phẩm của nhóm trong một lần. Mỗi mức giá là một gói
-          thầu riêng. Để trống hoặc nhập 0 để xoá quota của ô đó.
+        <div className="flex items-start gap-2 mb-2">
+          <div className="text-[11.5px] text-slate-500">
+            Nhập cho mọi sản phẩm của nhóm trong một lần. Mỗi mức giá là một gói
+            thầu riêng. Để trống hoặc nhập 0 để xoá quota của ô đó. Đợt mới phải
+            có tháng thầu, hiệu lực và quota mới lưu được.
+          </div>
+          {!locked && (
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              {['chinh', 'bo_sung'].map((loai) => (
+                <button
+                  key={loai}
+                  onClick={() => themDot(loai)}
+                  disabled={busy}
+                  className="text-[11px] font-semibold px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
+                >
+                  + {LOAI_LABEL[loai]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {cols.length === 1 && (
           <div className="text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2">
-            Nhóm SP này chưa khai báo đợt thầu nào. Thêm đợt ở phần đầu nhóm
-            trước, rồi mới nhập được quota thầu chính và bổ sung.
+            Nhóm SP này chưa có đợt thầu nào. Bấm “+ {LOAI_LABEL.chinh}” để thêm
+            đợt, điền tháng thầu, hiệu lực và quota rồi lưu.
           </div>
         )}
         <div className="overflow-auto max-h-[60vh]">
@@ -423,7 +458,42 @@ export function QuotaThauModal({
                     className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap bg-white"
                   >
                     {c.label}
-                    {c.loai !== 'cu' && (
+                    {c.moi && (
+                      <div className="mt-1 flex flex-col items-end gap-1 font-normal">
+                        <span className="text-[10px] text-blue-700">
+                          đợt mới
+                          {laDotMoiCuoi(c) && (
+                            <button
+                              onClick={() => boDotMoi(c.loai, c.dot)}
+                              className="ml-1 text-slate-400 hover:text-red-600"
+                              title="Bỏ đợt mới này"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </span>
+                        <input
+                          value={c.thang}
+                          onChange={(e) => suaDotMoi(c.loai, c.dot, { thang: e.target.value })}
+                          disabled={busy}
+                          placeholder="yyyy-mm"
+                          title="Tháng thầu, dạng năm-tháng, ví dụ 2026-07 (bắt buộc)"
+                          className={`w-[74px] text-[11px] text-right px-1.5 py-0.5 rounded border outline-none ${THANG_RE.test(c.thang.trim()) ? 'border-slate-200' : 'border-red-400 bg-red-50'}`}
+                        />
+                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                          <input
+                            value={c.thoiGian}
+                            onChange={(e) => suaDotMoi(c.loai, c.dot, { thoiGian: e.target.value.replace(/[^0-9]/g, '') })}
+                            disabled={busy}
+                            placeholder="HL"
+                            title="Hiệu lực: số tháng, ví dụ 12, 18, 24 (bắt buộc)"
+                            className={`w-[40px] text-[11px] text-right px-1.5 py-0.5 rounded border outline-none ${hieuLucHopLe(c.thoiGian) ? 'border-slate-200' : 'border-red-400 bg-red-50'}`}
+                          />
+                          tháng
+                        </span>
+                      </div>
+                    )}
+                    {c.loai !== 'cu' && !c.moi && (
                       <div
                         className={`text-[10px] font-normal ${!c.du ? 'text-red-600' : HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? 'text-red-500' : 'text-slate-400'}`}
                         title={c.du ? `Tháng thầu ${c.thang}, hiệu lực ${c.thoiGian} tháng, hết hạn ${c.het}` : 'Đợt chưa đủ tháng thầu / hiệu lực'}
@@ -490,7 +560,13 @@ export function QuotaThauModal({
                         <input
                           value={val(line, c)}
                           disabled={locked || busy || (!c.du && cell(line, c) === '')}
-                          title={!c.du ? 'Đợt chưa đủ tháng thầu / hiệu lực: chỉ xoá hoặc đưa về 0 được' : undefined}
+                          title={
+                            c.moi && !c.du
+                              ? 'Điền tháng thầu và hiệu lực ở đầu cột trước'
+                              : !c.du
+                                ? 'Đợt chưa đủ tháng thầu / hiệu lực: chỉ xoá hoặc đưa về 0 được'
+                                : undefined
+                          }
                           onChange={(e) =>
                             setDraft((d) => ({
                               ...d,
