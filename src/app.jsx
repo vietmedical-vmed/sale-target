@@ -25,7 +25,7 @@ import { LoginGate } from './components/LoginGate.jsx';
 import { Modal } from './components/Modal.jsx';
 import { MultiSelect } from './components/MultiSelect.jsx';
 import { AuditLogView } from './components/AuditLogView.jsx';
-import { QuotaChoDuyetView } from './components/QuotaChoDuyetView.jsx';
+import { DotThieuThongTinView } from './components/DotThieuThongTinView.jsx';
 import { TeamSummaryBar } from './components/TeamBar.jsx';
 import { AccountBar, ThYtdBar, GroupRankCard } from './components/StatBars.jsx';
 import { WaterfallChart } from './components/Charts.jsx';
@@ -185,7 +185,7 @@ function AppInner({ initialAuth, onLogin }) {
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'quotaduyet' | 'audit'
+  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'dotthieu' | 'audit'
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -2582,9 +2582,9 @@ function AppInner({ initialAuth, onLogin }) {
             />
             {isAdmin && (
               <TabBtn
-                active={tab === 'quotaduyet'}
-                onClick={() => setTab('quotaduyet')}
-                label="Quota chờ duyệt"
+                active={tab === 'dotthieu'}
+                onClick={() => setTab('dotthieu')}
+                label="Đợt thiếu tháng thầu"
               />
             )}
             {(auth.role === 'admin' || auth.role === 'manager') && (
@@ -2672,7 +2672,7 @@ function AppInner({ initialAuth, onLogin }) {
             </div>
           )}
         </header>
-        {tab !== 'audit' && tab !== 'quotaduyet' && (
+        {tab !== 'audit' && tab !== 'dotthieu' && (
           <div className="px-6 pt-4">
             {canSwitchTeam(auth.role) && (
               <TeamSummaryBar
@@ -2821,8 +2821,8 @@ function AppInner({ initialAuth, onLogin }) {
         )}
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
-        ) : tab === 'quotaduyet' && isAdmin ? (
-          <QuotaChoDuyetView onChanged={napLaiQuota} />
+        ) : tab === 'dotthieu' && isAdmin ? (
+          <DotThieuThongTinView />
         ) : tab === 'diaban' ? (
           <DiaBanView
             rows={teamRows}
