@@ -12,16 +12,20 @@ const _fmt = (ws, r, c, z) => {
   if (cell && cell.v !== '' && cell.v != null) cell.z = z;
 };
 
-export async function exportSummaryPS(data) {
+// base: 'upd' = so thực hiện với KH update, 'dn' = so với Target đầu năm
+export async function exportSummaryPS(data, base = 'upd') {
   const XLSX = await loadXLSX();
   const wb = XLSX.utils.book_new();
-  _buildSumPSSheet(XLSX, wb, data, 'money');
-  _buildSumPSSheet(XLSX, wb, data, 'qty');
-  XLSX.writeFile(wb, `TongHop_theo_PS_${_today()}.xlsx`);
+  _buildSumPSSheet(XLSX, wb, data, 'money', base);
+  _buildSumPSSheet(XLSX, wb, data, 'qty', base);
+  const suffix = base === 'dn' ? '_vs_Target' : '';
+  XLSX.writeFile(wb, `TongHop_theo_PS${suffix}_${_today()}.xlsx`);
 }
 
-function _buildSumPSSheet(XLSX, wb, data, mode) {
+function _buildSumPSSheet(XLSX, wb, data, mode, base) {
   const isSL = mode === 'qty';
+  const isDn = base === 'dn';
+  const kh = isDn ? 'Target' : 'KH';
   const tr = isSL ? (v) => Math.round(Number(v) || 0) : (v) => (Number(v) || 0) / 1e6;
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
   const hasAct = (i) => i <= curIdx;
@@ -48,7 +52,7 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
   for (let i = 0; i < 12; i++) {
     if (hasAct(i)) {
       H1.push(MONTH_LABELS[i], '', '');
-      H2.push('KH', 'TH', '% TH');
+      H2.push(kh, 'TH', '% TH');
       merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
       cols.push({ wch: 10 }, { wch: 10 }, { wch: 7 });
       numCols.push(c, c + 1);
@@ -56,28 +60,32 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
       c += 3;
     } else {
       H1.push(MONTH_LABELS[i]);
-      H2.push('KH');
+      H2.push(kh);
       cols.push({ wch: 10 });
       numCols.push(c);
       c += 1;
     }
   }
   H1.push('Luỹ kế YTD', '', '', '', '', '');
-  H2.push('KH', 'TH', '% TH YTD', 'tốc độ TH YTD', 'tốc độ KH YTD', 'CL tốc độ');
+  H2.push(kh, 'TH', '% TH YTD', 'tốc độ TH YTD', `tốc độ ${kh} YTD`, 'CL tốc độ');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
   numCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
-  H1.push('Target', '', '', '');
+  H1.push(isDn ? 'Cả năm' : 'Target', '', '', '');
   H2.push(
     isSL ? 'SL đầu năm' : 'Target đầu năm',
-    isSL ? 'SL dự kiến' : 'DThu dự kiến',
-    'Chênh lệch', 'KH còn lại',
+    isDn ? 'TH YTD' : isSL ? 'SL dự kiến' : 'DThu dự kiến',
+    isDn ? '% HT năm' : 'Chênh lệch',
+    isDn ? 'Còn lại' : 'KH còn lại',
   );
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
-  numCols.push(c, c + 1, c + 2, c + 3);
+  if (isDn) {
+    numCols.push(c, c + 1, c + 3);
+    pctCols.push(c + 2);
+  } else numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
   const qCols = HIEN_HET_HIEU_LUC
     ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng']
@@ -92,11 +100,14 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
   const levels = [null, null];
   const push = (level, label, d) => {
     const dtV = isSL ? (Number(d.slDauNam) || 0) : (Number(d.dt) || 0);
-    const dtUpdV = isSL ? (Number(d.slUpd) || 0) : (Number(d.dtUpd) || 0);
+    // Mốc Target đầu năm: mẫu số tốc độ / KH theo tháng / KH YTD đều lấy theo target gốc
+    const dtUpdV = isDn ? dtV : isSL ? (Number(d.slUpd) || 0) : (Number(d.dtUpd) || 0);
     const ch = dtUpdV - dtV;
-    const khYtdV = isSL ? (Number(d.khYtd) || 0) : (Number(d.khYtdDt) || 0);
+    const khYtdV = isDn
+      ? (isSL ? (Number(d.dnYtd) || 0) : (Number(d.dnYtdDt) || 0))
+      : isSL ? (Number(d.khYtd) || 0) : (Number(d.khYtdDt) || 0);
     const dtYtdV = isSL ? (Number(d.ytd) || 0) : (Number(d.dtYtd) || 0);
-    const moKh = isSL ? d.moKh : d.moKhDt;
+    const moKh = isDn ? (isSL ? d.moDn : d.moDnDt) : isSL ? d.moKh : d.moKhDt;
     const moAct = isSL ? d.moAct : d.moActDt;
     const row = [
       '   '.repeat(level) + label,
@@ -117,7 +128,8 @@ function _buildSumPSSheet(XLSX, wb, data, mode) {
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
-    row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - dtYtdV));
+    if (isDn) row.push(tr(dtV), tr(dtYtdV), dtV > 0 ? dtYtdV / dtV : '', tr(dtV - dtYtdV));
+    else row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - dtYtdV));
     const q14V = isSL ? (d.q14 || 0) : (d.q14Dt || 0);
     const qUpV = isSL ? (d.qUpcoming || 0) : (d.qUpcomingDt || 0);
     const qHetV = isSL ? (d.qHet || 0) : (d.qHetDt || 0);

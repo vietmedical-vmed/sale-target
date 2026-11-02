@@ -95,6 +95,10 @@ export function SummaryView({
         moActDt: MONTHS.map(() => 0),
         khYtd: 0,
         khYtdDt: 0,
+        moDn: MONTHS.map(() => 0),
+        moDnDt: MONTHS.map(() => 0),
+        dnYtd: 0,
+        dnYtdDt: 0,
         slDauNam: 0,
         slUpd: 0,
         prods: new Set(),
@@ -163,9 +167,13 @@ export function SummaryView({
           o.moKhDt[mi] += dMoKh;
           o.moAct[mi] += actQty;
           o.moActDt[mi] += dMoAct;
+          o.moDn[mi] += dSl;
+          o.moDnDt[mi] += dDt;
         }
         o.khYtd += isOop ? 0 : inYtd ? planUpd : 0;
         o.khYtdDt += dKhYtdDt;
+        o.dnYtd += isOop ? 0 : inYtd ? dSl : 0; // Target đầu năm luỹ kế YTD
+        o.dnYtdDt += isOop ? 0 : inYtd ? dDt : 0;
       };
       const prodKey = `${r.grp}||${r.mset}||${r.prod}`;
       bump(c);
@@ -205,6 +213,10 @@ export function SummaryView({
           moActDt: MONTHS.map(() => 0),
           khYtd: 0,
           khYtdDt: 0,
+          moDn: MONTHS.map(() => 0),
+          moDnDt: MONTHS.map(() => 0),
+          dnYtd: 0,
+          dnYtdDt: 0,
           slDauNam: 0,
           slUpd: 0,
           prodMap: new Map(),
@@ -238,6 +250,10 @@ export function SummaryView({
           moActDt: MONTHS.map(() => 0),
           khYtd: 0,
           khYtdDt: 0,
+          moDn: MONTHS.map(() => 0),
+          moDnDt: MONTHS.map(() => 0),
+          dnYtd: 0,
+          dnYtdDt: 0,
           slDauNam: 0,
           slUpd: 0,
         });
@@ -269,6 +285,10 @@ export function SummaryView({
       moActDt: MONTHS.map(() => 0),
       khYtd: 0,
       khYtdDt: 0,
+      moDn: MONTHS.map(() => 0),
+      moDnDt: MONTHS.map(() => 0),
+      dnYtd: 0,
+      dnYtdDt: 0,
       slDauNam: 0,
       slUpd: 0,
       prodCount: 0,
@@ -294,9 +314,13 @@ export function SummaryView({
         a.moKhDt[i] += c.moKhDt[i];
         a.moAct[i] += c.moAct[i];
         a.moActDt[i] += c.moActDt[i];
+        a.moDn[i] += c.moDn[i];
+        a.moDnDt[i] += c.moDnDt[i];
       }
       a.khYtd += c.khYtd;
       a.khYtdDt += c.khYtdDt;
+      a.dnYtd += c.dnYtd;
+      a.dnYtdDt += c.dnYtdDt;
       a.slDauNam += c.slDauNam;
       a.slUpd += c.slUpd;
       a.prodCount += c.prodCount;
@@ -396,13 +420,16 @@ export function SummaryView({
   // Thu gọn/mở phần thực hiện theo tháng (mặc định thu gọn → chỉ còn Luỹ kế YTD).
   const [showMonths, setShowMonths] = useState(false);
   const [viewMode, setViewMode] = useState('money');
+  // Mốc đối chiếu thực hiện: 'upd' = KH update / DThu dự kiến, 'dn' = Target đầu năm.
+  const [base, setBase] = useState('upd');
   SUM_SHOW_MONTHS = showMonths; // set trước khi render header/rows (chúng đọc biến module này)
   SUM_VIEW_MODE = viewMode;
+  SUM_BASE = base;
   // Nút xuất Excel nằm trên thanh bộ lọc (do App vẽ) → đăng ký hàm xuất lên đó
   useEffect(() => {
-    onExport(() => exportSummaryPS(data));
+    onExport(() => exportSummaryPS(data, base));
     return () => onExport(null);
-  }, [data, onExport]);
+  }, [data, base, onExport]);
   return (
     <React.Fragment>
       <GiaiTrinhModal
@@ -413,6 +440,27 @@ export function SummaryView({
       <div className="px-6 pb-8">
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
+            <div className="inline-flex items-center rounded-md border border-slate-200 bg-white overflow-hidden text-[12px] font-medium">
+              <span className="px-2.5 py-1.5 text-slate-400 border-r border-slate-200">So TH với</span>
+              {[
+                ['upd', 'KH update', 'Thực hiện so với KH update (DThu dự kiến)'],
+                ['dn', 'Target đầu năm', 'Thực hiện so với Target đầu năm theo tháng, YTD và cả năm'],
+              ].map(([k, label, tip]) => (
+                <button
+                  key={k}
+                  onClick={() => setBase(k)}
+                  title={tip}
+                  className={
+                    'px-3 py-1.5 ' +
+                    (base === k
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-600 hover:bg-slate-50')
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => setViewMode((m) => (m === 'money' ? 'qty' : 'money'))}
               title={viewMode === 'money' ? 'Chuyển sang xem Số lượng' : 'Chuyển sang xem Doanh thu'}
@@ -456,9 +504,10 @@ export function SummaryView({
           {viewMode === 'money'
             ? 'Chế độ Doanh thu: tất cả giá trị = SL × đơn giá (triệu VNĐ). '
             : 'Chế độ Số lượng: tất cả giá trị = SL; đơn giá hiện ở dòng sản phẩm. '}
-          KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết
-          tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH
-          YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH. Quota: On
+          {base === 'dn'
+            ? 'Target = Target đầu năm (SL kế hoạch gốc), TH = thực hiện, % = TH / Target. Luỹ kế YTD tính đến hết tháng hiện tại. Tốc độ TH YTD = TH YTD / Target cả năm; tốc độ Target YTD = Target YTD / Target cả năm; CL = tốc độ TH − tốc độ Target. Cả năm: % HT = TH YTD / Target đầu năm; Còn lại = Target đầu năm − TH YTD.'
+            : 'KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH.'}{' '}
+          Quota: On
           hand = quota thầu cũ + quota chính / BS đã tới tháng và còn hiệu lực; Upcoming
           = chưa tới tháng hoặc đợt chưa đủ tháng / hiệu lực; quota đã quá hiệu lực
           không tính; Khả dụng = On hand − TH YTD.
@@ -487,6 +536,8 @@ const pctClsSum = (th, kh) => {
 // SummaryView set biến này trước khi render con (giống cơ chế MASK_MONEY).
 let SUM_SHOW_MONTHS = false;
 let SUM_VIEW_MODE = 'money'; // 'money' | 'qty'
+let SUM_BASE = 'upd'; // 'upd' (KH update) | 'dn' (Target đầu năm)
+const baseLbl = () => (SUM_BASE === 'dn' ? 'Target' : 'KH');
 const fmtSL = (v) => (!v ? '—' : Math.round(v).toLocaleString('en-US'));
 // Các cột tháng hiển thị: mặc định chỉ tháng hiện tại; bấm "Chi tiết theo tháng" thì hiện cả 12.
 const sumMonthIdxs = () =>
@@ -524,7 +575,7 @@ function SummaryHead() {
       key={key + 'k'}
       className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 ${tone}`}
     >
-      KH
+      {baseLbl()}
     </th>,
     <th
       key={key + 'a'}
@@ -546,7 +597,7 @@ function SummaryHead() {
       key="ytk"
       className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 ${ybg}`}
     >
-      KH
+      {baseLbl()}
     </th>,
     <th
       key="yta"
@@ -570,7 +621,7 @@ function SummaryHead() {
       key="ytkp"
       className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap ${ybg}`}
     >
-      tốc độ KH YTD
+      tốc độ {baseLbl()} YTD
     </th>,
     <th
       key="ytcl"
@@ -602,7 +653,7 @@ function SummaryHead() {
           colSpan={4}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
         >
-          Target
+          {SUM_BASE === 'dn' ? 'Cả năm' : 'Target'}
         </th>,
         <th
           colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
@@ -637,19 +688,19 @@ function SummaryHead() {
           key="tdu"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
-          {SUM_VIEW_MODE === 'qty' ? 'SL dự kiến' : 'DThu dự kiến'}
+          {SUM_BASE === 'dn' ? 'TH YTD' : SUM_VIEW_MODE === 'qty' ? 'SL dự kiến' : 'DThu dự kiến'}
         </th>,
         <th
           key="tch"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
-          Chênh lệch
+          {SUM_BASE === 'dn' ? '% HT năm' : 'Chênh lệch'}
         </th>,
         <th
           key="tkl"
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
-          KH còn lại
+          {SUM_BASE === 'dn' ? 'Còn lại' : 'KH còn lại'}
         </th>,
         <th
           key="qq14"
@@ -700,12 +751,14 @@ function StatCells({ d, size, dark }) {
   const fmtCh = isQty
     ? (v) => (!v ? '—' : (v > 0 ? '+' : '') + Math.round(v).toLocaleString('en-US'))
     : (v) => (!v ? '—' : MASK_MONEY ? '•••' : (v > 0 ? '+' : '') + fmtTy3(v));
-  const moKh = isQty ? d.moKh : d.moKhDt;
+  const isDn = SUM_BASE === 'dn';
+  // Mốc so sánh: KH update hoặc Target đầu năm (theo tháng / YTD / cả năm)
+  const moKh = isDn ? (isQty ? d.moDn : d.moDnDt) : isQty ? d.moKh : d.moKhDt;
   const moAct = isQty ? d.moAct : d.moActDt;
-  const khYtdV = isQty ? d.khYtd : d.khYtdDt;
+  const khYtdV = isDn ? (isQty ? d.dnYtd : d.dnYtdDt) : isQty ? d.khYtd : d.khYtdDt;
   const dtYtdV = isQty ? d.ytd : d.dtYtd;
-  const dtUpdV = isQty ? d.slUpd : d.dtUpd;
   const dtV = isQty ? d.slDauNam : d.dt;
+  const dtUpdV = isDn ? dtV : isQty ? d.slUpd : d.dtUpd; // mẫu số tốc độ = KH cả năm của mốc
   const klV = isQty ? d.khLeft : d.khLeftDt;
   const q14V = isQty ? d.q14 : d.q14Dt;
   const qUpV = isQty ? d.qUpcoming : d.qUpcomingDt;
@@ -791,7 +844,21 @@ function StatCells({ d, size, dark }) {
   );
   // --- Target ---
   const tbg = dark ? '' : 'bg-emerald-50/30';
-  const ch = (dtUpdV || 0) - (dtV || 0);
+  if (isDn) {
+    // Cả năm theo Target đầu năm: Target · TH YTD · % hoàn thành năm · còn lại phải làm
+    const conLai = (dtV || 0) - (dtYtdV || 0);
+    cells.push(
+      <td key="dt" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${tbg}`}>{fmt(dtV)}</td>,
+      <td key="du" className={`px-3 ${p} text-right tabular-nums font-medium ${green} ${tbg}`}>{fmt(dtYtdV)}</td>,
+      <td key="ch" className={`px-3 ${p} text-right tabular-nums font-semibold ${dark ? 'text-slate-300' : 'text-slate-600'} ${tbg}`}>
+        {pctTxtSum(dtYtdV, dtV)}
+      </td>,
+      <td key="kl" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-200 ${dark ? 'text-purple-200' : 'text-purple-600'} ${tbg}`}>
+        {isQty ? fmtSL(conLai) : MASK_MONEY ? '•••' : moneyTy3(conLai)}
+      </td>,
+    );
+  } else {
+  const ch =(dtUpdV || 0) - (dtV || 0);
   const chCol = dark ? (ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : '') : chCls(ch);
   cells.push(
     <td key="dt" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${tbg}`}>{fmt(dtV)}</td>,
@@ -809,6 +876,7 @@ function StatCells({ d, size, dark }) {
       {isQty ? fmtSL(khConLai) : MASK_MONEY ? '•••' : moneyTy3(khConLai)}
     </td>,
   );
+  }
   // --- Quota ---
   const qbg = dark ? '' : 'bg-teal-50/30';
   const quotaRemain = qAvV == null ? null : (q14V || 0) - (dtYtdV || 0);
