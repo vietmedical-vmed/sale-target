@@ -164,7 +164,10 @@ export function ProductPickerForm({
         out.push(c.prod);
       }
     }
-    return out;
+    // A→Z theo tiếng Việt; numeric để "Nẹp 40-60mm" đứng trước "Nẹp 100-120mm".
+    return out.sort((a, b) =>
+      a.localeCompare(b, 'vi', { sensitivity: 'base', numeric: true }),
+    );
   }, [grp, mode, prods, msetVal, canWholeSet]);
   const isDup = (name) =>
     !!(existing && existing.has(`${ps}||${grp}||${msetVal}||${name}`));
