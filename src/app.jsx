@@ -1646,13 +1646,17 @@ function AppInner({ initialAuth, onLogin }) {
   }, [rows, psDir]);
   // Đơn giá gợi ý khi thêm sản phẩm. SP CTTM & CTUT có giá danh mục (giaDm =
   // dm_vat_tu.don_gia_thau_moi, giữ VAT) — backend luôn ghi giá này nên gợi ý luôn nó.
-  // BU khác: danh mục (dm_bo_vat_tu / _mapping) KHÔNG có cột đơn giá — giá chỉ nằm
-  // trên từng dòng sale_target, nên lấy theo giá đang dùng nhiều nhất cho đúng
+  // BU khác: vật tư riêng lẻ có giá gợi ý từ dm_vat_tu (giaGoiY, vẫn sửa được); còn lại
+  // danh mục (dm_bo_vat_tu / _mapping) KHÔNG có cột đơn giá — giá chỉ nằm trên từng
+  // dòng sale_target, nên lấy theo giá đang dùng nhiều nhất cho đúng
   // (nhóm | bộ vật tư | sản phẩm) đó.
   const priceOf = useMemo(() => {
     const giaDm = new Map();
+    const giaGoiY = new Map();
     for (const c of catalog) {
-      if (c.giaDm > 0) giaDm.set(`${c.grp || ''}||${c.mset || ''}||${c.prod}`, c.giaDm);
+      const key = `${c.grp || ''}||${c.mset || ''}||${c.prod}`;
+      if (c.giaDm > 0) giaDm.set(key, c.giaDm);
+      else if (c.giaGoiY > 0) giaGoiY.set(key, c.giaGoiY);
     }
     const cnt = new Map(); // key -> Map(giá -> số dòng)
     for (const r of rows) {
@@ -1680,7 +1684,10 @@ function AppInner({ initialAuth, onLogin }) {
     });
     const k = (grp, mset, prod) => `${grp || ''}||${mset || ''}||${prod}`;
     const fn = (grp, mset, prod) =>
-      giaDm.get(k(grp, mset, prod)) || best.get(k(grp, mset, prod)) || null;
+      giaDm.get(k(grp, mset, prod)) ||
+      giaGoiY.get(k(grp, mset, prod)) ||
+      best.get(k(grp, mset, prod)) ||
+      null;
     // true khi giá gợi ý là giá danh mục (CTTM) — màn thêm SP khoá ô giá.
     fn.tuDanhMuc = (grp, mset, prod) => giaDm.has(k(grp, mset, prod));
     return fn;

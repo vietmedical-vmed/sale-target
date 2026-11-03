@@ -7,7 +7,7 @@ import {
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone, taoDotTuThangThau, kiemTraThangHieuLuc,
-  BU_GIA_DANH_MUC, giaDanhMucCttm,
+  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc,
 } from "./helpers.ts";
 
 const QUIET_ACTIONS = new Set(["getChanges", "getRev"]);
@@ -202,17 +202,27 @@ Deno.serve(async (req) => {
         if (data.length < PAGE) break;
       }
       // SP của BU CTTM & CTUT kèm đơn giá danh mục (giaDm) để màn thêm SP gợi ý đúng giá
-      // addProduct/addProducts sẽ ghi. Mapping lưu nhãn BU dài ("CTTM & CTUT") → tra qua dm_ps.
+      // addProduct/addProducts sẽ ghi. BU khác: chỉ vật tư riêng lẻ có giá gợi ý (giaGoiY)
+      // từ dm_vat_tu, người dùng vẫn sửa được. Mapping lưu nhãn BU dài ("CTTM & CTUT")
+      // → tra bu_code qua dm_ps.
       const { data: psBu } = await db.schema("shared").from("dm_ps")
-        .select("bu").eq("bu_code", BU_GIA_DANH_MUC).limit(500);
-      const nhanCttm = new Set((psBu || []).map((r: Record<string, unknown>) => String(r.bu || "")).filter(Boolean));
-      if (nhanCttm.size) {
-        const giaDm = await giaDanhMucCttm(db);
-        for (const c of catalog) {
-          if (!nhanCttm.has(String(c.bu))) continue;
-          const g = giaDm(c.prod || "", c.maSp || null);
-          if (g !== null) c.giaDm = g;
-        }
+        .select("bu, bu_code").not("bu_code", "is", null).limit(2000);
+      const buCodeOf = new Map<string, string>();
+      for (const r of psBu || []) {
+        if (r.bu && r.bu_code && !buCodeOf.has(String(r.bu))) buCodeOf.set(String(r.bu), String(r.bu_code));
+      }
+      const giaTheoBu = new Map<string, (sp: unknown, ma: unknown) => number | null>();
+      for (const c of catalog) {
+        const code = buCodeOf.get(String(c.bu));
+        if (!code) continue;
+        const cttm = code === BU_GIA_DANH_MUC;
+        if (!cttm && !/^vật tư riêng lẻ/i.test(String(c.mset || "").trim())) continue;
+        let tra = giaTheoBu.get(code);
+        if (!tra) giaTheoBu.set(code, tra = await giaDanhMuc(db, code));
+        const g = tra(c.prod || "", c.maSp || null);
+        if (g === null) continue;
+        if (cttm) c.giaDm = g;
+        else c.giaGoiY = g;
       }
       return json({ ok: true, catalog });
     }

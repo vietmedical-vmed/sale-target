@@ -214,7 +214,11 @@ export async function buForPs(
 // mỗi bước chỉ dùng khi ra đúng 1 giá. Tên trước mã vì mã M0013941xxxxx dùng chung
 // cho Transend và Truselect. Trả hàm tra giá; không khớp → null (giữ giá cũ).
 export const BU_GIA_DANH_MUC = "cttm";
-export async function giaDanhMucCttm(db: ReturnType<typeof createClient>) {
+export function giaDanhMucCttm(db: ReturnType<typeof createClient>) {
+  return giaDanhMuc(db, BU_GIA_DANH_MUC);
+}
+// Cùng cách tra cho BU bất kỳ (theo dm_vat_tu.bu_code).
+export async function giaDanhMuc(db: ReturnType<typeof createClient>, buCode: string) {
   const theoTen = new Map<string, Set<number>>();
   const theoMa = new Map<string, Set<number>>();
   const theoTenThuong = new Map<string, Set<number>>();
@@ -226,7 +230,7 @@ export async function giaDanhMucCttm(db: ReturnType<typeof createClient>) {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await db.schema("shared").from("dm_vat_tu")
       .select("id, san_pham, ma_san_pham, don_gia_thau_moi")
-      .eq("bu_code", BU_GIA_DANH_MUC).gt("don_gia_thau_moi", 0)
+      .eq("bu_code", buCode).gt("don_gia_thau_moi", 0)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
