@@ -113,14 +113,7 @@ export function ProductPickerForm({
   const [done, setDone] = useState(0);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
-  // Tháng thầu là thuộc tính của NHÓM SP (ghi lên mọi dòng của nhóm) — form này
-  // mỗi lần chỉ thêm trong 1 nhóm nên dùng chung cho cả lô. Không bắt buộc.
-  const [mMain, setMMain] = useState('');
-  const [mAdd, setMAdd] = useState('');
-  // Hiệu lực thầu (số tháng) — bắt buộc khi có nhập tháng thầu tương ứng.
-  const [hlMain, setHlMain] = useState('');
-  const [hlAdd, setHlAdd] = useState('');
-  const hlOk = (m, hl) => !m || (Number.isInteger(Number(hl)) && Number(hl) >= 1 && Number(hl) <= 120);
+  // Tháng thầu / hiệu lực không nhập ở đây — khai báo ở mục Đợt thầu của thẻ KH.
 
   const parseTr = (v) => {
     const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
@@ -231,8 +224,7 @@ export function ProductPickerForm({
     [sel],
   );
   const ready =
-    !!ps && !!grp && sel.size > 0 && thieuGia.length === 0 && !busy &&
-    hlOk(mMain, hlMain) && hlOk(mAdd, hlAdd);
+    !!ps && !!grp && sel.size > 0 && thieuGia.length === 0 && !busy;
   const lbl =
     'block text-[10.5px] uppercase tracking-wide text-slate-500 font-medium mb-1';
   const sels =
@@ -253,10 +245,6 @@ export function ProductPickerForm({
         mset: msetVal,
         prod: name,
         price: parseTr(priceTr),
-        mMain,
-        mAdd,
-        hlMain: mMain ? Number(hlMain) : null,
-        hlAdd: mAdd ? Number(hlAdd) : null,
       });
       if (!res) {
         setErr(`Dừng ở "${name}" — xem thông báo lỗi phía trên.`);
@@ -373,67 +361,6 @@ export function ProductPickerForm({
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={lbl}>
-            Thầu chính: tháng thầu · hiệu lực
-            <span className="text-slate-400 normal-case tracking-normal">
-              · không bắt buộc (nhập tháng thì phải nhập hiệu lực)
-            </span>
-          </label>
-          <div className="flex gap-1.5">
-            <input
-              type="month"
-              value={mMain}
-              onChange={(e) => setMMain(e.target.value)}
-              disabled={!grp}
-              className={sels}
-            />
-            <input
-              value={hlMain}
-              onChange={(e) => setHlMain(e.target.value.replace(/[^0-9]/g, ''))}
-              disabled={!grp || !mMain}
-              placeholder="Hiệu lực: số tháng"
-              title="Số tháng hiệu lực của thầu chính, ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu. Hết hạn = tháng thầu + 3 tháng + hiệu lực − 1"
-              className={`${sels} !w-[150px] ${mMain && !hlOk(mMain, hlMain) ? '!border-red-400 !bg-red-50' : ''}`}
-            />
-          </div>
-        </div>
-        <div>
-          <label className={lbl}>
-            Thầu bổ sung: tháng thầu · hiệu lực
-            <span className="text-slate-400 normal-case tracking-normal">
-              · không bắt buộc (nhập tháng thì phải nhập hiệu lực)
-            </span>
-          </label>
-          <div className="flex gap-1.5">
-            <input
-              type="month"
-              value={mAdd}
-              onChange={(e) => setMAdd(e.target.value)}
-              disabled={!grp}
-              className={sels}
-            />
-            <input
-              value={hlAdd}
-              onChange={(e) => setHlAdd(e.target.value.replace(/[^0-9]/g, ''))}
-              disabled={!grp || !mAdd}
-              placeholder="Hiệu lực: số tháng"
-              title="Số tháng hiệu lực của thầu bổ sung, ví dụ 12, 18, 24. Bắt buộc khi có tháng thầu. Hết hạn = tháng thầu + 3 tháng + hiệu lực − 1"
-              className={`${sels} !w-[150px] ${mAdd && !hlOk(mAdd, hlAdd) ? '!border-red-400 !bg-red-50' : ''}`}
-            />
-          </div>
-        </div>
-      </div>
-      {(mMain || mAdd) && (
-        <p className="text-[11px] text-slate-400 -mt-1">
-          Tạo đợt thầu cho cả nhóm{' '}
-          <span className="font-medium text-slate-600">{grp}</span> của khách
-          hàng này (nếu nhóm chưa có đợt cùng tháng) — sửa ở mục Đợt thầu của thẻ KH.
-          Hiệu lực = số tháng hiệu lực của thầu; hết hạn = tháng thầu + 3 tháng + hiệu
-          lực − 1 (vd thầu 2026-03, hiệu lực 24 tháng → còn hiệu lực đến hết 2028-05).
-        </p>
-      )}
       <div className="flex gap-2">
         {radio('le', 'Vật tư riêng lẻ', 'chọn từng vật tư trong bộ', false)}
         {radio(
