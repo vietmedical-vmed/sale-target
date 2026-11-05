@@ -7,6 +7,8 @@ import { fmtInt, parseNum } from '../lib/format.js';
 const khoa = (r) =>
   [r.fy, r.ps, r.custId, r.grp, r.mset, r.prod, Number(r.price) || 0].join('||');
 
+const spKey = (g) => `${g.grp || ''}||${g.mset || ''}||${g.prod || ''}`;
+
 const fmtTr = (v) =>
   (v / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 
@@ -81,7 +83,7 @@ export function SoSanhGiaView({ rows, priceOf, onUpdatePrice }) {
   const list = useMemo(() => {
     const q = deaccent(search.trim());
     const n = Math.max(0, Number(nguong) || 0);
-    return nhom
+    const loc = nhom
       .filter((g) => Math.abs(g.pct) >= n && Math.abs(g.chenh) >= 1)
       .filter((g) => (chieu === 'up' ? g.chenh > 0 : chieu === 'down' ? g.chenh < 0 : true))
       .filter(
@@ -90,8 +92,19 @@ export function SoSanhGiaView({ rows, priceOf, onUpdatePrice }) {
           [g.prod, g.mset, g.grp, g.cust, g.custId, g.ps].some((v) =>
             deaccent(v || '').includes(q),
           ),
-      )
-      .sort((a, b) => Math.abs(b.chenhDt) - Math.abs(a.chenhDt));
+      );
+    // Cùng sản phẩm đứng liền nhau; sản phẩm xếp theo dòng lệch lớn nhất của nó.
+    const lonNhat = new Map();
+    for (const g of loc) {
+      const k = spKey(g);
+      lonNhat.set(k, Math.max(lonNhat.get(k) || 0, Math.abs(g.chenhDt)));
+    }
+    return loc.sort(
+      (a, b) =>
+        lonNhat.get(spKey(b)) - lonNhat.get(spKey(a)) ||
+        spKey(a).localeCompare(spKey(b)) ||
+        Math.abs(b.chenhDt) - Math.abs(a.chenhDt),
+    );
   }, [nhom, search, chieu, nguong]);
 
   const tong = useMemo(() => {
@@ -214,13 +227,16 @@ export function SoSanhGiaView({ rows, priceOf, onUpdatePrice }) {
                 </td>
               </tr>
             ) : (
-              list.map((g) => {
+              list.map((g, i) => {
                 const open = mo === g.k;
+                const dauSp = i > 0 && spKey(list[i - 1]) !== spKey(g);
                 const mau = g.chenh > 0 ? 'text-emerald-700' : 'text-red-600';
                 const dmLech = g.giaDm != null && Math.round(g.giaDm) !== Math.round(g.price);
                 return (
                   <Fragment key={g.k}>
-                    <tr className="border-b border-slate-100 hover:bg-slate-50/60">
+                    <tr
+                      className={`border-b border-slate-100 hover:bg-slate-50/60 ${dauSp ? 'border-t-2 border-t-slate-300' : ''}`}
+                    >
                       <td className="pl-2">
                         <button
                           onClick={() => setMo(open ? null : g.k)}
