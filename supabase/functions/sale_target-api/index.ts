@@ -1345,7 +1345,7 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // ---- Bản chụp kế hoạch update hằng tháng (shared.ke_hoach_chot*) — chỉ admin ----
+    // ---- Bản chụp kế hoạch update hằng tháng (shared.ke_hoach_chot*) — xem: admin + manager; chụp/xoá: admin ----
     // Lỗi nghiệp vụ từ RPC có tiền tố chot_*: trả nguyên câu tiếng Việt sau dấu ':'.
     const loiChot = (msg: string) => {
       const m = msg.match(/chot_[a-z_]+:\s*(.*)$/);
@@ -1353,7 +1353,7 @@ Deno.serve(async (req) => {
     };
 
     if (action === "getChotKy") {
-      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const { data, error } = await db.schema("shared").from("ke_hoach_chot_ky")
         .select("ky,nam_tai_chinh,thang_hien_tai,chot_luc,nguon,nguoi,so_dong,tong_dt_kh_update")
         .order("ky", { ascending: false });
@@ -1392,7 +1392,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "soSanhChot") {
-      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const a = String(payload.a || "").trim();
       const b = payload.b ? String(payload.b).trim() : null;
       if (!a) return json({ ok: false, error: "thieu_du_lieu" }, 400);
@@ -1403,7 +1403,10 @@ Deno.serve(async (req) => {
         if (r) return r;
         throw new Error(msg);
       }
-      return json({ ok: true, rows: data || [] });
+      // Thu hẹp theo nhóm SP phụ trách (shared.users.nhom_san_pham) như applyScope; cột 7 = nhóm.
+      const nhoms = parseGroups(sess.g);
+      const rows = Array.isArray(data) ? data : [];
+      return json({ ok: true, rows: nhoms.length ? rows.filter((r: unknown[]) => nhoms.includes(String(r[7]))) : rows });
     }
 
     return json({ ok: false, error: "unknown_action" }, 400);

@@ -2692,11 +2692,11 @@ function AppInner({ initialAuth, onLogin }) {
               onClick={() => setTab('diaban')}
               label="Cấu hình địa bàn"
             />
-            {isAdmin && (
+            {(isAdmin || auth.role === 'manager') && (
               <TabBtn
                 active={tab === 'dotthieu'}
                 onClick={() => setTab('dotthieu')}
-                label="Đợt thiếu tháng thầu"
+                label="Kiểm tra thông tin thầu"
               />
             )}
             {isAdmin && (
@@ -2706,7 +2706,7 @@ function AppInner({ initialAuth, onLogin }) {
                 label="So sánh đơn giá"
               />
             )}
-            {isAdmin && (
+            {(isAdmin || auth.role === 'manager') && (
               <TabBtn
                 active={tab === 'sosanhkh'}
                 onClick={() => setTab('sosanhkh')}
@@ -2947,10 +2947,10 @@ function AppInner({ initialAuth, onLogin }) {
         )}
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
-        ) : tab === 'dotthieu' && isAdmin ? (
+        ) : tab === 'dotthieu' && (isAdmin || auth.role === 'manager') ? (
           <DotThieuThongTinView customers={custSource} />
-        ) : tab === 'sosanhkh' && isAdmin ? (
-          <SoSanhKeHoachView viewBu={viewBu} />
+        ) : tab === 'sosanhkh' && (isAdmin || auth.role === 'manager') ? (
+          <SoSanhKeHoachView viewBu={viewBu} isAdmin={isAdmin} />
         ) : tab === 'sosanhgia' && isAdmin ? (
           <SoSanhGiaView rows={teamRows} priceOf={priceOf} onUpdatePrice={updatePriceRows} />
         ) : tab === 'diaban' ? (

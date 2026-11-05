@@ -84,7 +84,7 @@ const CHU_CAP = ['text-[12px] font-medium text-slate-800', 'text-[12px] text-sla
 // So sánh DThu KH update giữa 2 bản chụp hằng tháng (hoặc bản chụp với dữ liệu hiện tại),
 // chi tiết PS → khách hàng → nhóm sản phẩm. Bản chụp tự động lúc 23:59 ngày hạn chót
 // sale điền (deadline_day); admin chụp tay được.
-export function SoSanhKeHoachView({ viewBu }) {
+export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const [kys, setKys] = useState([]);
   const [kyA, setKyA] = useState('');
   const [kyB, setKyB] = useState(HIEN_TAI);
@@ -299,13 +299,15 @@ export function SoSanhKeHoachView({ viewBu }) {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={chupNgay}
-            disabled={dangChup}
-            className="px-3 py-1.5 text-[12px] font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400"
-          >
-            {dangChup ? 'Đang chụp…' : `Chụp ngay (${kyLabel(thangVN())})`}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={chupNgay}
+              disabled={dangChup}
+              className="px-3 py-1.5 text-[12px] font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              {dangChup ? 'Đang chụp…' : `Chụp ngay (${kyLabel(thangVN())})`}
+            </button>
+          )}
           <button
             onClick={xuat}
             disabled={!loc.length}
@@ -416,7 +418,8 @@ export function SoSanhKeHoachView({ viewBu }) {
 
       {!kys.length && !loi ? (
         <div className="bg-white rounded-lg border border-slate-200 px-4 py-8 text-center text-[13px] text-slate-500">
-          Chưa có bản chụp nào. Bấm “Chụp ngay” để chụp kế hoạch update hiện tại, hoặc chờ bản chụp tự động
+          Chưa có bản chụp nào.{' '}
+          {isAdmin ? 'Bấm “Chụp ngay” để chụp kế hoạch update hiện tại, hoặc chờ' : 'Chờ'} bản chụp tự động
           ngày hạn chót.
         </div>
       ) : (
@@ -469,13 +472,15 @@ export function SoSanhKeHoachView({ viewBu }) {
                 <span className="text-slate-400">
                   {fmtLuc(k.chot_luc)} · {k.nguon === 'tu_dong' ? 'tự động' : 'tay'}
                 </span>
-                <button
-                  onClick={() => xoaKy(k.ky)}
-                  className="text-slate-300 hover:text-red-600"
-                  title="Xoá bản chụp"
-                >
-                  <Trash2 size={12} />
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => xoaKy(k.ky)}
+                    className="text-slate-300 hover:text-red-600"
+                    title="Xoá bản chụp"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
               </span>
             ))}
           </div>

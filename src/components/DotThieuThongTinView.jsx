@@ -53,7 +53,7 @@ export function DotThieuThongTinView({ customers = [] }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Clock size={20} className="text-emerald-600" />
-          <h2 className="text-lg font-bold text-slate-800">Đợt thiếu tháng thầu / hiệu lực</h2>
+          <h2 className="text-lg font-bold text-slate-800">Kiểm tra thông tin thầu</h2>
           <span className="text-[12px] text-slate-400">
             {list.length} đợt · {(list.reduce((s, d) => s + (giaTri.get(khoaDot(d)) || 0), 0) / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} tỷ
           </span>
