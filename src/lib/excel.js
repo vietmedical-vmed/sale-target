@@ -349,14 +349,14 @@ export async function exportQuotaThau(rows) {
   XLSX.writeFile(wb, `Quota_thau_${_today()}.xlsx`);
 }
 
-// So sánh DThu KH update giữa 2 kỳ chụp (tab So sánh KH update), chi tiết PS × KH × nhóm SP.
-// Sheet 1: mỗi dòng PS × KH × nhóm, tổng 2 kỳ + chênh từng tháng. Sheet 2: dòng phẳng theo tháng.
+// So sánh DThu KH update giữa 2 kỳ chụp (tab So sánh KH update), chi tiết BU × miền × PS × KH × nhóm SP.
+// Sheet 1: mỗi dòng BU × miền × PS × KH × nhóm, tổng 2 kỳ + chênh từng tháng. Sheet 2: dòng phẳng theo tháng.
 export async function exportSoSanhKeHoach(rows, tenA, tenB) {
   const XLSX = await loadXLSX();
   const thang = MONTHS.filter((m) => rows.some((r) => r.mo === m));
   const nhom = new Map();
   for (const r of rows) {
-    const k = [r.ps, r.custId, r.grp].join('||');
+    const k = [r.bu, r.region, r.ps, r.custId, r.grp].join('||');
     let g = nhom.get(k);
     if (!g) {
       g = { ...r, dtA: 0, dtB: 0, t: new Map() };
@@ -367,6 +367,8 @@ export async function exportSoSanhKeHoach(rows, tenA, tenB) {
     g.t.set(r.mo, (g.t.get(r.mo) || 0) + r.dtB - r.dtA);
   }
   const sx = (a, b) =>
+    (a.bu || '').localeCompare(b.bu || '') ||
+    (a.region || '').localeCompare(b.region || '') ||
     (a.ps || '').localeCompare(b.ps || '') ||
     (a.cust || '').localeCompare(b.cust || '') ||
     (a.grp || '').localeCompare(b.grp || '');
@@ -401,7 +403,7 @@ export async function exportSoSanhKeHoach(rows, tenA, tenB) {
   for (let r = 1; r < aoa2.length; r++) for (let c = 8; c <= 10; c++) _fmt(ws2, r, c, '#,##0');
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws1, 'PS-KH-Nhóm SP');
+  XLSX.utils.book_append_sheet(wb, ws1, 'BU-Miền-PS-KH-Nhóm');
   XLSX.utils.book_append_sheet(wb, ws2, 'Chi tiết tháng');
   XLSX.writeFile(wb, `SoSanh_KH_update_${_today()}.xlsx`);
 }

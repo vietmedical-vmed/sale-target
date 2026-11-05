@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle, Download, Loader2, Trash2 } from './icons.jsx';
-import { MONTHS, MONTH_LABELS } from '../config/constants.js';
+import { MONTHS, MONTH_LABELS, TEAMS } from '../config/constants.js';
 import { deaccent } from '../lib/text.js';
 import { exportSoSanhKeHoach } from '../lib/excel.js';
 import { api } from '../api/client.js';
@@ -14,8 +14,10 @@ const toRow = (a) => ({
 
 const HIEN_TAI = '__hien_tai__';
 
-// Cây cố định: PS → Khách hàng → Nhóm sản phẩm.
+// Cây cố định: BU → Miền → PS → Khách hàng → Nhóm sản phẩm.
 const CAP = [
+  { label: 'BU', key: (r) => r.bu || '', ten: (r) => (TEAMS[r.bu] && TEAMS[r.bu].label) || r.bu || '(trống)' },
+  { label: 'Miền', key: (r) => r.region || '', ten: (r) => r.region || '(trống)' },
   { label: 'PS', key: (r) => r.ps || '', ten: (r) => r.ps || '(trống)' },
   {
     label: 'Khách hàng', key: (r) => r.custId || r.cust || '',
@@ -23,6 +25,8 @@ const CAP = [
   },
   { label: 'Nhóm SP', key: (r) => r.grp || '', ten: (r) => r.grp || '(trống)' },
 ];
+const CAP_PS = CAP.findIndex((c) => c.label === 'PS'); // mặc định mở tới cấp PS
+const NUT_MO = ['BU', 'Miền', 'PS', 'KH', 'Nhóm SP'];
 
 const fmtTr = (v) => (v / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 const kyLabel = (ky) => (ky ? `T${Number(ky.slice(5, 7))}/${ky.slice(0, 4)}` : '');
@@ -78,8 +82,14 @@ const Pct = ({ a, b }) => {
   );
 };
 
-const NEN_CAP = ['', 'bg-slate-50/50', 'bg-slate-50'];
-const CHU_CAP = ['text-[12px] font-medium text-slate-800', 'text-[12px] text-slate-700', 'text-[11px] text-slate-600'];
+const NEN_CAP = ['bg-slate-100/70', 'bg-slate-50', '', 'bg-slate-50/40', 'bg-slate-50/70'];
+const CHU_CAP = [
+  'text-[12px] font-bold text-slate-900',
+  'text-[12px] font-semibold text-slate-800',
+  'text-[12px] font-medium text-slate-800',
+  'text-[12px] text-slate-700',
+  'text-[11px] text-slate-600',
+];
 
 // So sánh DThu KH update giữa 2 bản chụp hằng tháng (hoặc bản chụp với dữ liệu hiện tại),
 // chi tiết PS → khách hàng → nhóm sản phẩm. Bản chụp tự động lúc 23:59 ngày hạn chót
@@ -96,7 +106,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const [thang, setThang] = useState('');
   const [search, setSearch] = useState('');
   const [chiThayDoi, setChiThayDoi] = useState(true);
-  const [theoThang, setTheoThang] = useState(false);
+  const [theoThang, setTheoThang] = useState(true);
   const [mo, setMo] = useState(() => new Set());
 
   const taiKy = useCallback(async () => {
@@ -217,6 +227,11 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
     duyet(cay);
     setMo(n);
   };
+  // Mỗi lần tải dữ liệu so sánh mới (đổi kỳ): mở sẵn BU, Miền để thấy tới cấp PS.
+  useEffect(() => {
+    moHet(CAP_PS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const infoA = kys.find((k) => k.ky === kyA);
   const infoB = kyB === HIEN_TAI ? null : kys.find((k) => k.ky === kyB);
@@ -379,7 +394,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
         </label>
         <span className="w-px h-5 bg-slate-200 mx-1" />
         <span className="text-[12px] text-slate-500">Mở:</span>
-        {['PS', 'KH', 'Nhóm SP'].map((t, i) => (
+        {NUT_MO.map((t, i) => (
           <button
             key={t}
             onClick={() => (i === 0 ? setMo(new Set()) : moHet(i))}
@@ -427,7 +442,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
           <table className="w-full text-[12px] tabular-nums">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                <th className="px-3 py-2 text-left font-semibold">PS / Khách hàng / Nhóm SP</th>
+                <th className="px-3 py-2 text-left font-semibold">BU / Miền / PS / Khách hàng / Nhóm SP</th>
                 <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenA} (tr)</th>
                 <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenB} (tr)</th>
                 <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">Chênh (tr)</th>
