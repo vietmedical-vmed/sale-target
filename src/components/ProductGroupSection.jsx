@@ -660,7 +660,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           mDtBase[i] += rb;
           if (isYtdMonth(MONTHS[i])) {
             ytdM += dtActR;
-            if (quotaPrices.has(pr)) qYtdM += dtActR;
+            if (quotaPrices.has(pr)) qYtdM += act * pr;
           }
           const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
             ? Number(r.revUpd) || 0

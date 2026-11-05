@@ -2043,7 +2043,7 @@ function AppInner({ initialAuth, onLogin }) {
     for (const r of ganQuotaTheoDot(treeRows, dots, quotas, CURRENT_MONTH)) {
       q14Dt += r._qOnHand * (Number(r.price) || 0);
       if (r._hasQuota && isYtdMonth(r.mo))
-        qDtYtd += Number(r.dtAct) || 0;
+        qDtYtd += (Number(r.act) || 0) * (Number(r.price) || 0);
     }
     // Cộng thêm phần THỰC HIỆN NGOÀI KẾ HOẠCH (oopRows) để thẻ tiền khớp với TỔNG CỘNG
     // ở 2 màn tổng hợp — dùng ĐÚNG bộ lọc & công thức như SummaryView.

@@ -143,7 +143,7 @@ export function SummaryView({
       const dYtd = inYtd ? actQty : 0;
       const dDtYtd = inYtd ? dtActVal : 0;
       const dQYtd = r._hasQuota ? dYtd : 0;
-      const dQDtYtd = r._hasQuota ? dDtYtd : 0;
+      const dQDtYtd = r._hasQuota ? dYtd * price : 0;
       const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const dKhLeftDt = dKhLeft * price;
       const dMoKh = planUpd * price; // DThu KH update của tháng này

@@ -114,7 +114,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             if (isYtdMonth(MONTHS[i])) {
               dtYtd += dtActR;
               ytdM += dtActR;
-              if (quotaPrices.has(pr)) qYtdM += dtActR;
+              if (quotaPrices.has(pr)) qYtdM += act * pr;
             }
             const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
               ? Number(r.revUpd) || 0
