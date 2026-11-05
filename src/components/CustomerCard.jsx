@@ -92,7 +92,12 @@ export const CustomerCard = React.memo(function CustomerCard({
             }
           }
         }
-        const pHasQuota = quotaSp.length > 0;
+        const allQuotaSp = quotaCtx
+          ? (quotaCtx.quotasByProduct.get(
+              prodKey(grpFy, g.ps, custId || '', g.name, p.mset, p.product),
+            ) || [])
+          : [];
+        const quotaPrices = new Set(allQuotaSp.map((q) => Number(q.price) || 0));
         onHandM += pOnHand * pPrice;
         p.monthly.forEach((c, i) => {
           plan += c.rev;
@@ -109,7 +114,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             if (isYtdMonth(MONTHS[i])) {
               dtYtd += dtActR;
               ytdM += dtActR;
-              if (pHasQuota) qYtdM += dtActR;
+              if (quotaPrices.has(pr)) qYtdM += dtActR;
             }
             const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
               ? Number(r.revUpd) || 0

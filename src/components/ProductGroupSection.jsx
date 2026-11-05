@@ -640,7 +640,12 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       qMainM += pQMain * pPrice;
       qAddM += pQAdd * pPrice;
       onHandM += pOnHand * pPrice;
-      const pHasQuota = quotaSp.length > 0;
+      const allQuotaSp = quotaCtx
+        ? (quotaCtx.quotasByProduct.get(
+            prodKey(grpFy, ps, custId || '', groupName, p.mset, p.product),
+          ) || [])
+        : [];
+      const quotaPrices = new Set(allQuotaSp.map((q) => Number(q.price) || 0));
       p.monthly.forEach((c, i) => {
         plan += c.rev;
         c.rows.forEach((r) => {
@@ -655,7 +660,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           mDtBase[i] += rb;
           if (isYtdMonth(MONTHS[i])) {
             ytdM += dtActR;
-            if (pHasQuota) qYtdM += dtActR;
+            if (quotaPrices.has(pr)) qYtdM += dtActR;
           }
           const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
             ? Number(r.revUpd) || 0
