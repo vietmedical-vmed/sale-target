@@ -120,7 +120,7 @@ const ProductRow = React.memo(function ProductRow({
         if (tt === 'on') onHand += n;
       }
     }
-    return { cu, chinh, bo_sung, onHand, het };
+    return { cu, chinh, bo_sung, onHand, het, hasQuota: cungGia.length > 0 };
   }, [quotaCtx, anchor, mset, product]);
   const prices = useMemo(() => {
     const s = new Set();
@@ -180,7 +180,7 @@ const ProductRow = React.memo(function ProductRow({
       price,
       totalQuota,
       het,
-      quotaAvailable: onHand - ytd,
+      quotaAvailable: qInfo?.hasQuota ? onHand - ytd : null,
       dtBase,
       dtUpd,
       chenh: dtUpd - dtBase,
@@ -588,7 +588,8 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       qMainM = 0,
       qAddM = 0,
       onHandM = 0,
-      ytdM = 0;
+      ytdM = 0,
+      qYtdM = 0;
     const mDtBase = Array(12).fill(0);
     const mDtUpd = Array(12).fill(0);
     // Quota cấp nhóm đọc cùng nguồn với từng dòng sản phẩm: shared.quota_thau.
@@ -639,6 +640,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       qMainM += pQMain * pPrice;
       qAddM += pQAdd * pPrice;
       onHandM += pOnHand * pPrice;
+      const pHasQuota = quotaSp.length > 0;
       p.monthly.forEach((c, i) => {
         plan += c.rev;
         c.rows.forEach((r) => {
@@ -651,7 +653,10 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           const rb = (Number(r.rev) || 0) * pr;
           dt += rb;
           mDtBase[i] += rb;
-          if (isYtdMonth(MONTHS[i])) ytdM += dtActR;
+          if (isYtdMonth(MONTHS[i])) {
+            ytdM += dtActR;
+            if (pHasQuota) qYtdM += dtActR;
+          }
           const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
             ? Number(r.revUpd) || 0
             : Number(r.rev) || 0;
@@ -673,7 +678,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       onHandM,
       totalQuotaM,
       ytdM,
-      quotaAvailM: onHandM - ytdM,
+      quotaAvailM: onHandM - qYtdM,
       mDtBase,
       mDtUpd,
     };

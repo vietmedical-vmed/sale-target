@@ -135,8 +135,9 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
     const qHetV = isSL ? (d.qHet || 0) : (d.qHetDt || 0);
     const qFYV = isSL ? (d.quotaFY || 0) : (d.quotaFYDt || 0);
     const qAvail = isSL ? d.quotaAvail : d.quotaAvailDt;
-    const quotaRemain = qAvail == null ? '-' : tr(q14V - dtYtdV);
-    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(dtYtdV), quotaRemain);
+    const qYtdV = isSL ? (d.qYtd || 0) : (d.qDtYtd || 0);
+    const quotaRemain = qAvail == null ? '-' : tr(q14V - qYtdV);
+    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(qYtdV), quotaRemain);
     aoa.push(row);
     levels.push(level);
   };

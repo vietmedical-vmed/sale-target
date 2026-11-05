@@ -61,10 +61,11 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
   return rows.map((r) => {
     const k = `${prodKey(r.fy, r.ps, r.custId, r.grp, r.mset, r.prod)}|${Number(r.price) || 0}`;
     const q = quotaTheoGia.get(k);
+    const hasQuota = !!q;
     // Dòng ngoài kế hoạch / ngoài 12 tháng không mang quota.
     if (!q || r._oop || daGan.has(k) || !MONTHS.includes(r.mo))
-      return { ...r, _qOnHand: 0, _qUp: 0, _qHet: 0 };
+      return { ...r, _qOnHand: 0, _qUp: 0, _qHet: 0, _hasQuota: hasQuota && !r._oop };
     daGan.add(k);
-    return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het };
+    return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _hasQuota: true };
   });
 }

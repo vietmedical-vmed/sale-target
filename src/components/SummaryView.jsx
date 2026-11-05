@@ -87,6 +87,8 @@ export function SummaryView({
         qHet: 0,
         qHetDt: 0,
         ytd: 0,
+        qYtd: 0,
+        qDtYtd: 0,
         khLeft: 0,
         khLeftDt: 0,
         moKh: MONTHS.map(() => 0),
@@ -140,6 +142,8 @@ export function SummaryView({
       const dQUpcomingDt = dQUpcoming * price;
       const dYtd = inYtd ? actQty : 0;
       const dDtYtd = inYtd ? dtActVal : 0;
+      const dQYtd = r._hasQuota ? dYtd : 0;
+      const dQDtYtd = r._hasQuota ? dDtYtd : 0;
       const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const dKhLeftDt = dKhLeft * price;
       const dMoKh = planUpd * price; // DThu KH update của tháng này
@@ -157,6 +161,8 @@ export function SummaryView({
         o.qHet += dQHet;
         o.qHetDt += dQHet * price;
         o.ytd += dYtd;
+        o.qYtd += dQYtd;
+        o.qDtYtd += dQDtYtd;
         o.khLeft += dKhLeft;
         o.khLeftDt += dKhLeftDt;
         o.dtYtd += dDtYtd;
@@ -205,6 +211,8 @@ export function SummaryView({
           qHet: 0,
           qHetDt: 0,
           ytd: 0,
+          qYtd: 0,
+          qDtYtd: 0,
           khLeft: 0,
           khLeftDt: 0,
           moKh: MONTHS.map(() => 0),
@@ -242,6 +250,8 @@ export function SummaryView({
           qHet: 0,
           qHetDt: 0,
           ytd: 0,
+          qYtd: 0,
+          qDtYtd: 0,
           khLeft: 0,
           khLeftDt: 0,
           moKh: MONTHS.map(() => 0),
@@ -277,6 +287,8 @@ export function SummaryView({
       qHet: 0,
       qHetDt: 0,
       ytd: 0,
+      qYtd: 0,
+      qDtYtd: 0,
       khLeft: 0,
       khLeftDt: 0,
       moKh: MONTHS.map(() => 0),
@@ -307,6 +319,8 @@ export function SummaryView({
       a.qHet += c.qHet;
       a.qHetDt += c.qHetDt;
       a.ytd += c.ytd;
+      a.qYtd += c.qYtd;
+      a.qDtYtd += c.qDtYtd;
       a.khLeft += c.khLeft;
       a.khLeftDt += c.khLeftDt;
       for (let i = 0; i < 12; i++) {
@@ -344,9 +358,9 @@ export function SummaryView({
         // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
         const buildCust = (c) => {
           // KH ngoài kế hoạch: quotaAvail = null → hiển thị "—" (không tính, không để âm)
-          const avail = (o) => (c.oop ? null : o.q14 - o.ytd);
+          const avail = (o) => (c.oop ? null : o.q14 - o.qYtd);
           const availDt = (o) =>
-            c.oop ? null : o.q14Dt - o.dtYtd;
+            c.oop ? null : o.q14Dt - o.qDtYtd;
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
           const grps = Array.from(c.grpMap.values()).map((gp) => {
             const prods = Array.from(gp.prodMap.values()).map((pp) => ({
@@ -385,8 +399,8 @@ export function SummaryView({
           ps: ps.ps,
           custs,
           ...tot,
-          quotaAvail: tot.q14 - tot.ytd,
-          quotaAvailDt: tot.q14Dt - tot.dtYtd,
+          quotaAvail: tot.q14 - tot.qYtd,
+          quotaAvailDt: tot.q14Dt - tot.qDtYtd,
         };
       });
       psList.sort(orderByUpd);
@@ -399,8 +413,8 @@ export function SummaryView({
         region: reg.region,
         psList,
         ...tot,
-        quotaAvail: tot.q14 - tot.ytd,
-        quotaAvailDt: tot.q14Dt - tot.dtYtd,
+        quotaAvail: tot.q14 - tot.qYtd,
+        quotaAvailDt: tot.q14Dt - tot.qDtYtd,
       };
     });
     regions.sort((a, b) => b.dt - a.dt);
@@ -409,8 +423,8 @@ export function SummaryView({
       a.custCount += rg.custCount;
       return a;
     }, fold());
-    grand.quotaAvail = grand.q14 - grand.ytd;
-    grand.quotaAvailDt = grand.q14Dt - grand.dtYtd;
+    grand.quotaAvail = grand.q14 - grand.qYtd;
+    grand.quotaAvailDt = grand.q14Dt - grand.qDtYtd;
     return {
       regions,
       grand,

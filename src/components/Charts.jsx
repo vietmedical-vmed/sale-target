@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 
-export function WaterfallChart({ dt, dtUpd, dtYtd, q14Dt }) {
+export function WaterfallChart({ dt, dtUpd, dtYtd, q14Dt, qDtYtd }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const chenh = dtUpd - dt;
@@ -9,7 +9,7 @@ export function WaterfallChart({ dt, dtUpd, dtYtd, q14Dt }) {
   const updTy = dtUpd / 1e9;
   const chenhTy = chenh / 1e9;
   const conLaiTy = (dtUpd - (dtYtd || 0)) / 1e9;
-  const quotaAvailTy = ((q14Dt || 0) - (dtYtd || 0)) / 1e9;
+  const quotaAvailTy = ((q14Dt || 0) - (qDtYtd ?? dtYtd ?? 0)) / 1e9;
   const colOrange = '#f59e0b';
   useEffect(() => {
     if (!canvasRef.current) return;

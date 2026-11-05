@@ -2039,8 +2039,12 @@ function AppInner({ initialAuth, onLogin }) {
       }),
     );
     // Quota on-hand theo tháng của đợt thầu, cùng nguồn với 2 màn tổng hợp.
-    for (const r of ganQuotaTheoDot(treeRows, dots, quotas, CURRENT_MONTH))
+    let qDtYtd = 0;
+    for (const r of ganQuotaTheoDot(treeRows, dots, quotas, CURRENT_MONTH)) {
       q14Dt += r._qOnHand * (Number(r.price) || 0);
+      if (r._hasQuota && isYtdMonth(r.mo))
+        qDtYtd += Number(r.dtAct) || 0;
+    }
     // Cộng thêm phần THỰC HIỆN NGOÀI KẾ HOẠCH (oopRows) để thẻ tiền khớp với TỔNG CỘNG
     // ở 2 màn tổng hợp — dùng ĐÚNG bộ lọc & công thức như SummaryView.
     const q = search.toLowerCase().trim();
@@ -2085,6 +2089,7 @@ function AppInner({ initialAuth, onLogin }) {
       dtYtd,
       khYtdDt,
       q14Dt,
+      qDtYtd,
       grpRank,
       chenh: dtUpd - dt,
       customers: tree.length,
@@ -2778,7 +2783,7 @@ function AppInner({ initialAuth, onLogin }) {
                 </div>
                 <GroupRankCard rank={stats.grpRank} />
                 <div className="md:col-span-2 grid">
-                  <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} />
+                  <WaterfallChart dt={stats.dt} dtUpd={stats.dtUpd} dtYtd={stats.dtYtd} q14Dt={stats.q14Dt} qDtYtd={stats.qDtYtd} />
                 </div>
               </div>
             )}
