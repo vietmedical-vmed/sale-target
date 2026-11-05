@@ -417,10 +417,10 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
         {isAdmin && (
           <label
             className="flex items-center gap-1 text-[12px] text-slate-600"
-            title="Tháng đã có thực hiện (ở bản chụp hoặc kỳ so sánh) không tính chênh: đồng bộ thực hiện lại hay chuyển tháng hiện tại không làm đổi phần chênh. Bỏ tick để xem số thô."
+            title="Dòng × tháng mà cả 2 bên đều lấy thực hiện thì cùng nhận thực hiện mới nhất, nên đồng bộ thực hiện lại không sinh chênh. Bản ghi vẫn giữ KH update như lúc chụp. Bỏ tick để xem số thô."
           >
             <input type="checkbox" checked={loaiThucHien} onChange={(e) => setLoaiThucHien(e.target.checked)} />
-            Loại thay đổi ở tháng đã có thực hiện
+            Loại chênh do đồng bộ thực hiện
           </label>
         )}
         <span className="w-px h-5 bg-slate-200 mx-1" />
