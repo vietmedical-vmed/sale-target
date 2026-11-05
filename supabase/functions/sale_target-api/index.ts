@@ -440,6 +440,21 @@ Deno.serve(async (req) => {
             return { id: c.id, _rev: c._rev, values: mapped };
           });
         }
+        // Admin sửa đơn giá = điều chỉnh, không phải sale đổi kế hoạch: áp giá mới vào các bản
+        // chụp kế hoạch để tab So sánh KH update không tính phần này vào chênh. Lỗi ở đây không
+        // làm hỏng lượt ghi (đã ghi xong), chỉ log.
+        if (isAdmin) {
+          const conflictIds = new Set(conflicts.map((c) => Number(c.id)));
+          const giaIds = rowIds.filter((id) => COL.price in (byRow.get(id) || {}) && !conflictIds.has(id));
+          if (giaIds.length) {
+            const { error: apErr } = await db.rpc("ap_gia_admin_vao_ban_chup", {
+              p_ids: giaIds, p_nguoi: sess.n || sess.u || null,
+            });
+            if (apErr) {
+              console.error(JSON.stringify({ level: "error", requestId, action: "ap_gia_admin_vao_ban_chup", error: apErr.message }));
+            }
+          }
+        }
         const cols = new Set<string>();
         for (const u of updates) if (EDITABLE.has(u.key) || ADMIN_EDITABLE.has(u.key)) cols.add(u.key);
         const changes = rowIds.slice(0, 50).map(id => {
@@ -1396,7 +1411,9 @@ Deno.serve(async (req) => {
       const a = String(payload.a || "").trim();
       const b = payload.b ? String(payload.b).trim() : null;
       if (!a) return json({ ok: false, error: "thieu_du_lieu" }, 400);
-      const { data, error } = await db.rpc("so_sanh_chot_ke_hoach", { p_a: a, p_b: b });
+      // Chỉ admin được xem số gốc (chưa loại điều chỉnh giá của admin); manager luôn loại.
+      const loaiAdmin = sess.r === "admin" ? payload.loaiAdmin !== false : true;
+      const { data, error } = await db.rpc("so_sanh_chot_ke_hoach", { p_a: a, p_b: b, p_loai_admin: loaiAdmin });
       if (error) {
         const msg = String(error.message || "");
         const r = loiChot(msg);

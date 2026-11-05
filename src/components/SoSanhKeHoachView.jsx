@@ -107,6 +107,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const [search, setSearch] = useState('');
   const [chiThayDoi, setChiThayDoi] = useState(false);
   const [theoThang, setTheoThang] = useState(true);
+  const [loaiAdmin, setLoaiAdmin] = useState(true);
   const [mo, setMo] = useState(() => new Set());
 
   const taiKy = useCallback(async () => {
@@ -130,14 +131,14 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
     let huy = false;
     setDangTai(true);
     setLoi('');
-    api('soSanhChot', { a: kyA, b: kyB === HIEN_TAI ? null : kyB })
+    api('soSanhChot', { a: kyA, b: kyB === HIEN_TAI ? null : kyB, loaiAdmin })
       .then((r) => !huy && setData((r.rows || []).map(toRow)))
       .catch((e) => !huy && setLoi(e.message))
       .finally(() => !huy && setDangTai(false));
     return () => {
       huy = true;
     };
-  }, [kyA, kyB]);
+  }, [kyA, kyB, loaiAdmin]);
 
   const chupNgay = async () => {
     const ky = thangVN();
@@ -392,6 +393,15 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
           <input type="checkbox" checked={theoThang} onChange={(e) => setTheoThang(e.target.checked)} />
           Chênh theo tháng
         </label>
+        {isAdmin && (
+          <label
+            className="flex items-center gap-1 text-[12px] text-slate-600"
+            title="Khi admin sửa đơn giá, bản chụp nhận giá mới để phần chênh chỉ còn thay đổi của sale. Bỏ tick để so theo số gốc lúc chụp."
+          >
+            <input type="checkbox" checked={loaiAdmin} onChange={(e) => setLoaiAdmin(e.target.checked)} />
+            Loại điều chỉnh giá của admin
+          </label>
+        )}
         <span className="w-px h-5 bg-slate-200 mx-1" />
         <span className="text-[12px] text-slate-500">Mở:</span>
         {NUT_MO.map((t, i) => (
