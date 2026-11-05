@@ -26,6 +26,7 @@ import { Modal } from './components/Modal.jsx';
 import { MultiSelect } from './components/MultiSelect.jsx';
 import { AuditLogView } from './components/AuditLogView.jsx';
 import { DotThieuThongTinView } from './components/DotThieuThongTinView.jsx';
+import { SoSanhGiaView } from './components/SoSanhGiaView.jsx';
 import { TeamSummaryBar } from './components/TeamBar.jsx';
 import { AccountBar, ThYtdBar, GroupRankCard } from './components/StatBars.jsx';
 import { WaterfallChart } from './components/Charts.jsx';
@@ -186,7 +187,7 @@ function AppInner({ initialAuth, onLogin }) {
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'dotthieu' | 'audit'
+  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'dotthieu' | 'sosanhgia' | 'audit'
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -767,6 +768,29 @@ function AppInner({ initialAuth, onLogin }) {
       }
     },
     [reloadOop],
+  );
+
+  // Đổi đơn giá trên mọi tháng của 1 dòng KH × SP × PS × mức giá; DThu đầu năm
+  // tính lại theo giá mới, trigger DB chuyển quota thầu sang khoá giá mới.
+  const updatePriceRows = useCallback(
+    async (ids, price) => {
+      const idSet = new Set(ids);
+      const updates = [];
+      for (const r of rows) {
+        if (!idSet.has(r._row)) continue;
+        updates.push({ row: r._row, key: 'price', value: price });
+        updates.push({ row: r._row, key: 'dt', value: (Number(r.rev) || 0) * price });
+      }
+      if (!updates.length) return;
+      await api('updateCells', { updates });
+      setRows((prev) =>
+        prev.map((r) =>
+          idSet.has(r._row) ? { ...r, price, dt: (Number(r.rev) || 0) * price } : r,
+        ),
+      );
+      await napLaiQuota();
+    },
+    [rows, napLaiQuota],
   );
 
   const [fixBvtTarget, setFixBvtTarget] = useState(null);
@@ -2674,6 +2698,13 @@ function AppInner({ initialAuth, onLogin }) {
                 label="Đợt thiếu tháng thầu"
               />
             )}
+            {isAdmin && (
+              <TabBtn
+                active={tab === 'sosanhgia'}
+                onClick={() => setTab('sosanhgia')}
+                label="So sánh đơn giá"
+              />
+            )}
             {(auth.role === 'admin' || auth.role === 'manager') && (
               <TabBtn
                 active={tab === 'audit'}
@@ -2759,7 +2790,7 @@ function AppInner({ initialAuth, onLogin }) {
             </div>
           )}
         </header>
-        {tab !== 'audit' && tab !== 'dotthieu' && (
+        {tab !== 'audit' && tab !== 'dotthieu' && tab !== 'sosanhgia' && (
           <div className="px-6 pt-4">
             {canSwitchTeam(auth.role) && (
               <TeamSummaryBar
@@ -2910,6 +2941,8 @@ function AppInner({ initialAuth, onLogin }) {
           <AuditLogView auth={auth} viewBu={viewBu} />
         ) : tab === 'dotthieu' && isAdmin ? (
           <DotThieuThongTinView customers={custSource} />
+        ) : tab === 'sosanhgia' && isAdmin ? (
+          <SoSanhGiaView rows={teamRows} priceOf={priceOf} onUpdatePrice={updatePriceRows} />
         ) : tab === 'diaban' ? (
           <DiaBanView
             rows={teamRows}
