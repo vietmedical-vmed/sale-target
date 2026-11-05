@@ -14,6 +14,24 @@ export const getCurIdx = () => MONTHS.indexOf(CURRENT_MONTH);
 export const getNoteMonth = () => MONTHS[Math.max(0, getCurIdx() - 1)];
 export const isYtdMonth = (mo) => (mo || '') <= CURRENT_MONTH;
 
+// Hạn chót sale điền KH update (shared.app_config.deadline_day). Tháng M khoá sửa SL KH update
+// từ ngày DEADLINE_DAY + 1 của chính tháng M (giờ VN) — bản ghi kế hoạch tháng đã chụp lúc
+// 23:59 ngày hạn chót — và mọi tháng trước tháng lịch hiện tại. Admin không bị khoá.
+// Server chặn cùng luật trong updateCells.
+export let DEADLINE_DAY = 5;
+export function setDeadlineDay(d) {
+  const n = Number(d);
+  if (Number.isInteger(n) && n >= 1 && n <= 28) DEADLINE_DAY = n;
+}
+export function isKhUpdateLocked(mo) {
+  if (!mo) return false;
+  const homNay = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const thangNay = homNay.slice(0, 7);
+  return mo < thangNay || (mo === thangNay && Number(homNay.slice(8, 10)) > DEADLINE_DAY);
+}
+
 // Quota hết hiệu lực (quá tháng thầu + 3 + hiệu lực − 1): luôn KHÔNG tính vào on hand /
 // tổng quota / khả dụng. Cờ này chỉ quyết định có HIỆN riêng phần đó (cột "Hết HL",
 // nhãn "hết HL") hay ẩn đi. Tạm ẩn (15/10) vì gây hoang mang cho user.

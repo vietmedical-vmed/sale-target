@@ -408,11 +408,33 @@ Deno.serve(async (req) => {
         const rowIds = [...byRow.keys()];
         const changedDbCols = new Set<string>();
         for (const [, patch] of byRow) for (const c of Object.keys(patch)) changedDbCols.add(c);
-        const selectCols = ["id", "ps", "khach_hang", "ma_khach_hang", ...changedDbCols].join(",");
+        const selectCols = ["id", "ps", "khach_hang", "ma_khach_hang", "thang_ke_hoach", ...changedDbCols].join(",");
         const { data: oldRows } = await db.schema("shared").from("sale_target")
           .select(selectCols).in("id", rowIds);
         const oldMap = new Map<number, Record<string, unknown>>();
         if (oldRows) for (const r of oldRows) oldMap.set(r.id, r);
+
+        // Khoá SL KH update sau hạn chót (trừ admin): tháng M khoá từ ngày deadline_day + 1 của
+        // chính tháng M (giờ VN) — bản ghi kế hoạch tháng đã chụp lúc 23:59 ngày hạn chót — và
+        // mọi tháng trước tháng lịch hiện tại. Giao diện cũng khoá ô (isKhUpdateLocked).
+        if (!isAdmin) {
+          const updIds = rowIds.filter((id) => COL.revUpd in (byRow.get(id) || {}));
+          if (updIds.length) {
+            const { data: cfg } = await db.schema("shared").from("app_config")
+              .select("value").eq("key", "deadline_day").maybeSingle();
+            const han = Math.min(28, Math.max(1, Number(cfg?.value) || 5));
+            const homNay = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+            const thangNay = homNay.slice(0, 7), ngay = Number(homNay.slice(8, 10));
+            const khoa = (mo: string) => !!mo && (mo < thangNay || (mo === thangNay && ngay > han));
+            const biKhoa = [...new Set(updIds.map((id) => String(oldMap.get(id)?.thang_ke_hoach || "")).filter(khoa))].sort();
+            if (biKhoa.length) {
+              return json({
+                ok: false,
+                error: `Đã qua hạn chót ngày ${han}: không sửa được SL KH update tháng ${biKhoa.join(", ")}. Liên hệ admin nếu cần điều chỉnh.`,
+              }, 403);
+            }
+          }
+        }
 
         const p_updates = Array.from(byRow, ([id, patch]) => {
           const rev = rowRevs[id];

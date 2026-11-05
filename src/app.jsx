@@ -13,7 +13,7 @@ import {
   LogOut, Eye, EyeOff, UserPlus, HelpCircle, Pencil,
 } from './components/icons.jsx';
 import {
-  MONTHS, MONTH_LABELS, CURRENT_MONTH, setCurrentMonth,
+  MONTHS, MONTH_LABELS, CURRENT_MONTH, setCurrentMonth, setDeadlineDay,
   getCurIdx, getNoteMonth, isYtdMonth, NO_MSET, TOK_KEY,
   TEAMS, canSwitchTeam, OOP_CUST,
   setMaskMoney as setGlobalMaskMoney, ALIAS_MAP, setAliasMap,
@@ -436,6 +436,7 @@ function AppInner({ initialAuth, onLogin }) {
           setCurrentMonth(r.config.current_month);
           setCurMonth(r.config.current_month);
         }
+        if (r.config && r.config.deadline_day != null) setDeadlineDay(r.config.deadline_day);
         if (typeof r.rev === 'number') setDataRev(r.rev);
         if (r.maxDocDate) setMaxDocDate(r.maxDocDate);
         if (r.config && r.config.help_content) setHelpContent(String(r.config.help_content));

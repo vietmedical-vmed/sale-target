@@ -3,7 +3,7 @@ import {
   Clock, Settings, Download, Filter, RefreshCw, Loader2,
   ChevronDown, User,
 } from './icons.jsx';
-import { ROLE_LABELS, TEAMS } from '../config/constants.js';
+import { ROLE_LABELS, TEAMS, setDeadlineDay as setDeadlineDayGlobal } from '../config/constants.js';
 import { api } from '../api/client.js';
 import { loadXLSX } from '../lib/excel.js';
 
@@ -204,6 +204,7 @@ export function AuditLogView({ auth, viewBu }) {
     const v = Math.max(1, Math.min(28, Number(deadlineInput) || 5));
     try {
       await api('setAppConfig', { key: 'deadline_day', value: v });
+      setDeadlineDayGlobal(v);
       setDeadlineDay(v);
       setDeadlineInput(String(v));
       setEditingDeadline(false);

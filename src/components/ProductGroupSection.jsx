@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Trash2 } from './icons.jsx';
-import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth, HIEN_HET_HIEU_LUC } from '../config/constants.js';
+import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth, HIEN_HET_HIEU_LUC, isKhUpdateLocked } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
 import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
@@ -408,7 +408,7 @@ const ProductRow = React.memo(function ProductRow({
           );
         }
         const eff = cell.hasUpd ? cell.revUpd : cell.rev;
-        const locked = cell.rows.length === 0 || !canEdit;
+        const locked = cell.rows.length === 0 || !canEdit || (!isAdmin && isKhUpdateLocked(mo));
         return (
           <EditableCell
             key={'u' + mo}
