@@ -1411,9 +1411,14 @@ Deno.serve(async (req) => {
       const a = String(payload.a || "").trim();
       const b = payload.b ? String(payload.b).trim() : null;
       if (!a) return json({ ok: false, error: "thieu_du_lieu" }, 400);
-      // Chỉ admin được xem số gốc (chưa loại điều chỉnh giá của admin); manager luôn loại.
-      const loaiAdmin = sess.r === "admin" ? payload.loaiAdmin !== false : true;
-      const { data, error } = await db.rpc("so_sanh_chot_ke_hoach", { p_a: a, p_b: b, p_loai_admin: loaiAdmin });
+      // Chỉ admin được xem số thô (chưa loại điều chỉnh giá của admin / thay đổi ở tháng đã có
+      // thực hiện); manager luôn nhận số đã loại.
+      const laAdmin = sess.r === "admin";
+      const loaiAdmin = laAdmin ? payload.loaiAdmin !== false : true;
+      const loaiThucHien = laAdmin ? payload.loaiThucHien !== false : true;
+      const { data, error } = await db.rpc("so_sanh_chot_ke_hoach", {
+        p_a: a, p_b: b, p_loai_admin: loaiAdmin, p_loai_thuc_hien: loaiThucHien,
+      });
       if (error) {
         const msg = String(error.message || "");
         const r = loiChot(msg);

@@ -119,6 +119,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const [chiThayDoi, setChiThayDoi] = useState(false);
   const [theoThang, setTheoThang] = useState(true);
   const [loaiAdmin, setLoaiAdmin] = useState(true);
+  const [loaiThucHien, setLoaiThucHien] = useState(true);
   const [mo, setMo] = useState(() => new Set());
 
   const taiKy = useCallback(async () => {
@@ -142,14 +143,14 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
     let huy = false;
     setDangTai(true);
     setLoi('');
-    api('soSanhChot', { a: kyA, b: kyB === HIEN_TAI ? null : kyB, loaiAdmin })
+    api('soSanhChot', { a: kyA, b: kyB === HIEN_TAI ? null : kyB, loaiAdmin, loaiThucHien })
       .then((r) => !huy && setData((r.rows || []).map(toRow)))
       .catch((e) => !huy && setLoi(e.message))
       .finally(() => !huy && setDangTai(false));
     return () => {
       huy = true;
     };
-  }, [kyA, kyB, loaiAdmin]);
+  }, [kyA, kyB, loaiAdmin, loaiThucHien]);
 
   const chupNgay = async () => {
     const ky = thangVN();
@@ -411,6 +412,15 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
           >
             <input type="checkbox" checked={loaiAdmin} onChange={(e) => setLoaiAdmin(e.target.checked)} />
             Loại điều chỉnh giá của admin
+          </label>
+        )}
+        {isAdmin && (
+          <label
+            className="flex items-center gap-1 text-[12px] text-slate-600"
+            title="Tháng đã có thực hiện (ở bản chụp hoặc kỳ so sánh) không tính chênh: đồng bộ thực hiện lại hay chuyển tháng hiện tại không làm đổi phần chênh. Bỏ tick để xem số thô."
+          >
+            <input type="checkbox" checked={loaiThucHien} onChange={(e) => setLoaiThucHien(e.target.checked)} />
+            Loại thay đổi ở tháng đã có thực hiện
           </label>
         )}
         <span className="w-px h-5 bg-slate-200 mx-1" />
