@@ -36,6 +36,17 @@ const thangVN = () =>
     .slice(0, 7);
 const fmtLuc = (s) =>
   s ? new Date(s).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }) : '';
+// '2026-11-05 18:00' giờ VN.
+const fmtLucIso = (s) =>
+  s
+    ? new Intl.DateTimeFormat('sv-SE', {
+        timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      }).format(new Date(s))
+    : '';
+const dongChot = (k) =>
+  `Chốt bản ghi ${k.ky} lúc: ${fmtLucIso(k.chot_luc)}, ` +
+  (k.nguon === 'tu_dong' ? 'thực hiện tự động' : `thực hiện thủ công${k.nguoi ? ' bởi ' + k.nguoi : ''}`);
 const coDoi = (g) => Math.round(g.dtB - g.dtA) !== 0;
 
 // Gộp đệ quy theo CAP[cap..]; mỗi nút giữ tổng A/B, tổng theo tháng và nút con.
@@ -415,24 +426,11 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
         ))}
       </div>
 
-      <p className="text-[12px] text-slate-500 max-w-4xl">
-        DThu KH update như trên app lúc chụp: tháng đã qua (và tháng hiện tại đã có thực hiện) lấy doanh thu
-        thực hiện, các tháng còn lại lấy SL update (trống thì SL đầu năm) × đơn giá. Bản chụp tự động lúc
-        23:59 ngày hạn chót sale điền KH mỗi tháng.
-        {infoA && (
-          <>
-            {' '}
-            {tenA}: {fmtLuc(infoA.chot_luc)}, tháng hiện tại {kyLabel(infoA.thang_hien_tai)},{' '}
-            {infoA.nguon === 'tu_dong' ? 'tự động' : `chụp tay${infoA.nguoi ? ' bởi ' + infoA.nguoi : ''}`}.
-          </>
-        )}
-        {infoB && (
-          <>
-            {' '}
-            {tenB}: {fmtLuc(infoB.chot_luc)}, tháng hiện tại {kyLabel(infoB.thang_hien_tai)}.
-          </>
-        )}
-      </p>
+      <div className="text-[12px] text-slate-500 max-w-4xl space-y-0.5">
+        <div>Bản ghi tự động lúc 23:59 ngày hạn chót sale điền KH mỗi tháng.</div>
+        {infoA && <div>{dongChot(infoA)}</div>}
+        {infoB && <div>{dongChot(infoB)}</div>}
+      </div>
 
       {loi && (
         <div className="text-[12px] text-red-600 flex items-center gap-1.5">
