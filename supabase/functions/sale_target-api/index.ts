@@ -1345,6 +1345,67 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // ---- Bản chụp kế hoạch update hằng tháng (shared.ke_hoach_chot*) — chỉ admin ----
+    // Lỗi nghiệp vụ từ RPC có tiền tố chot_*: trả nguyên câu tiếng Việt sau dấu ':'.
+    const loiChot = (msg: string) => {
+      const m = msg.match(/chot_[a-z_]+:\s*(.*)$/);
+      return m ? json({ ok: false, error: m[1] }, 400) : null;
+    };
+
+    if (action === "getChotKy") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const { data, error } = await db.schema("shared").from("ke_hoach_chot_ky")
+        .select("ky,nam_tai_chinh,thang_hien_tai,chot_luc,nguon,nguoi,so_dong,tong_dt_kh_update")
+        .order("ky", { ascending: false });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, rows: data || [] });
+    }
+
+    if (action === "chotKeHoach") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ky = String(payload.ky || "").trim();
+      const { data, error } = await db.rpc("chot_ke_hoach", {
+        p_ky: ky, p_nguon: "thu_cong", p_nguoi: sess.n || sess.u || null, p_ghi_de: payload.ghiDe === true,
+      });
+      if (error) {
+        const msg = String(error.message || "");
+        const r = loiChot(msg);
+        if (r) return r;
+        throw new Error(msg);
+      }
+      await writeAuditLog(db, sess, "chotKeHoach", Number(data?.so_dong) || 0, {
+        ky, ghi_de: payload.ghiDe === true, thang_hien_tai: data?.thang_hien_tai,
+      });
+      return json({ ok: true, ...(data || {}) });
+    }
+
+    if (action === "xoaChotKy") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const ky = String(payload.ky || "").trim();
+      if (!ky) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+      const { data, error } = await db.schema("shared").from("ke_hoach_chot_ky")
+        .delete().eq("ky", ky).select("ky,so_dong");
+      if (error) throw new Error(error.message);
+      if (!data || !data.length) return json({ ok: false, error: "khong_ton_tai" }, 404);
+      await writeAuditLog(db, sess, "xoaChotKy", Number(data[0].so_dong) || 0, { ky });
+      return json({ ok: true });
+    }
+
+    if (action === "soSanhChot") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const a = String(payload.a || "").trim();
+      const b = payload.b ? String(payload.b).trim() : null;
+      if (!a) return json({ ok: false, error: "thieu_du_lieu" }, 400);
+      const { data, error } = await db.rpc("so_sanh_chot_ke_hoach", { p_a: a, p_b: b });
+      if (error) {
+        const msg = String(error.message || "");
+        const r = loiChot(msg);
+        if (r) return r;
+        throw new Error(msg);
+      }
+      return json({ ok: true, rows: data || [] });
+    }
+
     return json({ ok: false, error: "unknown_action" }, 400);
   } catch (err) {
     const msg = String(err && (err as Error).message || err);

@@ -19,6 +19,8 @@ const READ_ACTIONS = new Set([
   'getCatalog',
   'getCustomers',
   'getPs',
+  'getChotKy',
+  'soSanhChot',
 ]);
 
 let _onSessionExpired = null;

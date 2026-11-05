@@ -348,3 +348,60 @@ export async function exportQuotaThau(rows) {
   XLSX.utils.book_append_sheet(wb, ws, 'Quota thầu');
   XLSX.writeFile(wb, `Quota_thau_${_today()}.xlsx`);
 }
+
+// So sánh DThu KH update giữa 2 kỳ chụp (tab So sánh KH update), chi tiết PS × KH × nhóm SP.
+// Sheet 1: mỗi dòng PS × KH × nhóm, tổng 2 kỳ + chênh từng tháng. Sheet 2: dòng phẳng theo tháng.
+export async function exportSoSanhKeHoach(rows, tenA, tenB) {
+  const XLSX = await loadXLSX();
+  const thang = MONTHS.filter((m) => rows.some((r) => r.mo === m));
+  const nhom = new Map();
+  for (const r of rows) {
+    const k = [r.ps, r.custId, r.grp].join('||');
+    let g = nhom.get(k);
+    if (!g) {
+      g = { ...r, dtA: 0, dtB: 0, t: new Map() };
+      nhom.set(k, g);
+    }
+    g.dtA += r.dtA;
+    g.dtB += r.dtB;
+    g.t.set(r.mo, (g.t.get(r.mo) || 0) + r.dtB - r.dtA);
+  }
+  const sx = (a, b) =>
+    (a.ps || '').localeCompare(b.ps || '') ||
+    (a.cust || '').localeCompare(b.cust || '') ||
+    (a.grp || '').localeCompare(b.grp || '');
+  const H1 = [
+    'Năm TC', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP',
+    `DThu ${tenA}`, `DThu ${tenB}`, 'Chênh', '% chênh',
+    ...thang.map((m) => `Chênh ${MONTH_LABELS[MONTHS.indexOf(m)]}`),
+  ];
+  const aoa1 = [H1].concat(
+    [...nhom.values()].sort(sx).map((g) => [
+      g.fy, g.bu, g.region, g.ps, g.custId, g.cust, g.grp, g.dtA, g.dtB, g.dtB - g.dtA,
+      g.dtA ? (g.dtB - g.dtA) / Math.abs(g.dtA) : '',
+      ...thang.map((m) => (g.t.has(m) ? g.t.get(m) : '')),
+    ]),
+  );
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+  ws1['!cols'] = [6, 6, 8, 16, 9, 30, 22, 16, 16, 14, 8, ...thang.map(() => 12)].map((wch) => ({ wch }));
+  ws1['!autofilter'] = { ref: `A1:${_ec(aoa1.length - 1, H1.length - 1)}` };
+  for (let r = 1; r < aoa1.length; r++) {
+    for (let c = 7; c < H1.length; c++) _fmt(ws1, r, c, c === 10 ? '0.0%' : '#,##0');
+  }
+
+  const H2 = ['Năm TC', 'Tháng', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', `DThu ${tenA}`, `DThu ${tenB}`, 'Chênh'];
+  const aoa2 = [H2].concat(
+    [...rows]
+      .sort((a, b) => sx(a, b) || (a.mo || '').localeCompare(b.mo || ''))
+      .map((r) => [r.fy, r.mo, r.bu, r.region, r.ps, r.custId, r.cust, r.grp, r.dtA, r.dtB, r.dtB - r.dtA]),
+  );
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2['!cols'] = [6, 8, 6, 8, 16, 9, 30, 22, 16, 16, 14].map((wch) => ({ wch }));
+  ws2['!autofilter'] = { ref: `A1:${_ec(aoa2.length - 1, H2.length - 1)}` };
+  for (let r = 1; r < aoa2.length; r++) for (let c = 8; c <= 10; c++) _fmt(ws2, r, c, '#,##0');
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'PS-KH-Nhóm SP');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Chi tiết tháng');
+  XLSX.writeFile(wb, `SoSanh_KH_update_${_today()}.xlsx`);
+}

@@ -27,6 +27,7 @@ import { MultiSelect } from './components/MultiSelect.jsx';
 import { AuditLogView } from './components/AuditLogView.jsx';
 import { DotThieuThongTinView } from './components/DotThieuThongTinView.jsx';
 import { SoSanhGiaView } from './components/SoSanhGiaView.jsx';
+import { SoSanhKeHoachView } from './components/SoSanhKeHoachView.jsx';
 import { TeamSummaryBar } from './components/TeamBar.jsx';
 import { AccountBar, ThYtdBar, GroupRankCard } from './components/StatBars.jsx';
 import { WaterfallChart } from './components/Charts.jsx';
@@ -187,7 +188,7 @@ function AppInner({ initialAuth, onLogin }) {
   const [drafts, setDrafts] = useState({}); // { 'row:key': value } — chưa lưu
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'dotthieu' | 'sosanhgia' | 'audit'
+  const [tab, setTab] = useState('detail'); // 'detail' | 'summary' | 'prodsum' | 'diaban' | 'dotthieu' | 'sosanhgia' | 'sosanhkh' | 'audit'
   const [notice, setNotice] = useState(''); // thông báo kết quả thao tác (tự tắt sau 8s)
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -2705,6 +2706,13 @@ function AppInner({ initialAuth, onLogin }) {
                 label="So sánh đơn giá"
               />
             )}
+            {isAdmin && (
+              <TabBtn
+                active={tab === 'sosanhkh'}
+                onClick={() => setTab('sosanhkh')}
+                label="So sánh KH update"
+              />
+            )}
             {(auth.role === 'admin' || auth.role === 'manager') && (
               <TabBtn
                 active={tab === 'audit'}
@@ -2790,7 +2798,7 @@ function AppInner({ initialAuth, onLogin }) {
             </div>
           )}
         </header>
-        {tab !== 'audit' && tab !== 'dotthieu' && tab !== 'sosanhgia' && (
+        {tab !== 'audit' && tab !== 'dotthieu' && tab !== 'sosanhgia' && tab !== 'sosanhkh' && (
           <div className="px-6 pt-4">
             {canSwitchTeam(auth.role) && (
               <TeamSummaryBar
@@ -2941,6 +2949,8 @@ function AppInner({ initialAuth, onLogin }) {
           <AuditLogView auth={auth} viewBu={viewBu} />
         ) : tab === 'dotthieu' && isAdmin ? (
           <DotThieuThongTinView customers={custSource} />
+        ) : tab === 'sosanhkh' && isAdmin ? (
+          <SoSanhKeHoachView viewBu={viewBu} />
         ) : tab === 'sosanhgia' && isAdmin ? (
           <SoSanhGiaView rows={teamRows} priceOf={priceOf} onUpdatePrice={updatePriceRows} />
         ) : tab === 'diaban' ? (
