@@ -105,7 +105,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const [baoXong, setBaoXong] = useState('');
   const [thang, setThang] = useState('');
   const [search, setSearch] = useState('');
-  const [chiThayDoi, setChiThayDoi] = useState(true);
+  const [chiThayDoi, setChiThayDoi] = useState(false);
   const [theoThang, setTheoThang] = useState(true);
   const [mo, setMo] = useState(() => new Set());
 
@@ -219,7 +219,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
     const n = new Set();
     const duyet = (ds) =>
       ds.forEach((g) => {
-        if (g.cap < capToiDa && (!chiThayDoi || coDoi(g))) {
+        if (g.cap < capToiDa) {
           n.add(g.k);
           duyet(g.con);
         }
@@ -227,7 +227,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
     duyet(cay);
     setMo(n);
   };
-  // Mỗi lần tải dữ liệu so sánh mới (đổi kỳ): mở sẵn BU, Miền để thấy tới cấp PS.
+  // Mỗi lần tải dữ liệu so sánh mới (đổi kỳ): mở sẵn mọi BU, Miền để thấy tới cấp PS.
   useEffect(() => {
     moHet(CAP_PS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
