@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle, Download, Loader2, Trash2 } from './icons.jsx';
-import { MONTHS, MONTH_LABELS, TEAMS } from '../config/constants.js';
+import { MONTHS, MONTH_LABELS, TEAMS, MASK_MONEY } from '../config/constants.js';
+import { fmtTy3, moneyTy3 } from '../lib/format.js';
+import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
 import { deaccent } from '../lib/text.js';
 import { exportSoSanhKeHoach } from '../lib/excel.js';
 import { api } from '../api/client.js';
@@ -29,7 +31,6 @@ const CAP = [
 const CAP_PS = CAP.findIndex((c) => c.label === 'PS'); // mặc định mở tới cấp PS
 const NUT_MO = ['BU', 'Miền', 'PS', 'KH', 'Nhóm SP'];
 
-const fmtTr = (v) => (v / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 const kyLabel = (ky) => (ky ? `T${Number(ky.slice(5, 7))}/${ky.slice(0, 4)}` : '');
 const thangVN = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit' })
@@ -79,35 +80,29 @@ function dungCay(list, cap, chaKey) {
   return out.sort((a, b) => Math.abs(b.chenh) - Math.abs(a.chenh) || a.ten.localeCompare(b.ten));
 }
 
-const Chenh = ({ v, className = '' }) => (
-  <span className={`${v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-300'} ${className}`}>
-    {Math.round(v / 1e5) === 0 ? '·' : (v > 0 ? '+' : '') + fmtTr(v)}
-  </span>
-);
-
-const Pct = ({ a, b }) => {
-  if (!a) return <span className="text-slate-400">{b ? 'mới' : '—'}</span>;
+// Định dạng và màu theo màn Tổng hợp theo PS (SummaryView): tiền dạng tỷ / tr, 0 hiện '—'.
+const fmtCh = (v) =>
+  MASK_MONEY ? '•••' : Math.round(v / 1e6) === 0 ? '—' : (v > 0 ? '+' : '') + fmtTy3(v);
+const chCls = (v) => (Math.round(v / 1e6) === 0 ? 'text-slate-400' : v > 0 ? 'text-emerald-700' : 'text-red-600');
+const pctChenh = (a, b) => {
+  if (!a) return b ? 'mới' : '—';
   const p = ((b - a) / Math.abs(a)) * 100;
-  return (
-    <span className={p > 0 ? 'text-emerald-700' : p < 0 ? 'text-red-600' : 'text-slate-400'}>
-      {p > 0 ? '+' : ''}
-      {p.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%
-    </span>
-  );
+  return (p > 0 ? '+' : '') + p.toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%';
 };
+const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
+const pctCls = (th, kh) =>
+  !(kh > 0) ? 'text-slate-300' : Math.round((th / kh) * 100) >= 90 ? 'text-green-700' : 'text-red-600';
 
-// Số tr trong ô tháng: 0 (làm tròn 0,1 tr) hiện dấu chấm.
-const SoO = ({ v, className = 'text-slate-700' }) =>
-  Math.round(v / 1e5) === 0 ? <span className="text-slate-300">·</span> : <span className={className}>{fmtTr(v)}</span>;
-
-const NEN_CAP = ['bg-slate-100/70', 'bg-slate-50', '', 'bg-slate-50/40', 'bg-slate-50/70'];
-const CHU_CAP = [
-  'text-[12px] font-bold text-slate-900',
-  'text-[12px] font-semibold text-slate-800',
-  'text-[12px] font-medium text-slate-800',
-  'text-[12px] text-slate-700',
-  'text-[11px] text-slate-600',
+// Hàng theo cấp BU → Miền → PS → KH → Nhóm SP; Miền / PS / KH / Nhóm giống màn Tổng hợp theo PS.
+const DONG = [
+  { tr: 'bg-slate-200 hover:bg-slate-300/60 border-slate-300', td: 'bg-slate-200 text-[13px] font-bold text-slate-900', chev: 'text-slate-600', icon: 14 },
+  { tr: 'bg-sky-50 hover:bg-sky-100 border-slate-200', td: 'bg-sky-50 text-[13px] font-bold text-sky-900', chev: 'text-sky-600', icon: 14 },
+  { tr: 'bg-slate-50 hover:bg-slate-100 border-slate-200', td: 'bg-slate-50 text-[13px] font-semibold text-slate-800 whitespace-nowrap', chev: 'text-slate-500', icon: 14 },
+  { tr: 'bg-white hover:bg-slate-50/60 border-slate-100', td: 'bg-white text-[12px] text-slate-600', chev: 'text-slate-400', icon: 12, sm: true },
+  { tr: 'bg-slate-50 hover:bg-slate-100/60 border-slate-100', td: 'bg-slate-50 text-[12px] font-medium text-slate-700', chev: 'text-slate-400', icon: 12, sm: true },
 ];
+const TH_NHOM = 'font-semibold uppercase tracking-wide border-b border-slate-200';
+const TH_CON = 'px-2 py-1 text-right text-[9.5px] font-medium uppercase border-b border-slate-200 whitespace-nowrap';
 
 // So sánh DThu KH update giữa 2 bản chụp hằng tháng (hoặc bản chụp với dữ liệu hiện tại),
 // chi tiết PS → khách hàng → nhóm sản phẩm. Bản chụp tự động lúc 23:59 ngày hạn chót
@@ -215,14 +210,22 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
   const cay = useMemo(() => dungCay(loc, 0, ''), [loc]);
 
   const tong = useMemo(() => {
-    let a = 0,
-      b = 0;
+    const t = { dtA: 0, dtB: 0, thang: new Map() };
     for (const r of loc) {
-      a += r.dtA;
-      b += r.dtB;
+      t.dtA += r.dtA;
+      t.dtB += r.dtB;
+      const x = t.thang.get(r.mo) || { dtA: 0, dtB: 0, khA: 0, khB: 0 };
+      x.dtA += r.dtA;
+      x.dtB += r.dtB;
+      x.khA += r.khA;
+      x.khB += r.khB;
+      t.thang.set(r.mo, x);
     }
-    return { a, b };
+    return t;
   }, [loc]);
+  const boxRef = useFitHeight();
+  useSummaryScrollbar(boxRef);
+  useStickyRows(boxRef); // ghim hàng BU / Miền / PS / KH khi cuộn, như màn Tổng hợp
 
   const thangCo = useMemo(() => MONTHS.filter((m) => data.some((r) => r.mo === m)), [data]);
   const thangCot = useMemo(
@@ -267,9 +270,14 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
         ? (infoB ? infoB.thang_hien_tai : curMonth) || ''
         : '';
   const laTH = (m) => !!mocTH && m < mocTH;
-  // Tháng TH có thêm cột KH update (SL update × giá) đứng trước cột TH.
-  const coKH = theoThang && thangCot.some(laTH);
-  const soCot = 5 + (theoThang ? thangCot.length + thangCot.filter(laTH).length : 0);
+  // Tháng TH (xem số A/B) tách 3 cột KH upd · TH · % như màn Tổng hợp.
+  const tach = (m) => theoThang && cheDoThang !== 'chenh' && laTH(m);
+  const soCot = 5 + (theoThang ? thangCot.length + 2 * thangCot.filter(tach).length : 0);
+  // Tô màu tháng theo mốc: đã qua (teal) · tháng hiện tại (xanh đậm) · tương lai (xanh nhạt).
+  const mocMau = mocTH || curMonth;
+  const mauTH = (m) =>
+    m < mocMau ? 'bg-teal-50/60 text-teal-700' : m === mocMau ? 'bg-blue-100/60 text-blue-700' : 'bg-blue-50/40 text-blue-600';
+  const nenO = (m) => (m === mocMau ? 'bg-blue-50/50' : MONTHS.indexOf(m) % 2 ? 'bg-slate-50/60' : '');
 
   const xuat = () =>
     exportSoSanhKeHoach(
@@ -280,76 +288,97 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
       mocTH,
     );
 
+  // Các ô số của 1 hàng: Cả năm (A · B · Chênh · %) rồi theo tháng.
+  const oSo = (g, sm, dark) => {
+    const p = sm ? 'py-1.5 text-[12px]' : dark ? 'py-2.5 text-[12.5px]' : 'py-2 text-[13px]';
+    const base = dark ? 'text-white' : sm ? 'text-slate-600' : 'text-slate-700';
+    const green = dark ? 'text-green-300' : sm ? 'text-green-600' : 'text-green-700';
+    const blue = dark ? 'text-blue-200' : sm ? 'text-blue-600' : 'text-blue-700';
+    const chMau = (v) =>
+      dark ? (Math.round(v / 1e6) === 0 ? 'text-slate-400' : v > 0 ? 'text-emerald-300' : 'text-red-300') : chCls(v);
+    const tbg = dark ? '' : 'bg-emerald-50/30';
+    const ch = g.dtB - g.dtA;
+    const o = [
+      <td key="a" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${tbg}`}>{moneyTy3(g.dtA)}</td>,
+      <td key="b" className={`px-3 ${p} text-right tabular-nums font-medium ${blue} ${tbg}`}>{moneyTy3(g.dtB)}</td>,
+      <td key="c" className={`px-3 ${p} text-right tabular-nums font-semibold ${chMau(ch)} ${tbg}`}>{fmtCh(ch)}</td>,
+      <td key="p" className={`px-3 ${p} text-right tabular-nums font-semibold border-r border-slate-200 ${chMau(ch)} ${tbg}`}>
+        {pctChenh(g.dtA, g.dtB)}
+      </td>,
+    ];
+    if (!theoThang) return o;
+    for (const m of thangCot) {
+      const t = g.thang.get(m) || { dtA: 0, dtB: 0, khA: 0, khB: 0 };
+      const bg = dark ? '' : nenO(m);
+      const tip = `${tenA}: ${fmtTy3(t.dtA)} → ${tenB}: ${fmtTy3(t.dtB)}`;
+      if (cheDoThang === 'chenh') {
+        const v = t.dtB - t.dtA;
+        o.push(
+          <td key={m} title={tip} className={`px-2 ${p} text-right tabular-nums border-r border-slate-100 ${chMau(v)} ${bg}`}>
+            {fmtCh(v)}
+          </td>,
+        );
+        continue;
+      }
+      const so = cheDoThang === 'a' ? t.dtA : t.dtB;
+      if (!tach(m)) {
+        o.push(
+          <td key={m} title={tip} className={`px-2 ${p} text-right tabular-nums border-r border-slate-100 ${base} ${bg}`}>
+            {moneyTy3(so)}
+          </td>,
+        );
+        continue;
+      }
+      const kh = cheDoThang === 'a' ? t.khA : t.khB;
+      o.push(
+        <td key={m + 'k'} title="KH update = SL update × đơn giá" className={`px-2 ${p} text-right tabular-nums ${base} ${bg}`}>
+          {moneyTy3(kh)}
+        </td>,
+        <td key={m + 't'} title={tip} className={`px-2 ${p} text-right tabular-nums ${green} ${bg}`}>
+          {moneyTy3(so)}
+        </td>,
+        <td key={m + 'p'} className={`px-2 ${p} text-right tabular-nums border-r border-slate-200 ${dark ? 'text-slate-300' : pctCls(so, kh)} ${bg}`}>
+          {pctTxt(so, kh)}
+        </td>,
+      );
+    }
+    return o;
+  };
+
   const dongCay = (ds) =>
     ds
       .filter((g) => !chiThayDoi || coDoi(g))
       .map((g) => {
         const open = mo.has(g.k);
         const coCon = g.con.length > 0;
+        const d = DONG[g.cap];
         return (
           <Fragment key={g.k}>
-            <tr className={`border-b border-slate-100 hover:bg-blue-50/40 ${NEN_CAP[g.cap]}`}>
-              <td className="px-3 py-1.5" style={{ paddingLeft: 8 + g.cap * 20 }}>
-                <div className="flex items-start gap-1">
+            <tr
+              data-lv={g.cap}
+              className={`${d.tr} border-b ${coCon ? 'cursor-pointer' : ''}`}
+              onClick={coCon ? () => bat(g.k) : undefined}
+              title={coCon ? `Xem theo ${CAP[g.cap + 1].label}` : undefined}
+            >
+              <td
+                className={`px-3 ${d.sm ? 'py-1.5' : 'py-2'} border-r border-slate-100 sticky left-0 z-10 ${d.td}`}
+                style={{ paddingLeft: 12 + g.cap * 10 }}
+              >
+                <span className="inline-flex items-center gap-1">
                   {coCon ? (
-                    <button
-                      onClick={() => bat(g.k)}
-                      className="p-0.5 text-slate-400 hover:text-slate-700 shrink-0"
-                      title={`Xem theo ${CAP[g.cap + 1].label}`}
-                    >
-                      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
+                    open ? (
+                      <ChevronDown size={d.icon} className={`${d.chev} shrink-0`} />
+                    ) : (
+                      <ChevronRight size={d.icon} className={`${d.chev} shrink-0`} />
+                    )
                   ) : (
-                    <span className="w-[18px] shrink-0" />
+                    <span className="shrink-0" style={{ width: d.icon, display: 'inline-block' }} />
                   )}
-                  <div className={CHU_CAP[g.cap]}>
-                    {g.ten}
-                    {g.phu && <span className="ml-1.5 text-[10px] text-slate-400">{g.phu}</span>}
-                  </div>
-                </div>
+                  <span className="truncate">{g.ten}</span>
+                  {g.phu && <span className="ml-1 text-[10px] font-normal text-slate-400 font-mono">{g.phu}</span>}
+                </span>
               </td>
-              <td className="px-3 py-1.5 text-right text-slate-600">{fmtTr(g.dtA)}</td>
-              <td className="px-3 py-1.5 text-right text-slate-800">{fmtTr(g.dtB)}</td>
-              <td className="px-3 py-1.5 text-right font-medium">
-                <Chenh v={g.chenh} />
-              </td>
-              <td className="px-3 py-1.5 text-right">
-                <Pct a={g.dtA} b={g.dtB} />
-              </td>
-              {theoThang &&
-                thangCot.map((m) => {
-                  const t = g.thang.get(m);
-                  const so = t && (cheDoThang === 'a' ? t.dtA : cheDoThang === 'b' ? t.dtB : null);
-                  const th = laTH(m);
-                  const o = (
-                    <td
-                      key={m}
-                      className={`px-2 py-1.5 text-right text-[11px] ${th ? 'bg-amber-50/60' : 'border-l border-slate-100'}`}
-                      title={t ? `${tenA}: ${fmtTr(t.dtA)} tr → ${tenB}: ${fmtTr(t.dtB)} tr` : undefined}
-                    >
-                      {!t ? (
-                        <span className="text-slate-200">·</span>
-                      ) : so === null ? (
-                        <Chenh v={t.dtB - t.dtA} />
-                      ) : (
-                        <SoO v={so} />
-                      )}
-                    </td>
-                  );
-                  if (!th) return o;
-                  const kh = t && (cheDoThang === 'a' ? t.khA : t.khB);
-                  return (
-                    <Fragment key={m}>
-                      <td
-                        className="px-2 py-1.5 text-right text-[11px] border-l border-slate-100"
-                        title={t ? `KH update (SL × giá): ${fmtTr(kh)} tr · TH: ${fmtTr(so)} tr` : undefined}
-                      >
-                        {t ? <SoO v={kh} className="text-slate-500" /> : <span className="text-slate-200">·</span>}
-                      </td>
-                      {o}
-                    </Fragment>
-                  );
-                })}
+              {oSo(g, d.sm, false)}
             </tr>
             {open && dongCay(g.con)}
           </Fragment>
@@ -363,8 +392,10 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
           <h2 className="text-lg font-bold text-slate-800">So sánh kế hoạch update giữa các kỳ</h2>
           {kyA && (
             <span className="text-[12px] text-slate-500 tabular-nums">
-              {tenA}: {fmtTr(tong.a)} tr · {tenB}: {fmtTr(tong.b)} tr · chênh{' '}
-              <Chenh v={tong.b - tong.a} /> tr (<Pct a={tong.a} b={tong.b} />)
+              {tenA}: {moneyTy3(tong.dtA)} · {tenB}: {moneyTy3(tong.dtB)} · chênh{' '}
+              <span className={chCls(tong.dtB - tong.dtA)}>
+                {fmtCh(tong.dtB - tong.dtA)} ({pctChenh(tong.dtA, tong.dtB)})
+              </span>
             </span>
           )}
         </div>
@@ -509,84 +540,104 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
       )}
       {baoXong && <div className="text-[12px] text-emerald-700">{baoXong}</div>}
 
-      {!kys.length && !loi ? (
-        <div className="bg-white rounded-lg border border-slate-200 px-4 py-8 text-center text-[13px] text-slate-500">
-          Chưa có bản chụp nào.{' '}
-          {isAdmin ? 'Bấm “Chụp ngay” để chụp kế hoạch update hiện tại, hoặc chờ' : 'Chờ'} bản chụp tự động
-          ngày hạn chót.
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
-          <table className="w-full text-[12px] tabular-nums">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div ref={boxRef} className="overflow-auto summary-scroll">
+          <table className="w-full border-collapse sticky-head">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-left font-semibold">
+              <tr className="bg-slate-100">
+                <th
+                  rowSpan={2}
+                  className={`px-4 py-2 text-left text-[11px] ${TH_NHOM} border-r text-slate-600 align-bottom sticky left-0 z-[11] bg-slate-100`}
+                  style={{ minWidth: 240 }}
+                >
                   BU / Miền / PS / Khách hàng / Nhóm SP
                 </th>
-                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenA} (tr)</th>
-                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenB} (tr)</th>
-                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold whitespace-nowrap">Chênh (tr)</th>
-                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold">%</th>
+                <th
+                  colSpan={4}
+                  className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
+                >
+                  Cả năm
+                </th>
                 {theoThang &&
-                  thangCot.map((m) =>
-                    laTH(m) ? (
-                      <th
-                        key={m}
-                        colSpan={2}
-                        className="px-2 pt-2 pb-0.5 text-center font-semibold border-l border-slate-200 bg-amber-50"
-                        title="Tháng trước tháng hiện tại lúc chụp: DThu lấy theo thực hiện"
-                      >
-                        {MONTH_LABELS[MONTHS.indexOf(m)]}
-                      </th>
-                    ) : (
-                      <th
-                        key={m}
-                        rowSpan={coKH ? 2 : 1}
-                        className="px-2 py-2 text-right font-semibold border-l border-slate-200"
-                      >
-                        {MONTH_LABELS[MONTHS.indexOf(m)]}
-                      </th>
-                    ),
-                  )}
+                  thangCot.map((m) => (
+                    <th
+                      key={m}
+                      colSpan={tach(m) ? 3 : undefined}
+                      rowSpan={tach(m) ? undefined : 2}
+                      title={
+                        m < mocMau
+                          ? 'Tháng trước tháng hiện tại lúc chụp: DThu lấy theo thực hiện'
+                          : m === mocMau
+                            ? 'Tháng hiện tại lúc chụp'
+                            : undefined
+                      }
+                      className={`px-2 py-1.5 text-[10px] ${TH_NHOM} border-r align-bottom ${tach(m) ? 'text-center' : 'text-right'} ${mauTH(m)}`}
+                    >
+                      {MONTH_LABELS[MONTHS.indexOf(m)]}
+                    </th>
+                  ))}
               </tr>
-              {coKH && (
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500">
-                  {thangCot.filter(laTH).map((m) => (
+              <tr className="bg-slate-100">
+                <th className={`${TH_CON} text-slate-500 bg-emerald-50/40`}>{tenA}</th>
+                <th className={`${TH_CON} text-blue-600 bg-emerald-50/40`}>{tenB}</th>
+                <th className={`${TH_CON} text-emerald-700 bg-emerald-50/40`}>Chênh</th>
+                <th className={`${TH_CON} text-slate-500 border-r bg-emerald-50/40`}>%</th>
+                {theoThang &&
+                  thangCot.filter(tach).map((m) => (
                     <Fragment key={m}>
-                      <th
-                        className="px-2 pb-1.5 text-right font-normal border-l border-slate-200 bg-amber-50 whitespace-nowrap"
-                        title="KH update = SL update (trống thì SL đầu năm) × đơn giá"
-                      >
+                      <th className={`${TH_CON} text-slate-500`} title="KH update = SL update (trống thì SL đầu năm) × đơn giá">
                         KH upd
                       </th>
-                      <th className="px-2 pb-1.5 text-right font-medium text-amber-700 bg-amber-50" title="DThu thực hiện">
+                      <th className={`${TH_CON} text-green-600`} title="DThu thực hiện">
                         TH
+                      </th>
+                      <th className={`${TH_CON} text-slate-500 border-r`} title="TH / KH update">
+                        %
                       </th>
                     </Fragment>
                   ))}
-                </tr>
-              )}
+              </tr>
             </thead>
             <tbody>
-              {dangTai ? (
+              {!kys.length && !loi ? (
                 <tr>
-                  <td colSpan={soCot} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={soCot} className="px-4 py-8 text-center text-[13px] text-slate-500">
+                    Chưa có bản chụp nào.{' '}
+                    {isAdmin ? 'Bấm “Chụp ngay” để chụp kế hoạch update hiện tại, hoặc chờ' : 'Chờ'} bản chụp tự
+                    động ngày hạn chót.
+                  </td>
+                </tr>
+              ) : dangTai ? (
+                <tr>
+                  <td colSpan={soCot} className="px-3 py-6 text-center text-[12px] text-slate-400">
                     <Loader2 size={14} className="inline animate-spin mr-1" /> Đang tải…
                   </td>
                 </tr>
               ) : cay.filter((g) => !chiThayDoi || coDoi(g)).length === 0 ? (
                 <tr>
-                  <td colSpan={soCot} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={soCot} className="px-3 py-6 text-center text-[12px] text-slate-400">
                     Không có thay đổi theo bộ lọc hiện tại
                   </td>
                 </tr>
               ) : (
-                dongCay(cay)
+                <>
+                  {dongCay(cay)}
+                  <tr className="bg-slate-800 text-white font-semibold">
+                    <td className="px-3 py-2.5 text-[12.5px] border-t-2 border-slate-900 sticky left-0 z-10 bg-slate-800">
+                      TỔNG CỘNG
+                    </td>
+                    {oSo(tong, false, true)}
+                  </tr>
+                </>
               )}
             </tbody>
           </table>
         </div>
-      )}
+      </div>
+      <p className="text-[11px] text-slate-400 -mt-2">
+        Đơn vị: tỷ / triệu VNĐ. Cả năm = DThu KH update (tháng đã qua lấy thực hiện). Chênh = {tenB} − {tenA}.
+        {theoThang && cheDoThang !== 'chenh' && ' Tháng đã qua: KH upd = SL update × đơn giá, TH = thực hiện, % = TH / KH upd.'}
+      </p>
 
       {kys.length > 0 && (
         <div className="text-[11px] text-slate-500">
