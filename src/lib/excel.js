@@ -364,21 +364,24 @@ export async function exportQuotaThau(rows) {
 // So sánh DThu KH update giữa 2 kỳ chụp (tab So sánh KH update), chi tiết BU × miền × PS × KH × nhóm SP.
 // Sheet 1: mỗi dòng BU × miền × PS × KH × nhóm, tổng 2 kỳ + chênh từng tháng. Sheet 2: dòng phẳng theo tháng.
 // theo: cột tháng ở sheet tổng hợp là 'chenh' (B − A), 'a' (số kỳ gốc) hay 'b' (số bên so sánh).
-export async function exportSoSanhKeHoach(rows, tenA, tenB, theo = 'chenh') {
+// mocTH: tháng hiện tại lúc chụp của bên đang xuất (theo 'a'/'b'); tháng trước đó thêm cột KH upd.
+export async function exportSoSanhKeHoach(rows, tenA, tenB, theo = 'chenh', mocTH = '') {
   const XLSX = await loadXLSX();
   const thang = MONTHS.filter((m) => rows.some((r) => r.mo === m));
+  const laTH = (m) => theo !== 'chenh' && !!mocTH && m < mocTH;
   const nhom = new Map();
   for (const r of rows) {
     const k = [r.bu, r.region, r.ps, r.custId, r.grp].join('||');
     let g = nhom.get(k);
     if (!g) {
-      g = { ...r, dtA: 0, dtB: 0, t: new Map() };
+      g = { ...r, dtA: 0, dtB: 0, t: new Map(), kh: new Map() };
       nhom.set(k, g);
     }
     g.dtA += r.dtA;
     g.dtB += r.dtB;
     const v = theo === 'a' ? r.dtA : theo === 'b' ? r.dtB : r.dtB - r.dtA;
     g.t.set(r.mo, (g.t.get(r.mo) || 0) + v);
+    g.kh.set(r.mo, (g.kh.get(r.mo) || 0) + (theo === 'a' ? r.khA || 0 : r.khB || 0));
   }
   const sx = (a, b) =>
     (a.bu || '').localeCompare(b.bu || '') ||
@@ -389,32 +392,45 @@ export async function exportSoSanhKeHoach(rows, tenA, tenB, theo = 'chenh') {
   const H1 = [
     'Năm TC', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP',
     `DThu ${tenA}`, `DThu ${tenB}`, 'Chênh', '% chênh',
-    ...thang.map((m) => `${theo === 'a' ? tenA : theo === 'b' ? tenB : 'Chênh'} ${MONTH_LABELS[MONTHS.indexOf(m)]}`),
+    ...thang.flatMap((m) => {
+      const ten = `${theo === 'a' ? tenA : theo === 'b' ? tenB : 'Chênh'} ${MONTH_LABELS[MONTHS.indexOf(m)]}`;
+      return laTH(m) ? [`${ten} KH upd`, `${ten} TH`] : [ten];
+    }),
   ];
   const aoa1 = [H1].concat(
     [...nhom.values()].sort(sx).map((g) => [
       g.fy, g.bu, g.region, g.ps, g.custId, g.cust, g.grp, g.dtA, g.dtB, g.dtB - g.dtA,
       g.dtA ? (g.dtB - g.dtA) / Math.abs(g.dtA) : '',
-      ...thang.map((m) => (g.t.has(m) ? g.t.get(m) : '')),
+      ...thang.flatMap((m) => {
+        const v = g.t.has(m) ? g.t.get(m) : '';
+        return laTH(m) ? [g.t.has(m) ? g.kh.get(m) : '', v] : [v];
+      }),
     ]),
   );
   const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
-  ws1['!cols'] = [6, 6, 8, 16, 9, 30, 22, 16, 16, 14, 8, ...thang.map(() => 12)].map((wch) => ({ wch }));
+  ws1['!cols'] = [6, 6, 8, 16, 9, 30, 22, 16, 16, 14, 8, ...thang.flatMap((m) => (laTH(m) ? [14, 12] : [12]))].map(
+    (wch) => ({ wch }),
+  );
   ws1['!autofilter'] = { ref: `A1:${_ec(aoa1.length - 1, H1.length - 1)}` };
   for (let r = 1; r < aoa1.length; r++) {
     for (let c = 7; c < H1.length; c++) _fmt(ws1, r, c, c === 10 ? '0.0%' : '#,##0');
   }
 
-  const H2 = ['Năm TC', 'Tháng', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', `DThu ${tenA}`, `DThu ${tenB}`, 'Chênh'];
+  const H2 = [
+    'Năm TC', 'Tháng', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', `DThu ${tenA}`, `DThu ${tenB}`, 'Chênh',
+    `KH upd (SL × giá) ${tenA}`, `KH upd (SL × giá) ${tenB}`,
+  ];
   const aoa2 = [H2].concat(
     [...rows]
       .sort((a, b) => sx(a, b) || (a.mo || '').localeCompare(b.mo || ''))
-      .map((r) => [r.fy, r.mo, r.bu, r.region, r.ps, r.custId, r.cust, r.grp, r.dtA, r.dtB, r.dtB - r.dtA]),
+      .map((r) => [
+        r.fy, r.mo, r.bu, r.region, r.ps, r.custId, r.cust, r.grp, r.dtA, r.dtB, r.dtB - r.dtA, r.khA || 0, r.khB || 0,
+      ]),
   );
   const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
-  ws2['!cols'] = [6, 8, 6, 8, 16, 9, 30, 22, 16, 16, 14].map((wch) => ({ wch }));
+  ws2['!cols'] = [6, 8, 6, 8, 16, 9, 30, 22, 16, 16, 14, 18, 18].map((wch) => ({ wch }));
   ws2['!autofilter'] = { ref: `A1:${_ec(aoa2.length - 1, H2.length - 1)}` };
-  for (let r = 1; r < aoa2.length; r++) for (let c = 8; c <= 10; c++) _fmt(ws2, r, c, '#,##0');
+  for (let r = 1; r < aoa2.length; r++) for (let c = 8; c <= 12; c++) _fmt(ws2, r, c, '#,##0');
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, 'BU-Miền-PS-KH-Nhóm');

@@ -6,10 +6,11 @@ import { exportSoSanhKeHoach } from '../lib/excel.js';
 import { api } from '../api/client.js';
 
 // Dòng từ RPC so_sanh_chot_ke_hoach (mảng gọn, chi tiết PS × KH × nhóm SP × tháng):
-// [fy, thang, bu, mien, ps, maKh, tenKh, nhom, dtA, dtB]
+// [fy, thang, bu, mien, ps, maKh, tenKh, nhom, dtA, dtB, khA, khB]
+// dt = DThu KH update như app (tháng đã có thực hiện lấy TH); kh = SL update × giá (luôn là KH).
 const toRow = (a) => ({
   fy: a[0], mo: a[1], bu: a[2], region: a[3], ps: a[4], custId: a[5], cust: a[6], grp: a[7],
-  dtA: Number(a[8]) || 0, dtB: Number(a[9]) || 0,
+  dtA: Number(a[8]) || 0, dtB: Number(a[9]) || 0, khA: Number(a[10]) || 0, khB: Number(a[11]) || 0,
 });
 
 const HIEN_TAI = '__hien_tai__';
@@ -62,9 +63,11 @@ function dungCay(list, cap, chaKey) {
     }
     g.dtA += r.dtA;
     g.dtB += r.dtB;
-    const t = g.thang.get(r.mo) || { dtA: 0, dtB: 0 };
+    const t = g.thang.get(r.mo) || { dtA: 0, dtB: 0, khA: 0, khB: 0 };
     t.dtA += r.dtA;
     t.dtB += r.dtB;
+    t.khA += r.khA;
+    t.khB += r.khB;
     g.thang.set(r.mo, t);
     g.rows.push(r);
   }
@@ -92,6 +95,10 @@ const Pct = ({ a, b }) => {
     </span>
   );
 };
+
+// Số tr trong ô tháng: 0 (làm tròn 0,1 tr) hiện dấu chấm.
+const SoO = ({ v, className = 'text-slate-700' }) =>
+  Math.round(v / 1e5) === 0 ? <span className="text-slate-300">·</span> : <span className={className}>{fmtTr(v)}</span>;
 
 const NEN_CAP = ['bg-slate-100/70', 'bg-slate-50', '', 'bg-slate-50/40', 'bg-slate-50/70'];
 const CHU_CAP = [
@@ -252,7 +259,6 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
   const infoB = kyB === HIEN_TAI ? null : kys.find((k) => k.ky === kyB);
   const tenA = kyA ? `Chốt ${kyLabel(kyA)}` : '—';
   const tenB = kyB === HIEN_TAI ? 'Hiện tại' : `Chốt ${kyLabel(kyB)}`;
-  const soCot = 5 + (theoThang ? thangCot.length : 0);
   // Tháng hiện tại lúc chụp của bên đang xem: tháng trước đó DThu lấy theo thực hiện.
   const mocTH =
     cheDoThang === 'a'
@@ -261,6 +267,9 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
         ? (infoB ? infoB.thang_hien_tai : curMonth) || ''
         : '';
   const laTH = (m) => !!mocTH && m < mocTH;
+  // Tháng TH có thêm cột KH update (SL update × giá) đứng trước cột TH.
+  const coKH = theoThang && thangCot.some(laTH);
+  const soCot = 5 + (theoThang ? thangCot.length + thangCot.filter(laTH).length : 0);
 
   const xuat = () =>
     exportSoSanhKeHoach(
@@ -268,6 +277,7 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
       tenA,
       tenB,
       cheDoThang === 'an' ? 'chenh' : cheDoThang,
+      mocTH,
     );
 
   const dongCay = (ds) =>
@@ -310,22 +320,34 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
                 thangCot.map((m) => {
                   const t = g.thang.get(m);
                   const so = t && (cheDoThang === 'a' ? t.dtA : cheDoThang === 'b' ? t.dtB : null);
-                  return (
+                  const th = laTH(m);
+                  const o = (
                     <td
                       key={m}
-                      className={`px-2 py-1.5 text-right text-[11px] border-l border-slate-100 ${laTH(m) ? 'bg-amber-50/60' : ''}`}
+                      className={`px-2 py-1.5 text-right text-[11px] ${th ? 'bg-amber-50/60' : 'border-l border-slate-100'}`}
                       title={t ? `${tenA}: ${fmtTr(t.dtA)} tr → ${tenB}: ${fmtTr(t.dtB)} tr` : undefined}
                     >
                       {!t ? (
                         <span className="text-slate-200">·</span>
                       ) : so === null ? (
                         <Chenh v={t.dtB - t.dtA} />
-                      ) : Math.round(so / 1e5) === 0 ? (
-                        <span className="text-slate-300">·</span>
                       ) : (
-                        <span className="text-slate-700">{fmtTr(so)}</span>
+                        <SoO v={so} />
                       )}
                     </td>
+                  );
+                  if (!th) return o;
+                  const kh = t && (cheDoThang === 'a' ? t.khA : t.khB);
+                  return (
+                    <Fragment key={m}>
+                      <td
+                        className="px-2 py-1.5 text-right text-[11px] border-l border-slate-100"
+                        title={t ? `KH update (SL × giá): ${fmtTr(kh)} tr · TH: ${fmtTr(so)} tr` : undefined}
+                      >
+                        {t ? <SoO v={kh} className="text-slate-500" /> : <span className="text-slate-200">·</span>}
+                      </td>
+                      {o}
+                    </Fragment>
                   );
                 })}
             </tr>
@@ -498,23 +520,52 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
           <table className="w-full text-[12px] tabular-nums">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                <th className="px-3 py-2 text-left font-semibold">BU / Miền / PS / Khách hàng / Nhóm SP</th>
-                <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenA} (tr)</th>
-                <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenB} (tr)</th>
-                <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">Chênh (tr)</th>
-                <th className="px-3 py-2 text-right font-semibold">%</th>
+                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-left font-semibold">
+                  BU / Miền / PS / Khách hàng / Nhóm SP
+                </th>
+                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenA} (tr)</th>
+                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{tenB} (tr)</th>
+                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold whitespace-nowrap">Chênh (tr)</th>
+                <th rowSpan={coKH ? 2 : 1} className="px-3 py-2 text-right font-semibold">%</th>
                 {theoThang &&
-                  thangCot.map((m) => (
-                    <th
-                      key={m}
-                      className={`px-2 py-2 text-right font-semibold border-l border-slate-200 ${laTH(m) ? 'bg-amber-50' : ''}`}
-                      title={laTH(m) ? 'Tháng trước tháng hiện tại lúc chụp: số là DThu thực hiện' : undefined}
-                    >
-                      {MONTH_LABELS[MONTHS.indexOf(m)]}
-                      {laTH(m) && <span className="ml-1 text-[9px] font-normal text-amber-700">TH</span>}
-                    </th>
-                  ))}
+                  thangCot.map((m) =>
+                    laTH(m) ? (
+                      <th
+                        key={m}
+                        colSpan={2}
+                        className="px-2 pt-2 pb-0.5 text-center font-semibold border-l border-slate-200 bg-amber-50"
+                        title="Tháng trước tháng hiện tại lúc chụp: DThu lấy theo thực hiện"
+                      >
+                        {MONTH_LABELS[MONTHS.indexOf(m)]}
+                      </th>
+                    ) : (
+                      <th
+                        key={m}
+                        rowSpan={coKH ? 2 : 1}
+                        className="px-2 py-2 text-right font-semibold border-l border-slate-200"
+                      >
+                        {MONTH_LABELS[MONTHS.indexOf(m)]}
+                      </th>
+                    ),
+                  )}
               </tr>
+              {coKH && (
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500">
+                  {thangCot.filter(laTH).map((m) => (
+                    <Fragment key={m}>
+                      <th
+                        className="px-2 pb-1.5 text-right font-normal border-l border-slate-200 bg-amber-50 whitespace-nowrap"
+                        title="KH update = SL update (trống thì SL đầu năm) × đơn giá"
+                      >
+                        KH upd
+                      </th>
+                      <th className="px-2 pb-1.5 text-right font-medium text-amber-700 bg-amber-50" title="DThu thực hiện">
+                        TH
+                      </th>
+                    </Fragment>
+                  ))}
+                </tr>
+              )}
             </thead>
             <tbody>
               {dangTai ? (
