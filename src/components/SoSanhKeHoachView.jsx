@@ -105,7 +105,7 @@ const CHU_CAP = [
 // So sánh DThu KH update giữa 2 bản chụp hằng tháng (hoặc bản chụp với dữ liệu hiện tại),
 // chi tiết PS → khách hàng → nhóm sản phẩm. Bản chụp tự động lúc 23:59 ngày hạn chót
 // sale điền (deadline_day); admin chụp tay được.
-export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
+export function SoSanhKeHoachView({ viewBu, isAdmin = false, curMonth = '' }) {
   const [kys, setKys] = useState([]);
   const [kyA, setKyA] = useState('');
   const [kyB, setKyB] = useState(HIEN_TAI);
@@ -117,7 +117,9 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const [thang, setThang] = useState('');
   const [search, setSearch] = useState('');
   const [chiThayDoi, setChiThayDoi] = useState(false);
-  const [theoThang, setTheoThang] = useState(true);
+  // Cột theo tháng: 'an' ẩn, 'chenh' B − A, 'a' số kỳ gốc, 'b' số bên so sánh.
+  const [cheDoThang, setCheDoThang] = useState('chenh');
+  const theoThang = cheDoThang !== 'an';
   const [loaiAdmin, setLoaiAdmin] = useState(true);
   const [loaiThucHien, setLoaiThucHien] = useState(true);
   const [mo, setMo] = useState(() => new Set());
@@ -251,12 +253,21 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
   const tenA = kyA ? `Chốt ${kyLabel(kyA)}` : '—';
   const tenB = kyB === HIEN_TAI ? 'Hiện tại' : `Chốt ${kyLabel(kyB)}`;
   const soCot = 5 + (theoThang ? thangCot.length : 0);
+  // Tháng hiện tại lúc chụp của bên đang xem: tháng trước đó DThu lấy theo thực hiện.
+  const mocTH =
+    cheDoThang === 'a'
+      ? (infoA && infoA.thang_hien_tai) || ''
+      : cheDoThang === 'b'
+        ? (infoB ? infoB.thang_hien_tai : curMonth) || ''
+        : '';
+  const laTH = (m) => !!mocTH && m < mocTH;
 
   const xuat = () =>
     exportSoSanhKeHoach(
       loc.filter((r) => !chiThayDoi || coDoi(r)),
       tenA,
       tenB,
+      cheDoThang === 'an' ? 'chenh' : cheDoThang,
     );
 
   const dongCay = (ds) =>
@@ -298,13 +309,22 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
               {theoThang &&
                 thangCot.map((m) => {
                   const t = g.thang.get(m);
+                  const so = t && (cheDoThang === 'a' ? t.dtA : cheDoThang === 'b' ? t.dtB : null);
                   return (
                     <td
                       key={m}
-                      className="px-2 py-1.5 text-right text-[11px] border-l border-slate-100"
-                      title={t ? `${fmtTr(t.dtA)} → ${fmtTr(t.dtB)} tr` : undefined}
+                      className={`px-2 py-1.5 text-right text-[11px] border-l border-slate-100 ${laTH(m) ? 'bg-amber-50/60' : ''}`}
+                      title={t ? `${tenA}: ${fmtTr(t.dtA)} tr → ${tenB}: ${fmtTr(t.dtB)} tr` : undefined}
                     >
-                      {t ? <Chenh v={t.dtB - t.dtA} /> : <span className="text-slate-200">·</span>}
+                      {!t ? (
+                        <span className="text-slate-200">·</span>
+                      ) : so === null ? (
+                        <Chenh v={t.dtB - t.dtA} />
+                      ) : Math.round(so / 1e5) === 0 ? (
+                        <span className="text-slate-300">·</span>
+                      ) : (
+                        <span className="text-slate-700">{fmtTr(so)}</span>
+                      )}
                     </td>
                   );
                 })}
@@ -401,10 +421,28 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
           <input type="checkbox" checked={chiThayDoi} onChange={(e) => setChiThayDoi(e.target.checked)} />
           Chỉ dòng có thay đổi
         </label>
-        <label className="flex items-center gap-1 text-[12px] text-slate-600">
-          <input type="checkbox" checked={theoThang} onChange={(e) => setTheoThang(e.target.checked)} />
-          Chênh theo tháng
-        </label>
+        <div className="flex items-center gap-1 text-[12px] text-slate-500">
+          Theo tháng
+          <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
+            {[
+              ['an', 'Ẩn'],
+              ['chenh', 'Chênh'],
+              ['a', tenA],
+              ['b', tenB],
+            ].map(([v, t]) => (
+              <button
+                key={v}
+                onClick={() => setCheDoThang(v)}
+                disabled={(v === 'a' || v === 'b') && !kyA}
+                className={`px-2 py-1 text-[11px] border-l border-slate-200 first:border-l-0 whitespace-nowrap ${
+                  cheDoThang === v ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
         {isAdmin && (
           <label
             className="flex items-center gap-1 text-[12px] text-slate-600"
@@ -467,8 +505,13 @@ export function SoSanhKeHoachView({ viewBu, isAdmin = false }) {
                 <th className="px-3 py-2 text-right font-semibold">%</th>
                 {theoThang &&
                   thangCot.map((m) => (
-                    <th key={m} className="px-2 py-2 text-right font-semibold border-l border-slate-200">
+                    <th
+                      key={m}
+                      className={`px-2 py-2 text-right font-semibold border-l border-slate-200 ${laTH(m) ? 'bg-amber-50' : ''}`}
+                      title={laTH(m) ? 'Tháng trước tháng hiện tại lúc chụp: số là DThu thực hiện' : undefined}
+                    >
                       {MONTH_LABELS[MONTHS.indexOf(m)]}
+                      {laTH(m) && <span className="ml-1 text-[9px] font-normal text-amber-700">TH</span>}
                     </th>
                   ))}
               </tr>

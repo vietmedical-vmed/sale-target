@@ -2951,7 +2951,7 @@ function AppInner({ initialAuth, onLogin }) {
         ) : tab === 'dotthieu' && (isAdmin || auth.role === 'manager') ? (
           <DotThieuThongTinView customers={custSource} />
         ) : tab === 'sosanhkh' && (isAdmin || auth.role === 'manager') ? (
-          <SoSanhKeHoachView viewBu={viewBu} isAdmin={isAdmin} />
+          <SoSanhKeHoachView viewBu={viewBu} isAdmin={isAdmin} curMonth={curMonth} />
         ) : tab === 'sosanhgia' && isAdmin ? (
           <SoSanhGiaView rows={teamRows} priceOf={priceOf} onUpdatePrice={updatePriceRows} />
         ) : tab === 'diaban' ? (

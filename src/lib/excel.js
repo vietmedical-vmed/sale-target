@@ -176,16 +176,20 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
   XLSX.utils.book_append_sheet(wb, ws, isSL ? 'Theo PS (SL)' : 'Theo PS (Tien)');
 }
 
-export async function exportProductSummary(data) {
+// base: 'upd' = so thực hiện với KH update, 'dn' = so với Target đầu năm (giống màn PS)
+export async function exportProductSummary(data, base = 'upd') {
   const XLSX = await loadXLSX();
   const wb = XLSX.utils.book_new();
-  _buildProdSheet(XLSX, wb, data, 'money');
-  _buildProdSheet(XLSX, wb, data, 'qty');
-  XLSX.writeFile(wb, `TongHop_theo_SP_${_today()}.xlsx`);
+  _buildProdSheet(XLSX, wb, data, 'money', base);
+  _buildProdSheet(XLSX, wb, data, 'qty', base);
+  const suffix = base === 'dn' ? '_vs_Target' : '';
+  XLSX.writeFile(wb, `TongHop_theo_SP${suffix}_${_today()}.xlsx`);
 }
 
-function _buildProdSheet(XLSX, wb, data, mode) {
+function _buildProdSheet(XLSX, wb, data, mode, base) {
   const isSL = mode === 'qty';
+  const isDn = base === 'dn';
+  const kh = isDn ? 'Target' : 'KH update';
   const tr = isSL ? (v) => Math.round(Number(v) || 0) : (v) => (Number(v) || 0) / 1e6;
   const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
   const hasAct = (i) => i <= curIdx;
@@ -206,7 +210,7 @@ function _buildProdSheet(XLSX, wb, data, mode) {
   for (let i = 0; i < 12; i++) {
     if (hasAct(i)) {
       H1.push(MONTH_LABELS[i], '', '');
-      H2.push('KH update', 'Thực hiện', '% TH');
+      H2.push(kh, 'Thực hiện', '% TH');
       merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 2 } });
       cols.push({ wch: 10 }, { wch: 10 }, { wch: 7 });
       numCols.push(c, c + 1);
@@ -214,28 +218,32 @@ function _buildProdSheet(XLSX, wb, data, mode) {
       c += 3;
     } else {
       H1.push(MONTH_LABELS[i]);
-      H2.push('KH update');
+      H2.push(kh);
       cols.push({ wch: 10 });
       numCols.push(c);
       c += 1;
     }
   }
   H1.push('Luỹ kế YTD', '', '', '', '', '');
-  H2.push('KH update', 'Thực hiện', '% TH YTD', 'tốc độ TH YTD', 'tốc độ KH YTD', 'CL tốc độ');
+  H2.push(kh, 'Thực hiện', '% TH YTD', 'tốc độ TH YTD', `tốc độ ${isDn ? 'Target' : 'KH'} YTD`, 'CL tốc độ');
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } });
   cols.push({ wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 9 });
   numCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
-  H1.push('Target', '', '', '');
+  H1.push(isDn ? 'Cả năm' : 'Target', '', '', '');
   H2.push(
     isSL ? 'SL đầu năm' : 'Target đầu năm',
-    isSL ? 'SL dự kiến' : 'DThu dự kiến',
-    'Chênh lệch', 'KH còn lại',
+    isDn ? 'TH YTD' : isSL ? 'SL dự kiến' : 'DThu dự kiến',
+    isDn ? '% HT năm' : 'Chênh lệch',
+    isDn ? 'Còn lại' : 'KH còn lại',
   );
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
   cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
-  numCols.push(c, c + 1, c + 2, c + 3);
+  if (isDn) {
+    numCols.push(c, c + 1, c + 3);
+    pctCols.push(c + 2);
+  } else numCols.push(c, c + 1, c + 2, c + 3);
   c += 4;
   const qCols = HIEN_HET_HIEU_LUC
     ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng']
@@ -250,11 +258,14 @@ function _buildProdSheet(XLSX, wb, data, mode) {
   const levels = [null, null];
   const push = (level, label, d, price) => {
     const dtV = isSL ? (Number(d.slDauNam) || 0) : (Number(d.dt) || 0);
-    const dtUpdV = isSL ? (Number(d.slUpd) || 0) : (Number(d.dtUpd) || 0);
+    // Mốc Target đầu năm: mẫu số tốc độ / KH theo tháng / KH YTD đều lấy theo target gốc
+    const dtUpdV = isDn ? dtV : isSL ? (Number(d.slUpd) || 0) : (Number(d.dtUpd) || 0);
     const ch = dtUpdV - dtV;
-    const khYtdV = isSL ? (Number(d.khYtd) || 0) : (Number(d.khYtdDt) || 0);
+    const khYtdV = isDn
+      ? (isSL ? (Number(d.dnYtd) || 0) : (Number(d.dnYtdDt) || 0))
+      : isSL ? (Number(d.khYtd) || 0) : (Number(d.khYtdDt) || 0);
     const thYtdV = isSL ? (Number(d.thYtd) || 0) : (Number(d.dtYtd) || 0);
-    const moKh = isSL ? d.moKh : d.moKhDt;
+    const moKh = isDn ? (isSL ? d.moKhDauNam : d.moKhDauNamDt) : isSL ? d.moKh : d.moKhDt;
     const moAct = isSL ? d.moAct : d.moActDt;
     const onHandV = isSL ? (Number(d.onHand) || 0) : (Number(d.onHandDt) || 0);
     const upcomingV = isSL ? (Number(d.upcoming) || 0) : (Number(d.upcomingDt) || 0);
@@ -276,7 +287,8 @@ function _buildProdSheet(XLSX, wb, data, mode) {
       thP == null ? '' : thP, tdTh == null ? '' : tdTh,
       tdKh == null ? '' : tdKh, clP,
     );
-    row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - thYtdV));
+    if (isDn) row.push(tr(dtV), tr(thYtdV), dtV > 0 ? thYtdV / dtV : '', tr(dtV - thYtdV));
+    else row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - thYtdV));
     row.push(
       tr(onHandV), tr(upcomingV), ...(HIEN_HET_HIEU_LUC ? [tr(hetV)] : []), tr(quotaV),
       tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV),
@@ -351,7 +363,8 @@ export async function exportQuotaThau(rows) {
 
 // So sánh DThu KH update giữa 2 kỳ chụp (tab So sánh KH update), chi tiết BU × miền × PS × KH × nhóm SP.
 // Sheet 1: mỗi dòng BU × miền × PS × KH × nhóm, tổng 2 kỳ + chênh từng tháng. Sheet 2: dòng phẳng theo tháng.
-export async function exportSoSanhKeHoach(rows, tenA, tenB) {
+// theo: cột tháng ở sheet tổng hợp là 'chenh' (B − A), 'a' (số kỳ gốc) hay 'b' (số bên so sánh).
+export async function exportSoSanhKeHoach(rows, tenA, tenB, theo = 'chenh') {
   const XLSX = await loadXLSX();
   const thang = MONTHS.filter((m) => rows.some((r) => r.mo === m));
   const nhom = new Map();
@@ -364,7 +377,8 @@ export async function exportSoSanhKeHoach(rows, tenA, tenB) {
     }
     g.dtA += r.dtA;
     g.dtB += r.dtB;
-    g.t.set(r.mo, (g.t.get(r.mo) || 0) + r.dtB - r.dtA);
+    const v = theo === 'a' ? r.dtA : theo === 'b' ? r.dtB : r.dtB - r.dtA;
+    g.t.set(r.mo, (g.t.get(r.mo) || 0) + v);
   }
   const sx = (a, b) =>
     (a.bu || '').localeCompare(b.bu || '') ||
@@ -375,7 +389,7 @@ export async function exportSoSanhKeHoach(rows, tenA, tenB) {
   const H1 = [
     'Năm TC', 'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP',
     `DThu ${tenA}`, `DThu ${tenB}`, 'Chênh', '% chênh',
-    ...thang.map((m) => `Chênh ${MONTH_LABELS[MONTHS.indexOf(m)]}`),
+    ...thang.map((m) => `${theo === 'a' ? tenA : theo === 'b' ? tenB : 'Chênh'} ${MONTH_LABELS[MONTHS.indexOf(m)]}`),
   ];
   const aoa1 = [H1].concat(
     [...nhom.values()].sort(sx).map((g) => [
