@@ -522,9 +522,10 @@ export function SummaryView({
             ? 'Target = Target đầu năm (SL kế hoạch gốc), TH = thực hiện, % = TH / Target. Luỹ kế YTD tính đến hết tháng hiện tại. Tốc độ TH YTD = TH YTD / Target cả năm; tốc độ Target YTD = Target YTD / Target cả năm; CL = tốc độ TH − tốc độ Target. Cả năm: % HT = TH YTD / Target đầu năm; Còn lại = Target đầu năm − TH YTD.'
             : 'KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH.'}{' '}
           Quota: On
-          hand = quota thầu cũ + quota chính / BS đã tới tháng và còn hiệu lực; Upcoming
-          = chưa tới tháng hoặc đợt chưa đủ tháng / hiệu lực; quota đã quá hiệu lực
-          không tính; Khả dụng = On hand − TH YTD.
+          hand = quota thầu cũ + quota chính / BS đã tới tháng và còn hiệu lực (kể cả
+          đợt hết hạn trong năm tài chính này); Upcoming = chưa tới tháng hoặc đợt chưa
+          đủ tháng / hiệu lực; đợt hết hạn trước năm tài chính không tính; Khả dụng = On
+          hand − TH YTD.
         </p>
       </div>
     </React.Fragment>

@@ -18,16 +18,18 @@ export function hetHanDot(thang, hieuLuc) {
 
 // Trạng thái quota của 1 đợt so với tháng hiện tại:
 //   'up'  — chưa tới tháng thầu, hoặc đợt còn thiếu tháng / hiệu lực
-//   'on'  — đang trong hiệu lực
-//   'het' — đã hết hiệu lực (không tính on hand, không vào tổng quota)
-export function trangThaiDot(thang, hieuLuc, curMonth) {
+//   'on'  — đang trong hiệu lực, HOẶC đã hết hạn nhưng trong năm tài chính đang xem
+//   'het' — hết hiệu lực trước đầu năm tài chính (không tính on hand, không vào tổng)
+// Đợt hết hạn giữa năm vẫn tính on hand và tổng: thực hiện YTD đã gồm phần bán theo
+// đợt đó từ đầu năm, bỏ đợt ra thì tổng giảm và khả dụng (on hand − TH YTD) bị âm.
+export function trangThaiDot(thang, hieuLuc, curMonth, fyStart = MONTHS[0]) {
   const het = hetHanDot(thang, hieuLuc);
   if (!het || thang > curMonth) return 'up';
-  return het < curMonth ? 'het' : 'on';
+  return het < curMonth && het < fyStart ? 'het' : 'on';
 }
 
 // Gắn quota on-hand / upcoming (số lượng) vào từng dòng cho 2 màn tổng hợp:
-// r._qOnHand, r._qUp, r._qHet (hết hiệu lực, không vào tổng). Cộng mọi dòng của
+// r._qOnHand, r._qUp, r._qHet (hết hiệu lực trước năm tài chính, không vào tổng). Cộng mọi dòng của
 // 1 sản phẩm là ra quota của sản phẩm đó.
 //
 // Nguồn duy nhất là shared.quota_thau (sale_target không còn lưu quota / tháng
