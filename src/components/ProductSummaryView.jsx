@@ -26,6 +26,10 @@ export function ProductSummaryView({
   const initedRef = React.useRef(false);
   const [showMonths, setShowMonths] = useState(false);
   const [viewMode, setViewMode] = useState('money');
+  // Mốc đối chiếu thực hiện: 'upd' = KH update / DThu dự kiến, 'dn' = Target đầu năm (giống màn PS).
+  const [base, setBase] = useState('upd');
+  const isDn = base === 'dn';
+  const khLbl = isDn ? 'Target' : 'KH';
   const boxRef = useFitHeight();
   useSummaryScrollbar(boxRef);
   useStickyRows(boxRef);
@@ -53,6 +57,8 @@ export function ProductSummaryView({
       khYtd: 0,
       dtYtd: 0,
       khYtdDt: 0,
+      dnYtd: 0, // Target đầu năm luỹ kế YTD (bỏ OOP khỏi mẫu, giống KH YTD)
+      dnYtdDt: 0,
       onHand: 0,
       upcoming: 0,
       quota: 0,
@@ -115,6 +121,8 @@ export function ProductSummaryView({
           if (!isOop) {
             o.khYtd += planUpd;
             o.khYtdDt += dMoKhDt;
+            o.dnYtd += dSlDauNam;
+            o.dnYtdDt += dSlDauNam * price;
           }
         }
       };
@@ -184,6 +192,8 @@ export function ProductSummaryView({
       a.khYtd += c.khYtd;
       a.dtYtd += c.dtYtd;
       a.khYtdDt += c.khYtdDt;
+      a.dnYtd += c.dnYtd;
+      a.dnYtdDt += c.dnYtdDt;
       a.onHand += c.onHand;
       a.upcoming += c.upcoming;
       a.quota += c.quota;
@@ -272,12 +282,17 @@ export function ProductSummaryView({
     ? (v) => (!v ? '—' : (v > 0 ? '+' : '') + Math.round(v).toLocaleString('en-US'))
     : (v) => (!v ? '—' : MASK_MONEY ? '•••' : (v > 0 ? '+' : '') + fmtTy3(v));
   const pick = (node) => {
-    const moKh = isQty ? node.moKh : node.moKhDt;
+    // Mốc Target đầu năm: KH theo tháng / KH YTD / mẫu số tốc độ đều lấy theo target gốc
+    const moKh = isDn
+      ? isQty ? node.moKhDauNam : node.moKhDauNamDt
+      : isQty ? node.moKh : node.moKhDt;
     const moAct = isQty ? node.moAct : node.moActDt;
-    const khYtdV = isQty ? node.khYtd : node.khYtdDt;
+    const khYtdV = isDn
+      ? isQty ? node.dnYtd : node.dnYtdDt
+      : isQty ? node.khYtd : node.khYtdDt;
     const thYtdV = isQty ? node.thYtd : node.dtYtd;
     const dtV = isQty ? node.slDauNam : node.dt;
-    const dtUpdV = isQty ? node.slUpd : node.dtUpd;
+    const dtUpdV = isDn ? dtV : isQty ? node.slUpd : node.dtUpd;
     const onHandV = isQty ? node.onHand : node.onHandDt;
     const upcomingV = isQty ? node.upcoming : node.upcomingDt;
     const quotaV = isQty ? node.quota : node.quotaDt;
@@ -313,7 +328,7 @@ export function ProductSummaryView({
       key={key + 'k'}
       className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 ${tone}`}
     >
-      KH
+      {khLbl}
     </th>,
     <th
       key={key + 'a'}
@@ -329,11 +344,11 @@ export function ProductSummaryView({
     </th>,
   ];
   const ytdSubHead = [
-    <th key="sytdk" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 bg-amber-50/40">KH</th>,
+    <th key="sytdk" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 bg-amber-50/40">{khLbl}</th>,
     <th key="sytda" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 bg-amber-50/40">TH</th>,
     <th key="sytdp" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">% TH YTD</th>,
     <th key="sytdtd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">tốc độ TH YTD</th>,
-    <th key="sytdkp" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">tốc độ KH YTD</th>,
+    <th key="sytdkp" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-b border-slate-200 whitespace-nowrap bg-amber-50/40">tốc độ {khLbl} YTD</th>,
     <th key="sytdcl" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-slate-500 border-r border-b border-slate-200 whitespace-nowrap bg-amber-50/40">CL tốc độ</th>,
   ];
 
@@ -395,6 +410,15 @@ export function ProductSummaryView({
   const targetCells = (node, extra) => {
     const { dtV, dtUpdV, thYtdV } = pick(node);
     const t = tone(extra);
+    if (isDn) {
+      // Cả năm theo Target đầu năm: Target · TH YTD · % hoàn thành năm · còn lại phải làm
+      return [
+        <td key="tdn" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${tBg} ${extra || ''}`}>{fmt(dtV)}</td>,
+        <td key="tup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.th} ${tBg} ${extra || ''}`}>{fmt(thYtdV)}</td>,
+        <td key="tch" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold text-slate-600 ${tBg}`}>{pctTxt(thYtdV, dtV)}</td>,
+        <td key="tkl" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 text-purple-600 ${tBg} ${extra || ''}`}>{fmt(dtV - thYtdV)}</td>,
+      ];
+    }
     const ch = dtUpdV - dtV;
     return [
       <td key="tdn" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${tBg} ${extra || ''}`}>{fmt(dtV)}</td>,
@@ -425,9 +449,9 @@ export function ProductSummaryView({
     `sticky left-0 z-10 border-r border-slate-200 ${bg}`;
 
   useEffect(() => {
-    onExport(() => exportProductSummary(data));
+    onExport(() => exportProductSummary(data, base));
     return () => onExport(null);
-  }, [data, onExport]);
+  }, [data, base, onExport]);
 
   const grandCells = (node, dark) => {
     const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV } = pick(node);
@@ -460,7 +484,13 @@ export function ProductSummaryView({
       </td>,
     );
     const ch = dtUpdV - dtV;
-    cells.push(
+    if (isDn) cells.push(
+      <td key="gtdn" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(dtV)}</td>,
+      <td key="gtup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-green-300">{fmt(thYtdV)}</td>,
+      <td key="gtch" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300">{pctTxt(thYtdV, dtV)}</td>,
+      <td key="gtkl" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-purple-200">{fmt(dtV - thYtdV)}</td>,
+    );
+    else cells.push(
       <td key="gtdn" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(dtV)}</td>,
       <td key="gtup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200">{fmt(dtUpdV)}</td>,
       <td key="gtch" className={`px-3 py-2.5 text-right text-[12.5px] tabular-nums ${ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : ''}`}>{fmtCh(ch)}</td>,
@@ -481,6 +511,27 @@ export function ProductSummaryView({
     <div className="px-6 pb-8">
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
+          <div className="inline-flex items-center rounded-md border border-slate-200 bg-white overflow-hidden text-[12px] font-medium">
+            <span className="px-2.5 py-1.5 text-slate-400 border-r border-slate-200">So TH với</span>
+            {[
+              ['upd', 'KH update', 'Thực hiện so với KH update (DThu dự kiến)'],
+              ['dn', 'Target đầu năm', 'Thực hiện so với Target đầu năm theo tháng, YTD và cả năm'],
+            ].map(([k, label, tip]) => (
+              <button
+                key={k}
+                onClick={() => setBase(k)}
+                title={tip}
+                className={
+                  'px-3 py-1.5 ' +
+                  (base === k
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-50')
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setViewMode((m) => (m === 'money' ? 'qty' : 'money'))}
             title={viewMode === 'money' ? 'Chuyển sang xem Số lượng' : 'Chuyển sang xem Doanh thu'}
@@ -524,7 +575,7 @@ export function ProductSummaryView({
                   colSpan={4}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
                 >
-                  Target
+                  {isDn ? 'Cả năm' : 'Target'}
                 </th>,
                 <th
                   colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
@@ -549,13 +600,13 @@ export function ProductSummaryView({
                   {isQty ? 'SL đầu năm' : 'Target đầu năm'}
                 </th>,
                 <th key="tup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
-                  {isQty ? 'SL dự kiến' : 'DThu dự kiến'}
+                  {isDn ? 'TH YTD' : isQty ? 'SL dự kiến' : 'DThu dự kiến'}
                 </th>,
                 <th key="tch" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
-                  Chênh lệch
+                  {isDn ? '% HT năm' : 'Chênh lệch'}
                 </th>,
                 <th key="tkl" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-purple-600 border-r border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
-                  KH còn lại
+                  {isDn ? 'Còn lại' : 'KH còn lại'}
                 </th>,
                 <th key="qoh" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">On hand</th>,
                 <th key="qup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Upcoming</th>,
@@ -722,8 +773,9 @@ export function ProductSummaryView({
         {viewMode === 'money'
           ? 'Chế độ Doanh thu: tất cả giá trị = SL × đơn giá (triệu VNĐ). '
           : 'Chế độ Số lượng: tất cả giá trị = SL; đơn giá hiện ở dòng sản phẩm. '}
-        KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết
-        tháng hiện tại.
+        {isDn
+          ? 'Target = Target đầu năm (SL kế hoạch gốc), TH = thực hiện, % = TH / Target. Luỹ kế YTD tính đến hết tháng hiện tại. Tốc độ TH YTD = TH YTD / Target cả năm; tốc độ Target YTD = Target YTD / Target cả năm; CL = tốc độ TH − tốc độ Target. Cả năm: % HT = TH YTD / Target đầu năm; Còn lại = Target đầu năm − TH YTD.'
+          : 'KH = KH update, TH = thực hiện, % = TH / KH. Luỹ kế YTD tính đến hết tháng hiện tại. Tốc độ TH YTD = TH YTD / KH update cả năm; tốc độ KH YTD = KH YTD / KH update cả năm; CL = tốc độ TH − tốc độ KH.'}
       </p>
     </div>
   );
