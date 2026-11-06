@@ -117,21 +117,24 @@ function VirtualCardList({ items, scrollRef, cardKey, renderCard }) {
     overscan: 5,
   });
 
+  // Thẻ nằm trong luồng bình thường (đệm trên/dưới thay cho position:absolute):
+  // thẻ absolute + overflow:hidden không góp chiều rộng cho khung cuộn nên bảng
+  // rộng bị cắt và mất thanh cuộn ngang khi xem 1 BU. flow-root giữ margin của
+  // thẻ trong phần tử được đo, như overflow:hidden trước đây.
+  const vItems = virtualizer.getVirtualItems();
+  const total = virtualizer.getTotalSize();
+  const padTop = vItems.length ? vItems[0].start : 0;
+  const padBottom = vItems.length
+    ? Math.max(0, total - vItems[vItems.length - 1].end)
+    : total;
   return (
-    <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-      {virtualizer.getVirtualItems().map((vItem) => (
+    <div style={{ paddingTop: padTop, paddingBottom: padBottom }}>
+      {vItems.map((vItem) => (
         <div
           key={cardKey(items[vItem.index])}
           ref={virtualizer.measureElement}
           data-index={vItem.index}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            overflow: 'hidden',
-            transform: `translateY(${vItem.start}px)`,
-          }}
+          style={{ display: 'flow-root' }}
         >
           {renderCard(items[vItem.index])}
         </div>
@@ -1995,11 +1998,15 @@ function AppInner({ initialAuth, onLogin }) {
         const oa = a.customer === OOP_CUST ? 1 : 0,
           ob = b.customer === OOP_CUST ? 1 : 0;
         if (oa !== ob) return oa - ob;
-        // Có DThu KH update xếp trước (giảm dần theo KH update); không có thì xếp sau (giảm dần theo TH YTD)
-        const ha = a._dtUpd > 0 ? 0 : 1,
-          hb = b._dtUpd > 0 ? 0 : 1;
+        // Xếp theo target đầu năm (không đổi khi sửa kế hoạch nên thứ tự thẻ ổn định).
+        // Có target xếp trước (giảm dần theo target); không có thì xếp sau (giảm dần theo TH YTD).
+        const ha = a._dt > 0 ? 0 : 1,
+          hb = b._dt > 0 ? 0 : 1;
         if (ha !== hb) return ha - hb;
-        return ha === 0 ? b._dtUpd - a._dtUpd : b._thYtd - a._thYtd;
+        return (
+          (ha === 0 ? b._dt - a._dt : b._thYtd - a._thYtd) ||
+          (a.customer || '').localeCompare(b.customer || '', 'vi')
+        );
       });
   }, [
     teamRows,
@@ -3152,11 +3159,15 @@ function AppInner({ initialAuth, onLogin }) {
                             const oa = a.customer === OOP_CUST ? 1 : 0,
                               ob = b.customer === OOP_CUST ? 1 : 0;
                             if (oa !== ob) return oa - ob;
-                            const aUpd = a.groups.reduce((s, g) => s + (g._dtUpd || 0), 0);
-                            const bUpd = b.groups.reduce((s, g) => s + (g._dtUpd || 0), 0);
-                            const ha = aUpd > 0 ? 0 : 1, hb = bUpd > 0 ? 0 : 1;
+                            // Theo target đầu năm của BU này (giống thứ tự khi xem 1 BU).
+                            const aDt = a.groups.reduce((s, g) => s + (g._dt || 0), 0);
+                            const bDt = b.groups.reduce((s, g) => s + (g._dt || 0), 0);
+                            const ha = aDt > 0 ? 0 : 1, hb = bDt > 0 ? 0 : 1;
                             if (ha !== hb) return ha - hb;
-                            return bUpd - aUpd;
+                            return (
+                              (ha === 0 ? bDt - aDt : (b._thYtd || 0) - (a._thYtd || 0)) ||
+                              (a.customer || '').localeCompare(b.customer || '', 'vi')
+                            );
                           });
                         if (custs.length === 0) return null;
                         const t = TEAMS[tk];
