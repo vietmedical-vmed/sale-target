@@ -1544,7 +1544,7 @@ function AppInner({ initialAuth, onLogin }) {
         id,
       }))
       .sort((a, b) => a.cust.localeCompare(b.cust));
-  }, [rows, psFilter, regionFilter]);
+  }, [teamRows, psFilter, regionFilter]);
   // Chỉ số khách hàng đang có kế hoạch (không phụ thuộc bộ lọc). Gộp 3 việc vào 1 vòng
   // lặp qua rows (~23k dòng): đếm cho header, tra tên gốc trong DB, và kiểm tra KH đã có.
   const custIndex = useMemo(() => {

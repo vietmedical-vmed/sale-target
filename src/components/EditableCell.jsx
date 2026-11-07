@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { fmtFull, fmtInt, fmtM, parseNum, moneyPrice } from '../lib/format.js';
+import { fmtFull, fmtInt, fmtM, parseNumStrict, moneyPrice } from '../lib/format.js';
 import { MASK_MONEY } from '../config/constants.js';
 
 export const EditableCell = React.memo(function EditableCell({
@@ -13,6 +13,7 @@ export const EditableCell = React.memo(function EditableCell({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [invalid, setInvalid] = useState(false);
   const inputRef = useRef(null);
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -40,9 +41,18 @@ export const EditableCell = React.memo(function EditableCell({
     );
   }
   if (editing) {
-    const commit = () => {
-      const nv = type === 'text' ? draft.trim() : parseNum(draft);
+    // Số không đọc được: Enter giữ ô mở + viền đỏ; rời ô thì bỏ thay đổi (không ghi 0).
+    const commit = (fromBlur) => {
+      const nv = type === 'text' ? draft.trim() : parseNumStrict(draft);
+      if (nv === null) {
+        if (fromBlur) {
+          setInvalid(false);
+          setEditing(false);
+        } else setInvalid(true);
+        return;
+      }
       if (nv !== value) onCommit(nv);
+      setInvalid(false);
       setEditing(false);
     };
     return (
@@ -56,15 +66,22 @@ export const EditableCell = React.memo(function EditableCell({
         <input
           ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setInvalid(false);
+          }}
+          onBlur={() => commit(true)}
+          title={invalid ? 'Số không hợp lệ — Esc để huỷ' : undefined}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              commit();
-            } else if (e.key === 'Escape') setEditing(false);
+              commit(false);
+            } else if (e.key === 'Escape') {
+              setInvalid(false);
+              setEditing(false);
+            }
           }}
-          className={`w-full h-full px-1.5 py-1.5 text-[12px] outline-none ring-2 ring-emerald-500 ring-inset bg-white tabular-nums ${type === 'text' ? 'text-left' : 'text-right'}`}
+          className={`w-full h-full px-1.5 py-1.5 text-[12px] outline-none ring-2 ${invalid ? 'ring-red-500 bg-red-50' : 'ring-emerald-500 bg-white'} ring-inset tabular-nums ${type === 'text' ? 'text-left' : 'text-right'}`}
         />
       </td>
     );
@@ -93,6 +110,7 @@ export const EditableCell = React.memo(function EditableCell({
 export const PriceCell = React.memo(function PriceCell({ value, pending, onCommit, locked, width = 85 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [invalid, setInvalid] = useState(false);
   const inputRef = useRef(null);
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -124,8 +142,16 @@ export const PriceCell = React.memo(function PriceCell({ value, pending, onCommi
     );
   }
   if (editing) {
-    const commit = () => {
-      const tr = parseNum(draft);
+    const commit = (fromBlur) => {
+      const tr = parseNumStrict(draft);
+      if (tr === null) {
+        if (fromBlur) {
+          setInvalid(false);
+          setEditing(false);
+        } else setInvalid(true);
+        return;
+      }
+      setInvalid(false);
       const nv = tr ? Math.round(tr * 1e6) : 0;
       if (nv !== (Number(value) || 0)) onCommit(nv);
       setEditing(false);
@@ -138,15 +164,22 @@ export const PriceCell = React.memo(function PriceCell({ value, pending, onCommi
         <input
           ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setInvalid(false);
+          }}
+          onBlur={() => commit(true)}
+          title={invalid ? 'Số không hợp lệ — Esc để huỷ' : undefined}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              commit();
-            } else if (e.key === 'Escape') setEditing(false);
+              commit(false);
+            } else if (e.key === 'Escape') {
+              setInvalid(false);
+              setEditing(false);
+            }
           }}
-          className="w-full h-full px-2 py-1.5 text-[12px] text-right outline-none ring-2 ring-emerald-500 ring-inset bg-white tabular-nums"
+          className={`w-full h-full px-2 py-1.5 text-[12px] text-right outline-none ring-2 ${invalid ? 'ring-red-500 bg-red-50' : 'ring-emerald-500 bg-white'} ring-inset tabular-nums`}
         />
       </td>
     );

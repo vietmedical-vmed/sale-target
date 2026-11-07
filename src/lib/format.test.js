@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fmtInt, fmtM, fmtShort, parseNum } from "./format.js";
+import { fmtInt, fmtM, fmtShort, parseNum, parseNumStrict } from "./format.js";
 
 describe("fmtInt", () => {
   it("returns dash for null/undefined", () => {
@@ -62,5 +62,35 @@ describe("parseNum", () => {
   });
   it("returns 0 for non-numeric", () => {
     expect(parseNum("abc")).toBe(0);
+  });
+});
+
+describe("parseNumStrict", () => {
+  it("reads Vietnamese decimal comma", () => {
+    expect(parseNumStrict("1,5")).toBe(1.5);
+    expect(parseNumStrict("12,75")).toBe(12.75);
+  });
+  it("reads Vietnamese thousand dots", () => {
+    expect(parseNumStrict("1.234.567")).toBe(1234567);
+    expect(parseNumStrict("1.234.567,5")).toBe(1234567.5);
+  });
+  it("reads en-US formats the app displays", () => {
+    expect(parseNumStrict("1,234")).toBe(1234);
+    expect(parseNumStrict("1,234.5")).toBe(1234.5);
+    expect(parseNumStrict("1.5")).toBe(1.5);
+  });
+  it("handles spaces, negatives and empty", () => {
+    expect(parseNumStrict(" 2 500 ")).toBe(2500);
+    expect(parseNumStrict("-3")).toBe(-3);
+    expect(parseNumStrict("")).toBe(0);
+    expect(parseNumStrict(null)).toBe(0);
+    expect(parseNumStrict(7)).toBe(7);
+  });
+  it("returns null for invalid input instead of 0", () => {
+    expect(parseNumStrict("abc")).toBeNull();
+    expect(parseNumStrict("12a")).toBeNull();
+    expect(parseNumStrict("1.2,3.4")).toBeNull();
+    expect(parseNumStrict("--5")).toBeNull();
+    expect(parseNumStrict(",")).toBeNull();
   });
 });

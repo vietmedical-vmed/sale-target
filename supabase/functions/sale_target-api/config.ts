@@ -21,5 +21,18 @@ export const MANAGER_EDITABLE = new Set(["rev"]);
 export const DEMO_BU = "test";
 export const OOP_CUST = "Ngoài kế hoạch";
 
+// 12 tháng kế hoạch của năm tài chính đang chạy (tháng 4 → tháng 3 năm sau) và mã FY
+// suy ra từ tháng đầu ("2026-04" → "FY26", giống public.fy_from_thang). Không đọc FY
+// từ một dòng sale_target bất kỳ: bảng còn dòng FY25 (thực hiện ngoài kế hoạch).
+export const PLAN_MONTHS = [
+  "2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
+  "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03",
+];
+export function fyFromMonth(mo: string) {
+  const y = Number(mo.slice(0, 4)), m = Number(mo.slice(5, 7));
+  return "FY" + String(m >= 4 ? y : y - 1).slice(2);
+}
+export const PLAN_FY = fyFromMonth(PLAN_MONTHS[0]);
+
 export const PAGE = 1000;
 export const CONCURRENCY = 6;

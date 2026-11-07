@@ -1,13 +1,13 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
-import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE } from "./config.ts";
+import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE, PLAN_MONTHS, PLAN_FY } from "./config.ts";
 import { applyScope, scopeParams, parseGroups, mienScope } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone, taoDotTuThangThau, kiemTraThangHieuLuc,
-  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc,
+  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc, fetchPaged,
 } from "./helpers.ts";
 
 const QUIET_ACTIONS = new Set(["getChanges", "getRev"]);
@@ -56,7 +56,10 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "ping") {
-      return json({ ok: true, role: sess.r, scope: sess.s, bu: sess.b, username: sess.u });
+      return json({
+        ok: true, role: sess.r, scope: sess.s, bu: sess.b, username: sess.u,
+        ho_ten: sess.n || sess.u, nhom_san_pham: sess.g || "",
+      });
     }
 
     if (action === "refreshToken") {
@@ -301,6 +304,7 @@ Deno.serve(async (req) => {
       for (let from = 0; ; from += PAGE) {
         let q = db.schema("shared").from("sale_target").select(cols)
           .eq("ngoai_ke_hoach", true)
+          .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         q = applyScope(q, sess, payload);
         const { data, error } = await q;
@@ -619,10 +623,8 @@ Deno.serve(async (req) => {
     if (action === "addProduct") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       const s = payload;
-      const { data: any1 } = await db.schema("shared").from("sale_target").select("nam_tai_chinh").limit(1);
-      const fy = any1 && any1[0] ? any1[0].nam_tai_chinh : "FY26";
-      const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
-        "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
+      const fy = PLAN_FY;
+      const MONTHS = PLAN_MONTHS;
       const psName = sess.r === "ps" ? sess.s : String(s.ps || "").trim();
       if (!psName) return json({ ok: false, error: "Chưa chọn PS phụ trách" }, 400);
       const priceNum = Number(s.price);
@@ -811,11 +813,8 @@ Deno.serve(async (req) => {
       const loiHieuLucLo = kiemTraThangHieuLuc(items);
       if (loiHieuLucLo) return json({ ok: false, error: loiHieuLucLo }, 400);
 
-      const { data: any1 } = await db.schema("shared").from("sale_target")
-        .select("nam_tai_chinh").limit(1);
-      const fy = any1 && any1[0] ? any1[0].nam_tai_chinh : "FY26";
-      const MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
-        "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
+      const fy = PLAN_FY;
+      const MONTHS = PLAN_MONTHS;
 
       const psInfoCache = new Map<string, { bu: string; mien: string } | null>();
       for (const s of items) {
@@ -855,7 +854,9 @@ Deno.serve(async (req) => {
         const priceNum = Number(s.price);
         const price = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null;
         raws.push({
-          ps, bu: info.bu, mien: s.region || info.mien, custId: String(s.custId || ""),
+          // area_manager: miền của dòng = miền của PS (đã kiểm thuộc phạm vi), không nhận miền client gửi.
+          ps, bu: info.bu, mien: sess.r === "area_manager" ? info.mien : (s.region || info.mien),
+          custId: String(s.custId || ""),
           cust: String(s.cust || ""), grp, mset: String(s.mset || ""), prod: String(s.prod || ""),
           price, mMain: s.mMain, mAdd: s.mAdd, hlMain: s.hlMain, hlAdd: s.hlAdd,
         });
@@ -915,22 +916,19 @@ Deno.serve(async (req) => {
       const existSet = new Set<string>();
       const uniquePs = [...new Set(candidates.map(c => c.ps))];
       if (uniquePs.length && candidates.length) {
-        for (let from = 0; ; from += PAGE) {
-          const { data } = await db.schema("shared").from("sale_target")
-            .select("ps, ma_khach_hang, nhom_san_pham, bo_vat_tu, san_pham, don_gia")
-            .eq("nam_tai_chinh", fy)
-            .eq("thang_ke_hoach", MONTHS[0])
-            .in("ps", uniquePs)
-            // Dòng OOP (đồng bộ thực hiện) không phải kế hoạch — hấp thụ sau insert.
-            .not("ngoai_ke_hoach", "is", true)
-            .range(from, from + PAGE - 1);
-          if (!data || data.length === 0) break;
-          for (const r of data) {
-            const p = Number(r.don_gia);
-            const price = Number.isFinite(p) && p > 0 ? p : null;
-            existSet.add(`${r.ps}\0${r.ma_khach_hang}\0${r.nhom_san_pham}\0${r.bo_vat_tu}\0${r.san_pham}\0${price}`);
-          }
-          if (data.length < PAGE) break;
+        const data = await fetchPaged((from, to) => db.schema("shared").from("sale_target")
+          .select("id, ps, ma_khach_hang, nhom_san_pham, bo_vat_tu, san_pham, don_gia")
+          .eq("nam_tai_chinh", fy)
+          .eq("thang_ke_hoach", MONTHS[0])
+          .in("ps", uniquePs)
+          // Dòng OOP (đồng bộ thực hiện) không phải kế hoạch — hấp thụ sau insert.
+          .not("ngoai_ke_hoach", "is", true)
+          .order("id", { ascending: true })
+          .range(from, to));
+        for (const r of data) {
+          const p = Number(r.don_gia);
+          const price = Number.isFinite(p) && p > 0 ? p : null;
+          existSet.add(`${r.ps}\0${r.ma_khach_hang}\0${r.nhom_san_pham}\0${r.bo_vat_tu}\0${r.san_pham}\0${price}`);
         }
       }
 
@@ -1343,11 +1341,10 @@ Deno.serve(async (req) => {
       const nhoms = [...new Set(rows.map((r) => String(r.nhom_san_pham)))];
       const dots: Record<string, unknown>[] = [];
       for (let i = 0; i < nhoms.length; i += 50) {
-        const { data, error } = await db.schema("shared").from("dot_thau")
-          .select("nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,dot,thang_thau,trang_thai")
-          .in("nhom_san_pham", nhoms.slice(i, i + 50));
-        if (error) throw new Error(error.message);
-        dots.push(...(data || []));
+        dots.push(...await fetchPaged((from, to) => db.schema("shared").from("dot_thau")
+          .select("id,nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,dot,thang_thau,trang_thai")
+          .in("nhom_san_pham", nhoms.slice(i, i + 50))
+          .order("id", { ascending: true }).range(from, to)));
       }
       const k = (r: Record<string, unknown>) =>
         [r.nam_tai_chinh, r.ps, r.ma_khach_hang, r.nhom_san_pham, r.loai, r.dot].join("||");
@@ -1362,10 +1359,9 @@ Deno.serve(async (req) => {
         for (const q of data || []) dangDung.add(k(q));
         if (!data || data.length < PAGE) break;
       }
-      const { data: dotCho, error: dErr } = await db.schema("shared").from("dot_thau")
+      const dotCho = await fetchPaged((from, to) => db.schema("shared").from("dot_thau")
         .select("id,nam_tai_chinh,bu,ps,ma_khach_hang,nhom_san_pham,loai,dot,thang_thau,thoi_gian")
-        .eq("trang_thai", "cho_duyet").order("id", { ascending: true });
-      if (dErr) throw new Error(dErr.message);
+        .eq("trang_thai", "cho_duyet").order("id", { ascending: true }).range(from, to));
       return json({
         ok: true,
         rows: rows.map((r) => {

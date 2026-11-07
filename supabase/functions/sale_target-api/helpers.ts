@@ -4,6 +4,22 @@ import { json } from "../_shared/cors.ts";
 import { COL, FIELDS, PAGE, CONCURRENCY } from "./config.ts";
 import { applyScope, readScopeParams, parseGroups, mienScope, scopeParams } from "./scope.ts";
 
+// Đọc hết mọi trang của một truy vấn (PostgREST cắt mỗi lần ở max_rows = 1000).
+// `build(from, to)` phải có .order() theo cột duy nhất để các trang không chồng/sót dòng.
+export async function fetchPaged<T = Record<string, unknown>>(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data || []) as T[];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
 export function diaBanErr(error: { message?: string }, req?: Request) {
   const msg = String(error && error.message || "");
   if (msg.includes("out_of_scope")) return json({ ok: false, error: "forbidden_rows" }, 403, req);
@@ -62,23 +78,22 @@ export async function kiemTraPsThemDiaBan(
     s.add(String(ps));
   };
 
-  const { data: dbs, error: e1 } = await db.schema("shared").from("dm_dia_ban")
-    .select("cust_key, nhom_san_pham, ps")
-    .eq("bu", bu).in("cust_key", keys).in("nhom_san_pham", grps).neq("ps", me);
-  if (e1) throw new Error(e1.message);
-  for (const d of dbs || []) add(`${d.cust_key}||${d.nhom_san_pham}`, d.ps);
+  const dbs = await fetchPaged((from, to) => db.schema("shared").from("dm_dia_ban")
+    .select("id, cust_key, nhom_san_pham, ps")
+    .eq("bu", bu).in("cust_key", keys).in("nhom_san_pham", grps).neq("ps", me)
+    .order("id", { ascending: true }).range(from, to));
+  for (const d of dbs) add(`${d.cust_key}||${d.nhom_san_pham}`, d.ps);
 
   // Khớp dòng kế hoạch y như apply_dia_ban_to_plan: coalesce(nullif(ma_khach_hang,''), khach_hang).
   const ids = keys.filter((k) => rows.some((r) => String(r.custId || "").trim() === k));
   const names = keys.filter((k) => !ids.includes(k));
   const scan = async (col: "ma_khach_hang" | "khach_hang", vals: string[]) => {
     if (!vals.length) return;
-    const { data, error } = await db.schema("shared").from("sale_target")
-      .select("ma_khach_hang, khach_hang, nhom_san_pham, ps")
+    const data = await fetchPaged((from, to) => db.schema("shared").from("sale_target")
+      .select("id, ma_khach_hang, khach_hang, nhom_san_pham, ps")
       .eq("bu", bu).in(col, vals).in("nhom_san_pham", grps).neq("ps", me)
-      .limit(5000);
-    if (error) throw new Error(error.message);
-    for (const s of data || []) {
+      .order("id", { ascending: true }).range(from, to));
+    for (const s of data) {
       const k = keyOf(s.ma_khach_hang, s.khach_hang);
       add(`${k}||${s.nhom_san_pham}`, s.ps);
     }
@@ -470,11 +485,11 @@ export async function taoDotTuThangThau(
   const grps = [...new Set([...can.values()].map((r) => String(r.grp)))];
   const coSan = new Set<string>();
   for (let i = 0; i < grps.length; i += 50) {
-    const { data, error } = await db.schema("shared").from("dot_thau")
-      .select("nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,thang_thau")
-      .in("nhom_san_pham", grps.slice(i, i + 50));
-    if (error) throw new Error(error.message);
-    for (const d of data || []) {
+    const data = await fetchPaged((from, to) => db.schema("shared").from("dot_thau")
+      .select("id,nam_tai_chinh,ps,ma_khach_hang,nhom_san_pham,loai,thang_thau")
+      .in("nhom_san_pham", grps.slice(i, i + 50))
+      .order("id", { ascending: true }).range(from, to));
+    for (const d of data) {
       coSan.add([d.nam_tai_chinh, d.ps, d.ma_khach_hang, d.nhom_san_pham, d.loai, d.thang_thau].join("||"));
     }
   }

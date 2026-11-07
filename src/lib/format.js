@@ -31,11 +31,39 @@ export const fmtShort = (v) => {
   return String(v);
 };
 
-export const parseNum = (s) => {
-  if (s === '' || s == null) return 0;
-  const n = Number(String(s).replace(/[^\d.-]/g, ''));
-  return isNaN(n) ? 0 : n;
+// Đọc số người dùng gõ, chấp nhận cả kiểu en-US (app hiển thị "1,234.5") lẫn kiểu Việt
+// ("1.234.567", "1,5"). Luật:
+//   - có cả '.' và ',': dấu xuất hiện SAU CÙNG là dấu thập phân, dấu kia là phân nhóm;
+//   - nhiều dấu cùng loại ("1,234,567" / "1.234.567"): phân nhóm;
+//   - đúng một ',': "1,234" (3 chữ số sau) = phân nhóm như cách app hiển thị, còn lại
+//     ("1,5", "12,75") = thập phân;
+//   - đúng một '.': thập phân.
+// Chuỗi có ký tự khác (chữ, nhiều dấu '-') → null, KHÔNG âm thầm thành 0.
+export const parseNumStrict = (s) => {
+  if (s == null) return 0;
+  if (typeof s === 'number') return Number.isFinite(s) ? s : null;
+  let t = String(s).replace(/\s/g, '');
+  if (t === '') return 0;
+  if (!/^-?[\d.,]+$/.test(t) || !/\d/.test(t)) return null;
+  const dots = (t.match(/\./g) || []).length;
+  const commas = (t.match(/,/g) || []).length;
+  if (dots && commas) {
+    const dec = t.lastIndexOf('.') > t.lastIndexOf(',') ? '.' : ',';
+    const grp = dec === '.' ? ',' : '.';
+    if (t.split(dec).length > 2) return null;
+    t = t.split(grp).join('').replace(dec, '.');
+  } else if (commas > 1) {
+    t = t.replace(/,/g, '');
+  } else if (dots > 1) {
+    t = t.replace(/\./g, '');
+  } else if (commas === 1) {
+    t = /^-?\d{1,3},\d{3}$/.test(t) ? t.replace(',', '') : t.replace(',', '.');
+  }
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
 };
+
+export const parseNum = (s) => parseNumStrict(s) ?? 0;
 
 export const money = (v) => (MASK_MONEY ? '•••' : fmtM(v));
 export const moneyShort = (v) => (MASK_MONEY ? '•••' : fmtShort(v));
