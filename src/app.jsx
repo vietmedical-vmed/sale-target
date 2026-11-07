@@ -39,6 +39,7 @@ import { DiaBanView } from './components/DiaBanView.jsx';
 import { TabBtn, OopReasonButton, FixBoVatTuModal, OopDetailModal, DmpsForm, StatCard } from './components/SupportComponents.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './components/QuotaThau.jsx';
 import { ganQuotaTheoDot } from './lib/quota.js';
+import { pickUnknown, pickKnownDeleted } from './lib/sync.js';
 import { exportQuotaThau, exportChiTietKeHoach } from './lib/excel.js';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
@@ -208,6 +209,17 @@ function AppInner({ initialAuth, onLogin }) {
   const [diaBanBusy, setDiaBanBusy] = useState(false);
   const [dataRev, setDataRev] = useState(0);
   const rowRevsRef = useRef(new Map());
+  // app_config.sale_target_epoch lúc tải toàn bộ: server tăng sau thao tác ghi hàng loạt
+  // (đồng bộ thực hiện...) → getChanges trả epoch khác thì tải lại toàn bộ.
+  const epochRef = useRef(null);
+  // Ghi nhận _rev mới của dòng do chính mình ghi để delta poll bỏ qua (không coi là
+  // thay đổi của người khác) và lần sửa tiếp không bị báo xung đột với chính mình.
+  const rememberRevs = useCallback((nums, revs) => {
+    if (!Array.isArray(nums) || !Array.isArray(revs)) return;
+    for (let i = 0; i < nums.length; i++) {
+      if (nums[i] && revs[i]) rowRevsRef.current.set(nums[i], revs[i]);
+    }
+  }, []);
   const scrollContainerRef = useRef(null);
   const checkForUpdatesRef = useRef(null);
   const [stale, setStale] = useState(false);
@@ -440,6 +452,9 @@ function AppInner({ initialAuth, onLogin }) {
           setCurMonth(r.config.current_month);
         }
         if (r.config && r.config.deadline_day != null) setDeadlineDay(r.config.deadline_day);
+        epochRef.current = r.config && r.config.sale_target_epoch != null
+          ? String(r.config.sale_target_epoch)
+          : null;
         if (typeof r.rev === 'number') setDataRev(r.rev);
         if (r.maxDocDate) setMaxDocDate(r.maxDocDate);
         if (r.config && r.config.help_content) setHelpContent(String(r.config.help_content));
@@ -917,13 +932,13 @@ function AppInner({ initialAuth, onLogin }) {
             return o;
           });
           setRows((prev) => prev.concat(objs));
-          if (typeof res.rev === 'number') setDataRev(res.rev);
+          rememberRevs(res.rowNums, res.rowRevs);
           // Backend đã chuyển thực hiện của các tháng OOP cùng khoá vào dòng mới và
           // xoá dòng OOP -> tải lại list OOP cho khỏi đếm 2 lần.
-          if (res.absorbed) {
-            if (typeof res.rev === 'number') revRef.current = res.rev;
-            await reloadOop();
-          }
+          if (res.absorbed) await reloadOop();
+          // Không nhảy con trỏ rev theo res.rev (sẽ bỏ sót thay đổi của người khác trong
+          // lúc đó) — kéo delta như poll thường; dòng của chính mình đã biết rev nên bị lọc.
+          checkForUpdatesRef.current?.();
         } else {
           await loadData();
         }
@@ -933,7 +948,7 @@ function AppInner({ initialAuth, onLogin }) {
         return false;
       }
     },
-    [loadData, reloadOop],
+    [loadData, reloadOop, rememberRevs],
   );
 
   const bulkAddProducts = useCallback(
@@ -986,7 +1001,7 @@ function AppInner({ initialAuth, onLogin }) {
             return o;
           });
           if (objs.length) setRows((prev) => prev.concat(objs));
-          if (typeof res.rev === 'number') setDataRev(res.rev);
+          rememberRevs(res.rowNums, res.rowRevs);
         } else {
           await loadData();
         }
@@ -994,16 +1009,15 @@ function AppInner({ initialAuth, onLogin }) {
         const skipped = res?.skipped || 0;
         if (skipped) setError(`Thêm SP thiếu: ${inserted / 12} mới, ${skipped} đã tồn tại`);
         if (inserted) {
-          // rev đã đổi do chính mình -> không bật cờ stale
-          if (typeof res?.rev === 'number') revRef.current = res.rev;
           await reloadOop();
+          checkForUpdatesRef.current?.();
         }
       } catch (err) {
         setError('Thêm SP thiếu thất bại: ' + err.message);
       }
       setOopFixBusy(false);
     },
-    [loadData],
+    [loadData, reloadOop, rememberRevs],
   );
 
   // Warn on leaving with unsaved drafts
@@ -1153,21 +1167,43 @@ function AppInner({ initialAuth, onLogin }) {
         sinceRev: revRef.current,
         ...scopePayload,
       });
-      const hasChanges =
-        (r.rows && r.rows.length) ||
-        (r.oopRows && r.oopRows.length) ||
-        (r.deleted && r.deleted.length);
+      // Server tăng epoch sau ghi hàng loạt (đồng bộ thực hiện): rev của các dòng đó có
+      // thể nhỏ hơn con trỏ → không tin delta, tải lại toàn bộ.
+      if (r.epoch != null) {
+        const ep = String(r.epoch);
+        if (epochRef.current == null) epochRef.current = ep;
+        else if (ep !== epochRef.current) {
+          if (draftRef.current === 0) await loadData();
+          else setStale(true);
+          return;
+        }
+      }
+      // Server đọc lùi vài trăm rev trước con trỏ (bắt transaction commit muộn), nên bỏ
+      // các dòng client đã có đúng _rev — gồm cả dòng chính mình vừa ghi.
+      const known = rowRevsRef.current;
+      const rowIdx = pickUnknown(known, r.rowNums, r.rowRevs);
+      const oopIdx = pickUnknown(known, r.oopRowNums, r.oopRowRevs);
+      const deletedIds = pickKnownDeleted(known, r.deleted);
+      const hasChanges = rowIdx.length || oopIdx.length || deletedIds.length;
       if (hasChanges) {
         if (draftRef.current === 0) {
-          const changedRows = parseChangedRows(r, fields);
-          patchRowsFromChanges(changedRows, r.deleted || []);
+          const sub = (arr, idx) => idx.map((i) => (arr || [])[i]);
+          const changedRows = parseChangedRows(
+            { rows: sub(r.rows, rowIdx), rowNums: sub(r.rowNums, rowIdx), rowRevs: sub(r.rowRevs, rowIdx) },
+            fields,
+          );
+          patchRowsFromChanges(changedRows, deletedIds);
+          for (const id of deletedIds) known.delete(id);
+          for (const i of oopIdx) {
+            if (r.oopRowNums[i] && r.oopRowRevs[i]) known.set(r.oopRowNums[i], r.oopRowRevs[i]);
+          }
           // Patch trên chỉ áp cho dòng kế hoạch; dòng ngoài KH về riêng ở r.oopRows.
           // Pipeline thực hiện chuyển số qua lại giữa 2 loại (xoá/tạo lại dòng OOP) →
           // không tải lại list OOP thì số cũ còn nằm trong oopRows và bị đếm 2 lần.
-          if ((r.oopRows && r.oopRows.length) || (r.deleted && r.deleted.length))
-            await reloadOop();
+          if (oopIdx.length || deletedIds.length) await reloadOop();
         } else {
           setStale(true);
+          return;
         }
       }
       if (typeof r.maxRev === 'number') setDataRev(r.maxRev);
@@ -1225,7 +1261,7 @@ function AppInner({ initialAuth, onLogin }) {
     if (!ids.length) return;
     const idSet = new Set(ids);
     try {
-      const res = await api('deleteProduct', { rows: ids });
+      await api('deleteProduct', { rows: ids });
       setRows((prev) => prev.filter((r) => !idSet.has(r._row)));
       setDrafts((prev) => {
         const next = {};
@@ -1234,7 +1270,8 @@ function AppInner({ initialAuth, onLogin }) {
         }
         return next;
       });
-      if (res && typeof res.rev === 'number') setDataRev(res.rev);
+      for (const id of ids) rowRevsRef.current.delete(id);
+      checkForUpdatesRef.current?.();
     } catch (err) {
       setError('Xóa thất bại: ' + err.message);
     }
@@ -1259,7 +1296,7 @@ function AppInner({ initialAuth, onLogin }) {
           }
           setRows((prev) => prev.concat([o]));
           if (res.rowRev) rowRevsRef.current.set(res.rowNum, res.rowRev);
-          if (typeof res.rev === 'number') setDataRev(res.rev);
+          checkForUpdatesRef.current?.();
         } else {
           await loadData();
         }
@@ -1309,7 +1346,7 @@ function AppInner({ initialAuth, onLogin }) {
         return;
       const idSet = new Set(ids);
       try {
-        const res = await api('deleteCustomer', { rows: ids, multiPs });
+        await api('deleteCustomer', { rows: ids, multiPs });
         setRows((prev) => prev.filter((r) => !idSet.has(r._row)));
         setDrafts((prev) => {
           const next = {};
@@ -1318,7 +1355,8 @@ function AppInner({ initialAuth, onLogin }) {
           }
           return next;
         });
-        if (res && typeof res.rev === 'number') setDataRev(res.rev);
+        for (const id of ids) rowRevsRef.current.delete(id);
+        checkForUpdatesRef.current?.();
       } catch (err) {
         setError('Xóa khách hàng thất bại: ' + err.message);
       }
@@ -1363,6 +1401,8 @@ function AppInner({ initialAuth, onLogin }) {
           if (conflictIds.has(rowId)) resolved[k] = v;
         }
         setDrafts(resolved);
+        // Cập nhật ngay (effect chạy sau render) để delta poll ngay dưới thấy đúng số nháp.
+        draftRef.current = Object.keys(resolved).length;
         const patchByRow = new Map();
         batch.forEach((u) => {
           if (conflictIds.has(u.row)) return;
@@ -1399,6 +1439,8 @@ function AppInner({ initialAuth, onLogin }) {
           }),
         );
         setDrafts({});
+        draftRef.current = 0;
+        setStale(false);
         setSavedFlash(true);
         setTimeout(() => setSavedFlash(false), 2000);
         if (pendingReloadRef.current) {
@@ -1407,8 +1449,15 @@ function AppInner({ initialAuth, onLogin }) {
           return;
         }
       }
-      if (typeof res.rev === 'number') setDataRev(res.rev);
-      setStale(false);
+      // _rev mới của dòng vừa lưu (server trả rowRevs): lần sửa tiếp không báo xung đột
+      // với chính mình. Không nhảy con trỏ theo res.rev — kéo delta để nhận cả thay đổi
+      // người khác trong lúc đó.
+      if (res.rowRevs) {
+        for (const [id, rv] of Object.entries(res.rowRevs)) {
+          if (rv) rowRevsRef.current.set(Number(id), rv);
+        }
+      }
+      checkForUpdatesRef.current?.();
     } catch (err) {
       setError(
         err.message === 'forbidden_rows'

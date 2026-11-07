@@ -7,7 +7,7 @@ import {
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone, taoDotTuThangThau, kiemTraThangHieuLuc,
-  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc, fetchPaged,
+  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc, fetchPaged, bumpEpoch,
 } from "./helpers.ts";
 
 const QUIET_ACTIONS = new Set(["getChanges", "getRev"]);
@@ -75,10 +75,12 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getData") {
-      const [allRows, classMap, rev, cfgRows, quotaThau, maxDocDateRes] = await Promise.all([
+      // Chốt rev TRƯỚC khi đọc dòng: mọi thay đổi commit sau mốc này có rev lớn hơn nên lần
+      // getChanges sau sẽ nhận; đọc rev song song/sau thì có thể nhảy qua dòng chưa đọc kịp.
+      const rev = await getRev(db, sess, payload);
+      const [allRows, classMap, cfgRows, quotaThau, maxDocDateRes] = await Promise.all([
         fetchAll(db, sess, payload),
         fetchOopClassify(db, sess, payload).catch(() => new Map()),
-        getRev(db, sess, payload),
         db.schema("shared").from("app_config").select("key, value").then(r => r.data || []),
         fetchQuotaThau(db, sess, payload).catch(() => ({ dots: [], quotas: [] })),
         db.schema("app_sale").from("hoa_don_bovattu")
@@ -123,13 +125,25 @@ Deno.serve(async (req) => {
       return json({ ok: true, rev: await getRev(db, sess, payload) });
     }
 
+    // Đồng bộ delta. _rev lấy từ sequence lúc GHI nhưng chỉ thấy được lúc COMMIT, nên
+    // một transaction lấy rev nhỏ mà commit muộn sẽ lọt qua con trỏ của client. Chống:
+    //  - đọc lùi REV_LOOKBACK rev trước con trỏ (client bỏ dòng đã biết _rev) — đủ cho
+    //    transaction ngắn (sửa ô, thêm SP, địa bàn);
+    //  - maxRev = rev lớn nhất trong chính các dòng trả về, không query getRev riêng sau đó;
+    //  - transaction dài (đồng bộ thực hiện ~50 s, ghi hàng nghìn dòng) tăng
+    //    app_config.sale_target_epoch → client thấy epoch đổi thì tải lại toàn bộ.
     if (action === "getChanges") {
+      const REV_LOOKBACK = 500;
       const sinceRev = Number(payload.sinceRev) || 0;
+      const fromRev = Math.max(0, sinceRev - REV_LOOKBACK);
       const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
+      const epochP = db.schema("shared").from("app_config")
+        .select("value").eq("key", "sale_target_epoch").maybeSingle()
+        .then((r) => (r.data ? r.data.value : null), () => null);
       const changed: Record<string, unknown>[] = [];
       for (let from = 0; ; from += PAGE) {
         let q = db.schema("shared").from("sale_target").select(cols)
-          .gt("_rev", sinceRev)
+          .gt("_rev", fromRev)
           .order("_rev", { ascending: true })
           .range(from, from + PAGE - 1);
         q = applyScope(q, sess, payload);
@@ -139,21 +153,25 @@ Deno.serve(async (req) => {
         if (!data || data.length < PAGE) break;
       }
       const deleted: number[] = [];
+      let maxRev = sinceRev;
+      for (const r of changed) maxRev = Math.max(maxRev, Number(r._rev) || 0);
       for (let from = 0; ; from += PAGE) {
         let q = db.schema("shared").from("sale_target_tombstone")
           .select("id, _rev")
-          .gt("_rev", sinceRev)
+          .gt("_rev", fromRev)
           .order("_rev", { ascending: true })
           .range(from, from + PAGE - 1);
         q = applyScopeTombstone(q, sess, payload);
         const { data, error } = await q;
         if (error) throw new Error(error.message);
-        deleted.push(...(data || []).map((d: Record<string, unknown>) => d.id as number));
+        for (const d of (data || []) as Record<string, unknown>[]) {
+          deleted.push(d.id as number);
+          maxRev = Math.max(maxRev, Number(d._rev) || 0);
+        }
         if (!data || data.length < PAGE) break;
       }
-      const classMap = changed.some((r) => r[COL.oop])
-        ? await fetchOopClassify(db, sess, payload).catch(() => new Map())
-        : new Map();
+      // Client chỉ dùng dòng OOP để biết phải tải lại danh sách OOP (getOop tự phân loại),
+      // nên không chạy classify (~1 s) ở đây; oopMeta để rỗng.
       const mapRow = (r: Record<string, unknown>) => FIELDS.map((f) => {
         const v = r[COL[f]];
         return v === null || v === undefined ? "" : v;
@@ -166,14 +184,12 @@ Deno.serve(async (req) => {
         rowNums: dbRows.map((r) => r.id),
         rowRevs: dbRows.map((r) => Number(r._rev) || 0),
         oopRows: oopDbRows.map(mapRow),
-        oopMeta: oopDbRows.map((r) => {
-          const c = classMap.get(r.id);
-          return { ly_do: c?.ly_do || "", ps_dia_ban: c?.ps_dia_ban || "" };
-        }),
+        oopMeta: [],
         oopRowNums: oopDbRows.map((r) => r.id),
         oopRowRevs: oopDbRows.map((r) => Number(r._rev) || 0),
         deleted,
-        maxRev: await getRev(db, sess, payload),
+        maxRev,
+        epoch: await epochP,
       });
     }
 
@@ -342,6 +358,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thieu_du_lieu")) return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
+      await bumpEpoch(db);
       await writeAuditLog(db, sess, "suaPsHoaDonBulk", p_rows.length, { stats: data });
       return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }
@@ -366,6 +383,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thieu_du_lieu"))    return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
+      await bumpEpoch(db);
       await writeAuditLog(db, sess, "suaPsHoaDon", 1, {
         thang: p.thang, maKh: p.maKh, psCu: p.psCu, psMoi: p.psMoi,
       });
@@ -507,8 +525,21 @@ Deno.serve(async (req) => {
           changes,
         });
       }
+      // _rev mới của các dòng vừa ghi: client cập nhật để lần sửa tiếp theo cùng dòng không bị
+      // báo xung đột với chính mình (trước đây client không biết rev mới tới khi tải lại).
+      const newRevs: Record<number, number> = {};
+      if (byRow.size > 0) {
+        const conflictIds = new Set(conflicts.map((c) => Number(c.id)));
+        const okIds = [...byRow.keys()].filter((id) => !conflictIds.has(id));
+        for (let i = 0; i < okIds.length; i += 500) {
+          const { data, error } = await db.schema("shared").from("sale_target")
+            .select("id, _rev").in("id", okIds.slice(i, i + 500));
+          if (error) throw new Error(error.message);
+          for (const r of data || []) newRevs[r.id as number] = Number(r._rev) || 0;
+        }
+      }
       const rev = await getRev(db, sess, payload);
-      return json({ ok: true, rev, conflicts });
+      return json({ ok: true, rev, conflicts, rowRevs: newRevs });
     }
 
     if (action === "saveDotThau") {
@@ -726,6 +757,7 @@ Deno.serve(async (req) => {
           })
         ),
         rowNums: inserted.map((r: Record<string, unknown>) => r.id),
+        rowRevs: inserted.map((r: Record<string, unknown>) => Number(r._rev) || 0),
         absorbed,
         dotMoi,
         rev: await getRev(db, sess, payload),
@@ -1094,6 +1126,7 @@ Deno.serve(async (req) => {
         if (msg.includes("thang_khong_hop_le")) return json({ ok: false, error: msg }, 400);
         return json({ ok: false, error: msg }, 500);
       }
+      await bumpEpoch(db);
       await writeAuditLog(db, sess, "dopChongLan", Number(data) || 0, { thang });
       return json({ ok: true, stats: data, rev: await getRev(db, sess, payload) });
     }

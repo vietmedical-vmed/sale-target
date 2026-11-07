@@ -169,6 +169,17 @@ export function applyScopeTombstone(
   return q;
 }
 
+// Báo mọi client tải lại toàn bộ sale_target (xem getChanges): gọi sau thao tác ghi
+// hàng loạt có thể chạy lâu. execute_sync_job tự tăng trong cùng transaction.
+export async function bumpEpoch(db: ReturnType<typeof createClient>) {
+  try {
+    await db.schema("shared").from("app_config").upsert(
+      { key: "sale_target_epoch", value: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { onConflict: "key" },
+    );
+  } catch (_) { /* không làm hỏng thao tác chính; lookback vẫn đỡ phần lớn */ }
+}
+
 export async function writeAuditLog(
   db: ReturnType<typeof createClient>,
   sess: Session,
