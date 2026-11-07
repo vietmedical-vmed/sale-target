@@ -92,6 +92,7 @@ export function quotaSanPham(dotsByGroup, quotasByProduct, anchor, mset, product
     bo_sung = 0,
     onHand = 0,
     het = 0;
+  const dotCo = [];
   for (const q of cungGia) {
     const n = Number(q.qty) || 0;
     if (q.loai === 'cu') {
@@ -108,7 +109,10 @@ export function quotaSanPham(dotsByGroup, quotasByProduct, anchor, mset, product
       if (q.loai === 'chinh') chinh += n;
       else bo_sung += n;
       if (tt === 'on') onHand += n;
+      if (d && !dotCo.includes(d)) dotCo.push(d);
     }
   }
-  return { cu, chinh, bo_sung, onHand, het, hasQuota: cungGia.length > 0 };
+  // Đợt thầu (chính / bổ sung) mà dòng này có quota, thầu chính trước rồi theo số đợt.
+  dotCo.sort((a, b) => (a.loai === b.loai ? (a.dot || 0) - (b.dot || 0) : a.loai === 'chinh' ? -1 : 1));
+  return { cu, chinh, bo_sung, onHand, het, hasQuota: cungGia.length > 0, dots: dotCo };
 }

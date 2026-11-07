@@ -450,7 +450,7 @@ export async function exportChiTietKeHoach(tree, quota) {
     : ['Quota 1/4', 'Quota thầu chính', 'Quota thầu bổ sung', 'Tổng quota'];
   const H = [
     'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', 'Mã SP', 'Sản phẩm', 'Đơn giá',
-    ...qCols, 'Quota on hand', 'SL TH YTD', 'Quota khả dụng',
+    ...qCols, 'Tháng mở thầu', 'Hiệu lực thầu (tháng)', 'Quota on hand', 'SL TH YTD', 'Quota khả dụng',
     ...MONTH_LABELS.map((m) => `SL đầu năm ${m}`), 'Tổng SL đầu năm', 'DThu KH đầu năm',
     ...MONTH_LABELS.map((m) => `SL update ${m}`), 'Tổng SL update', 'DThu KH update', 'Chênh lệch DThu',
     'DThu TH YTD',
@@ -489,10 +489,18 @@ export async function exportChiTietKeHoach(tree, quota) {
         });
         const cu = q?.cu || 0, chinh = q?.chinh || 0, bs = q?.bo_sung || 0;
         const het = q && HIEN_HET_HIEU_LUC ? q.het : 0;
+        // Nhiều đợt (thầu chính + bổ sung) thì nối bằng "; " theo cùng thứ tự ở 2 cột.
+        const dotSp = q?.dots || [];
+        const thangThau = dotSp.map((d) => d.thang || '?').join('; ');
+        const hieuLuc =
+          dotSp.length === 1 && Number(dotSp[0].thoiGian) > 0
+            ? Number(dotSp[0].thoiGian)
+            : dotSp.map((d) => (Number(d.thoiGian) > 0 ? Number(d.thoiGian) : '?')).join('; ');
         aoa.push([
           g.bu || '', c.region || '', g.ps || '', c.custId || '', c.customer || '', g.name || '',
           p.mset === NO_MSET ? '' : p.mset || '', p.product || '', p.pPrice || 0,
           cu, chinh, bs, ...(HIEN_HET_HIEU_LUC ? [het] : []), cu + chinh + bs - het,
+          thangThau, hieuLuc,
           q?.onHand || 0, ytd, q?.hasQuota ? (q.onHand || 0) - ytd : '',
           ...dn, slDn, dtBase,
           ...upd, slUpd, dtUpd, dtUpd - dtBase,
@@ -504,15 +512,16 @@ export async function exportChiTietKeHoach(tree, quota) {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [
     6, 8, 16, 10, 34, 22, 16, 34, 13,
-    ...qCols.map(() => 10), 11, 10, 11,
+    ...qCols.map(() => 10), 13, 10, 11, 10, 11,
     ...MONTHS.map(() => 9), 11, 15,
     ...MONTHS.map(() => 9), 11, 15, 14,
     15,
   ].map((wch) => ({ wch }));
   ws['!autofilter'] = { ref: `A1:${_ec(aoa.length - 1, H.length - 1)}` };
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  const cThang = H.indexOf('Tháng mở thầu');
   for (let r = 1; r < aoa.length; r++)
-    for (let cc = 8; cc < H.length; cc++) _fmt(ws, r, cc, '#,##0');
+    for (let cc = 8; cc < H.length; cc++) if (cc !== cThang) _fmt(ws, r, cc, '#,##0');
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Chi tiết kế hoạch');
   XLSX.writeFile(wb, `ChiTiet_KeHoach_${_today()}.xlsx`);
