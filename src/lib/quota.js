@@ -1,4 +1,5 @@
-import { MONTHS, HIEN_HET_HIEU_LUC } from '../config/constants.js';
+import { MONTHS, HIEN_HET_HIEU_LUC, NO_MSET, OOP_CUST } from '../config/constants.js';
+import { fmtInt } from './format.js';
 
 const grpKey = (fy, ps, custId, grp) =>
   [fy || '', ps || '', custId || '', grp || ''].join('||');
@@ -115,4 +116,81 @@ export function quotaSanPham(dotsByGroup, quotasByProduct, anchor, mset, product
   // Đợt thầu (chính / bổ sung) mà dòng này có quota, thầu chính trước rồi theo số đợt.
   dotCo.sort((a, b) => (a.loai === b.loai ? (a.dot || 0) - (b.dot || 0) : a.loai === 'chinh' ? -1 : 1));
   return { cu, chinh, bo_sung, onHand, het, hasQuota: cungGia.length > 0, dots: dotCo };
+}
+
+// Sản phẩm trên Chi tiết kế hoạch có quota khả dụng âm (on hand − SL TH YTD < 0).
+// Gom dòng y như cây của màn Chi tiết (KH × nhóm SP × PS × SP × đơn giá) và tính quota
+// bằng chính quotaSanPham của lưới, để số ở đây trùng với cột "Quota khả dụng".
+// Sản phẩm chưa có quota ở đúng mức giá thì on hand = 0: đã bán là âm.
+export function sanPhamAmQuota(rows, dotsByGroup, quotasByProduct, curMonth) {
+  const groups = new Map();
+  for (const r of rows) {
+    if (r._oop || r.cust === OOP_CUST || !MONTHS.includes(r.mo)) continue;
+    const cKey = r.custId || r.custRaw || r.cust || '—';
+    const gKey = `${cKey}||${r.grp || 'Khác'}||${r.ps || ''}`;
+    let g = groups.get(gKey);
+    if (!g) {
+      g = { cust: r.cust || '—', grpName: r.grp || 'Khác', pMap: new Map(), anchor: r };
+      groups.set(gKey, g);
+    }
+    const mset = r.mset || NO_MSET;
+    const price = Number(r.price) || 0;
+    const pKey = `${mset}||${r.prod || '—'}||${price}`;
+    let p = g.pMap.get(pKey);
+    if (!p) {
+      p = { mset, prod: r.prod || '—', price, ytd: 0, anchor: r, anchorIdx: 99 };
+      g.pMap.set(pKey, p);
+    }
+    // Lưới lấy dòng của tháng sớm nhất làm mốc (fy / ps / custId / grp).
+    const idx = MONTHS.indexOf(r.mo);
+    if (idx < p.anchorIdx) {
+      p.anchor = r;
+      p.anchorIdx = idx;
+    }
+    if ((r.mo || '') <= curMonth) p.ytd += Number(r.act) || 0;
+  }
+  const out = [];
+  for (const g of groups.values()) {
+    const items = [...g.pMap.values()].map((p) => ({ mset: p.mset, prod: p.prod, price: p.price }));
+    for (const p of g.pMap.values()) {
+      const a = p.anchor;
+      const q = quotaSanPham(dotsByGroup, quotasByProduct, a, p.mset, p.prod, curMonth);
+      const onHand = q?.onHand || 0;
+      const khaDung = onHand - p.ytd;
+      if (Math.round(khaDung * 1000) >= 0) continue;
+      const het = q && HIEN_HET_HIEU_LUC ? q.het : 0;
+      const upcoming = q ? Math.max(0, q.cu + q.chinh + q.bo_sung - het - onHand) : 0;
+      // Quota đã nhập nhưng ở mức giá khác với dòng kế hoạch → không cộng vào dòng này.
+      const giaKhac = new Map();
+      for (const x of quotasByProduct.get(prodKey(a.fy, a.ps, a.custId, a.grp, p.mset, p.prod)) || []) {
+        const pr = Number(x.price) || 0;
+        if (pr !== p.price && Number(x.qty) > 0) giaKhac.set(pr, (giaKhac.get(pr) || 0) + Number(x.qty));
+      }
+      let lyDo;
+      if (giaKhac.size)
+        lyDo = `Quota đang nhập ở giá khác: ${[...giaKhac].map(([pr, n]) => `${fmtInt(pr)} (SL ${fmtInt(n)})`).join('; ')}`;
+      else if (upcoming > 0) lyDo = `Còn ${fmtInt(upcoming)} quota chưa tới tháng thầu hoặc đợt thiếu thông tin`;
+      else if (!q?.hasQuota) lyDo = 'Chưa nhập quota';
+      else lyDo = 'Quota nhỏ hơn thực hiện';
+      out.push({
+        key: `${a.fy}|${a.ps}|${a.custId}|${a.grp}|${p.mset}|${p.prod}|${p.price}`,
+        fy: a.fy,
+        ps: a.ps || '',
+        custId: a.custId || '',
+        cust: g.cust,
+        grp: a.grp || '',
+        grpName: g.grpName,
+        mset: p.mset,
+        prod: p.prod,
+        price: p.price,
+        onHand,
+        ytd: p.ytd,
+        khaDung,
+        thieuDt: -khaDung * p.price,
+        lyDo,
+        items,
+      });
+    }
+  }
+  return out;
 }

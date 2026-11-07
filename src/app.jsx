@@ -2966,7 +2966,7 @@ function AppInner({ initialAuth, onLogin }) {
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
         ) : tab === 'dotthieu' && (isAdmin || auth.role === 'manager') ? (
-          <DotThieuThongTinView customers={custSource} />
+          <DotThieuThongTinView customers={custSource} rows={teamRows} canEdit={canEdit} />
         ) : tab === 'sosanhkh' && (isAdmin || auth.role === 'manager') ? (
           <SoSanhKeHoachView viewBu={viewBu} isAdmin={isAdmin} curMonth={curMonth} />
         ) : tab === 'sosanhgia' && isAdmin ? (
