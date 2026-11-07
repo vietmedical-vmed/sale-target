@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Trash2 } from './icons.jsx';
+import { ChevronDown, ChevronRight, Trash2, Clock } from './icons.jsx';
 import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth, HIEN_HET_HIEU_LUC, isKhUpdateLocked } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
 import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
 import { trangThaiDot, quotaSanPham } from '../lib/quota.js';
+import { LichSuSanPhamModal } from './LichSu.jsx';
 
 // ============ PRODUCT ROW ============
 // Inline-edit cho ô sticky (bộ vật tư / sản phẩm) — chỉ dùng cho admin.
@@ -76,6 +77,7 @@ const ProductRow = React.memo(function ProductRow({
   onResolveConflict,
   onOpenQuota,
   onEnsureMonthRow,
+  onOpenHistory,
 }) {
   const allRows = useMemo(() => monthly.flatMap((c) => c.rows), [monthly]);
   const anchor = allRows.length ? allRows[0] : null;
@@ -263,6 +265,15 @@ const ProductRow = React.memo(function ProductRow({
               </div>
             )}
           </div>
+          {onOpenHistory && allRows.length > 0 && (
+            <button
+              onClick={() => onOpenHistory({ product, mset, ids: allRows.map((r) => r._row) })}
+              title="Xem lịch sử sửa của sản phẩm này"
+              className="shrink-0 text-slate-300 hover:text-emerald-600 opacity-0 group-hover:opacity-100 transition"
+            >
+              <Clock size={13} />
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={handleDelete}
@@ -536,6 +547,11 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
   // liệt kê mọi sản phẩm của nhóm -> nhập một lần, lưu một lần.
   const [quotaFocus, setQuotaFocus] = useState(null);
   const openQuota = useCallback((info) => setQuotaFocus(info), []);
+  // Lịch sử sửa một sản phẩm (mọi tháng) của khách hàng này.
+  const [lichSu, setLichSu] = useState(null);
+  const custName = groupRows.length ? groupRows[0].cust : '';
+  const openHistory = useCallback((info) => setLichSu({ ...info, cust: custName }), [custName]);
+  const closeHistory = useCallback(() => setLichSu(null), []);
   const closeQuota = useCallback(() => setQuotaFocus(null), []);
   const quotaItems = useMemo(
     () =>
@@ -770,6 +786,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
               <span className="text-[13px]">📝</span>Giải trình
             </button>
           </div>
+          {lichSu && <LichSuSanPhamModal info={lichSu} onClose={closeHistory} />}
           {noteModal && (
             <GiaiTrinhModal
               info={{ ps: ps, custId: custId || '', grp: groupName }}
@@ -1080,6 +1097,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                       onResolveConflict={onResolveConflict}
                       onOpenQuota={openQuota}
                       onEnsureMonthRow={onEnsureMonthRow}
+                      onOpenHistory={openHistory}
                     />
                   );
                 })}

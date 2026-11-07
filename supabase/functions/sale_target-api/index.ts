@@ -408,7 +408,10 @@ Deno.serve(async (req) => {
         const rowIds = [...byRow.keys()];
         const changedDbCols = new Set<string>();
         for (const [, patch] of byRow) for (const c of Object.keys(patch)) changedDbCols.add(c);
-        const selectCols = ["id", "ps", "khach_hang", "ma_khach_hang", "thang_ke_hoach", ...changedDbCols].join(",");
+        const selectCols = [...new Set([
+          "id", "ps", "khach_hang", "ma_khach_hang", "thang_ke_hoach",
+          "nhom_san_pham", "bo_vat_tu", "san_pham", ...changedDbCols,
+        ])].join(",");
         const { data: oldRows } = await db.schema("shared").from("sale_target")
           .select(selectCols).in("id", rowIds);
         const oldMap = new Map<number, Record<string, unknown>>();
@@ -479,14 +482,20 @@ Deno.serve(async (req) => {
         }
         const cols = new Set<string>();
         for (const u of updates) if (EDITABLE.has(u.key) || ADMIN_EDITABLE.has(u.key)) cols.add(u.key);
-        const changes = rowIds.slice(0, 50).map(id => {
+        // Lưu đủ ngữ cảnh (nhóm / bộ / sản phẩm / tháng) để tab Lịch sử cập nhật và lịch sử sản phẩm
+        // đọc được mà không phải tra lại sale_target (dòng có thể đã bị xoá). Tối đa 500 dòng / lượt.
+        const changes = rowIds.slice(0, 500).map(id => {
           const old = oldMap.get(id) || {};
           const patch = byRow.get(id) || {};
           const diff: Record<string, { old: unknown; new: unknown }> = {};
           for (const [col, newVal] of Object.entries(patch)) {
             diff[col] = { old: old[col] ?? null, new: newVal };
           }
-          return { id, ps: old.ps, cust: old.khach_hang, custId: old.ma_khach_hang, diff };
+          return {
+            id, ps: old.ps, cust: old.khach_hang, custId: old.ma_khach_hang,
+            grp: old.nhom_san_pham, mset: old.bo_vat_tu, prod: old.san_pham, mo: old.thang_ke_hoach,
+            diff,
+          };
         });
         await writeAuditLog(db, sess, "updateCells", byRow.size, {
           columns: [...cols],
@@ -1120,6 +1129,85 @@ Deno.serve(async (req) => {
       const { data, error, count } = await q;
       if (error) throw new Error(error.message);
       return json({ ok: true, logs: data || [], total: count || 0, page, limit });
+    }
+
+    // Lịch sử cập nhật gom nhóm ở server (ngày VN + người + thao tác), phân trang theo nhóm.
+    if (action === "getAuditNhom") {
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
+      const limit = Math.min(200, Math.max(1, Number(payload.limit) || 50));
+      const page = Math.max(1, Number(payload.page) || 1);
+      const actions = Array.isArray(payload.actions)
+        ? (payload.actions as unknown[]).map(String).filter(Boolean)
+        : [];
+      const { data, error } = await db.rpc("audit_nhom", {
+        p_from: payload.from || null,
+        p_to: payload.to || null,
+        p_username: payload.username || null,
+        p_actions: actions.length ? actions : null,
+        p_bu: payload.bu || null,
+        p_q: payload.q ? String(payload.q).slice(0, 100) : null,
+        p_offset: (page - 1) * limit,
+        p_limit: limit,
+      });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, ...(data || {}), page, limit });
+    }
+
+    // Chi tiết một nhóm: thay đổi từng ô (updateCells) + details thô của các thao tác khác.
+    if (action === "getAuditChiTiet") {
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
+      const ids = (Array.isArray(payload.logIds) ? payload.logIds as unknown[] : [])
+        .map(Number).filter((n) => Number.isFinite(n)).slice(0, 300);
+      if (!ids.length) return json({ ok: true, thayDoi: [], logs: [] });
+      const [{ data: logs, error: lErr }, { data: thayDoi, error: tErr }] = await Promise.all([
+        db.schema("shared").from("audit_log")
+          .select("id, created_at, action, row_count, details, thang_ke_hoach")
+          .in("id", ids).order("created_at", { ascending: false }),
+        db.rpc("audit_thay_doi", { p_log_ids: ids, p_row_ids: null }),
+      ]);
+      if (lErr) throw new Error(lErr.message);
+      if (tErr) throw new Error(tErr.message);
+      // Bỏ mảng changes/ids nặng khỏi log thô: thay đổi đã trải phẳng ở thayDoi.
+      const slim = (logs || []).map((l: Record<string, unknown>) => {
+        const d = (l.details || {}) as Record<string, unknown>;
+        if (l.action !== "updateCells") return l;
+        return { ...l, details: { columns: d.columns, so_dong_chi_tiet: Array.isArray(d.changes) ? d.changes.length : 0 } };
+      });
+      return json({ ok: true, thayDoi: thayDoi || [], logs: slim });
+    }
+
+    // Tổng quan deadline theo kỳ tháng: ai đã / chưa cập nhật SL KH update trước hạn chót.
+    if (action === "getAuditDeadline") {
+      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
+      const thang = String(payload.thang || "");
+      if (!/^\d{4}-\d{2}$/.test(thang)) return json({ ok: false, error: "bad_thang" }, 400);
+      const { data: cfg } = await db.schema("shared").from("app_config")
+        .select("value").eq("key", "deadline_day").maybeSingle();
+      const han = Math.min(28, Math.max(1, Number(cfg?.value) || 5));
+      const { data, error } = await db.rpc("audit_deadline", {
+        p_thang: thang, p_han: han, p_bu: payload.bu || null,
+      });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, han, ...(data || {}) });
+    }
+
+    // Lịch sử sửa của một sản phẩm (các dòng sale_target mọi tháng) — mọi vai trò xem được,
+    // nhưng chỉ với dòng nằm trong phạm vi của phiên.
+    if (action === "getLichSuSanPham") {
+      let ids = (Array.isArray(payload.ids) ? payload.ids as unknown[] : [])
+        .map(Number).filter((n) => Number.isFinite(n)).slice(0, 500);
+      if (!ids.length) return json({ ok: true, thay_doi: [], thieu_chi_tiet: [] });
+      if (sess.r !== "admin" && sess.r !== "manager") {
+        const { data: ok, error: sErr } = await applyScope(
+          db.schema("shared").from("sale_target").select("id").in("id", ids), sess, payload,
+        );
+        if (sErr) throw new Error(sErr.message);
+        ids = (ok || []).map((r: { id: number }) => r.id);
+        if (!ids.length) return json({ ok: true, thay_doi: [], thieu_chi_tiet: [] });
+      }
+      const { data, error } = await db.rpc("audit_lich_su_dong", { p_row_ids: ids });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, ...(data || {}) });
     }
 
     if (action === "getAppConfig") {
