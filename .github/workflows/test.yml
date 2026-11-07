@@ -1,0 +1,30 @@
+name: Test
+
+# Workflow deploy Pages chỉ chạy khi đổi frontend. File này chạy lint + test khi đổi edge
+# function / migration (gồm test phạm vi quyền supabase/functions/**/scope.test.ts) và trên
+# mọi pull request. Không deploy gì: edge function vẫn deploy tay
+# (`supabase functions deploy sale_target-api --no-verify-jwt`).
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "supabase/**"
+      - "vitest.config.js"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test

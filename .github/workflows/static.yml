@@ -45,6 +45,10 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+        env:
+          # Sentry chỉ bật khi repo có secret VITE_SENTRY_DSN (Settings → Secrets → Actions).
+          # Không có secret → chuỗi rỗng → initSentry() bỏ qua, build vẫn chạy.
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
       - name: Prepare deploy
         run: |
           printf '{"version":"%s","builtAt":"%s"}\n' \

@@ -1,4 +1,4 @@
--- Hoàn tác 20261106100000_so_sanh_ke_hoach_theo_bu_mien.sql: trả hàm so sánh về bản gộp
+-- Hoàn tác 20261106100001_so_sanh_ke_hoach_theo_bu_mien.sql: trả hàm so sánh về bản gộp
 -- PS × KH × nhóm (bu/mien lấy max). Chạy lại khối CREATE OR REPLACE FUNCTION
 -- public.so_sanh_chot_ke_hoach trong 20261105100000_chot_ke_hoach_thang.sql.
 

@@ -74,6 +74,21 @@ supabase db push
 > Script hoàn tác để ở `supabase/rollbacks/` và chỉ chạy tay qua SQL Editor.
 > Hai file cùng số version cũng không được phép — mỗi version đúng một file.
 
+> ⚠️ **Áp migration bằng cách khác (`supabase db query --linked -f ...`, SQL Editor) thì
+> phải ghi lịch sử ngay**, nếu không lần `db push` sau sẽ chạy lại nó:
+> ```bash
+> supabase migration repair --status applied <version> --linked
+> supabase db push --dry-run --linked   # phải báo "Remote database is up to date."
+> ```
+> Ngày 2026-11-07 đã ghi bù 65 migration áp qua API từ 09/2026 và đổi tên 2 file trùng
+> version (`20261016150001_het_han_cong_3_thang`, `20261106100001_so_sanh_ke_hoach_theo_bu_mien`).
+
+Sau mỗi migration, kiểm không có bảng/view/hàm nào lộ cho anon key (kết quả phải rỗng):
+
+```bash
+supabase db query --linked -f supabase/checks/kiem_quyen_anon.sql
+```
+
 ### Edge Functions (Supabase)
 > ⚠️ **Phải deploy tay riêng** — không đi theo pipeline GitHub Pages.
 

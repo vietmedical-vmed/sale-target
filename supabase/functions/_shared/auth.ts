@@ -25,6 +25,8 @@ export interface Session {
   m: string;
   g: string;
   exp: number;
+  // Thời điểm đăng nhập (giây) — giới hạn tổng thời gian phiên khi refresh. Token cũ không có.
+  at?: number;
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -58,6 +60,7 @@ export async function verifyToken(token: string, secret: string): Promise<Sessio
     m: (payload.mien ?? payload.m ?? "") as string,
     g: (payload.nhom_san_pham ?? payload.g ?? "") as string,
     exp: payload.exp as number,
+    at: typeof payload.at === "number" ? payload.at : undefined,
   };
 }
 

@@ -3,7 +3,9 @@ import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { sha256Hex, signToken } from "../_shared/auth.ts";
 
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 5;      // username × IP
+const MAX_PER_USER = 20;     // username, mọi IP
+const MAX_PER_IP = 50;       // IP, mọi username (cả văn phòng có thể chung 1 IP NAT)
 const LOCKOUT_WINDOW_SEC = 15 * 60;
 const TOKEN_TTL_SEC = 2 * 60 * 60;
 
@@ -30,18 +32,31 @@ Deno.serve(async (req) => {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
 
   // --- Rate limit check ---
+  // Trước đây chỉ khoá theo username: ai biết tên đăng nhập của người khác gõ sai 5 lần là
+  // khoá được họ 15 phút. Nay:
+  //  - username × IP sai >= MAX_ATTEMPTS → khoá cặp đó (người dùng thật ở IP khác vẫn vào);
+  //  - username sai >= MAX_PER_USER từ mọi IP → khoá tài khoản (chặn dò mật khẩu rải IP);
+  //  - IP sai >= MAX_PER_IP với mọi username → khoá IP (chặn dò rải nhiều tài khoản).
+  // IP lấy từ x-forwarded-for; client có thể giả phần đầu header, nên ngưỡng theo username
+  // vẫn là chốt chặn cuối.
   const since = new Date(Date.now() - LOCKOUT_WINDOW_SEC * 1000).toISOString();
-  const { count } = await db.schema("shared").from("login_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("username", username as string)
-    .eq("success", false)
-    .gte("attempted_at", since);
-
-  if ((count ?? 0) >= MAX_ATTEMPTS) {
+  const fails = (col: "username" | "ip" | "pair") => {
+    let q = db.schema("shared").from("login_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("success", false)
+      .gte("attempted_at", since);
+    if (col !== "ip") q = q.eq("username", username as string);
+    if (col !== "username") q = ip ? q.eq("ip", ip) : q.is("ip", null);
+    return q.then((r) => r.count ?? 0, () => 0);
+  };
+  const [pairFails, userFails, ipFails] = await Promise.all([
+    fails("pair"), fails("username"), ip ? fails("ip") : Promise.resolve(0),
+  ]);
+  if (pairFails >= MAX_ATTEMPTS || userFails >= MAX_PER_USER || ipFails >= MAX_PER_IP) {
     return json({
       ok: false,
       error: "account_locked",
-      message: `Tài khoản tạm khoá do đăng nhập sai ${MAX_ATTEMPTS} lần. Thử lại sau 15 phút.`,
+      message: "Đăng nhập sai quá nhiều lần. Thử lại sau 15 phút.",
     }, 429);
   }
 
@@ -115,7 +130,8 @@ Deno.serve(async (req) => {
   }
 
   // --- Issue token ---
-  const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SEC;
+  const at = Math.floor(Date.now() / 1000);
+  const exp = at + TOKEN_TTL_SEC;
   const token = await signToken(
     {
       username: user.username,
@@ -126,6 +142,7 @@ Deno.serve(async (req) => {
       scope: user.scope ?? "",
       nhom_san_pham: user.nhom_san_pham ?? "",
       exp,
+      at,
     },
     secret,
   );

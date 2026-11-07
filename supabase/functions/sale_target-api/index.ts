@@ -47,11 +47,22 @@ Deno.serve(async (req) => {
   _role = sess.r;
 
   const db = admin();
-  // Token còn hạn chưa đủ: tài khoản bị khoá (shared.users.active = false) phải mất quyền ngay.
+  // Token còn hạn chưa đủ: tài khoản bị khoá (shared.users.active = false) phải mất quyền ngay,
+  // và quyền (role / scope / BU / miền / nhóm SP) lấy theo shared.users HIỆN TẠI chứ không theo
+  // claim lúc đăng nhập — admin đổi quyền là có hiệu lực ở request kế tiếp, kể cả khi client
+  // cứ refreshToken liên tục.
   const { data: dbUser, error: userErr } = await db.schema("shared").from("users")
-    .select("active").eq("username", sess.u).maybeSingle();
+    .select("active, role, scope, bu, mien, nhom_san_pham, ho_va_ten")
+    .eq("username", sess.u).maybeSingle();
   if (userErr) return json({ ok: false, error: "server_error" }, 500);
   if (!dbUser || dbUser.active === false) return json({ ok: false, error: "unauthorized" }, 401);
+  sess.r = String(dbUser.role || "").toLowerCase();
+  sess.s = dbUser.scope ?? "";
+  sess.b = dbUser.bu ?? "";
+  sess.m = dbUser.mien || "MB";
+  sess.g = dbUser.nhom_san_pham ?? "";
+  sess.n = dbUser.ho_va_ten || sess.u;
+  _role = sess.r;
   const canEdit = ["admin", "ps", "manager", "area_manager"].includes(sess.r);
 
   try {
@@ -63,13 +74,19 @@ Deno.serve(async (req) => {
     }
 
     if (action === "refreshToken") {
-      const remaining = sess.exp - Math.floor(Date.now() / 1000);
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = sess.exp - now;
       if (remaining < 0) return json({ ok: false, error: "expired" }, 401);
-      const exp = Math.floor(Date.now() / 1000) + 2 * 60 * 60;
+      // Phiên tối đa MAX_SESSION_SEC kể từ lúc đăng nhập (claim `at`), dù client refresh liên
+      // tục. Token cũ chưa có `at` → tính từ lần refresh này.
+      const MAX_SESSION_SEC = 24 * 60 * 60;
+      const at = sess.at || now;
+      if (now - at > MAX_SESSION_SEC) return json({ ok: false, error: "expired" }, 401);
+      const exp = Math.min(now + 2 * 60 * 60, at + MAX_SESSION_SEC);
       const newToken = await signToken({
         username: sess.u, ho_ten: sess.n, role: sess.r,
         mien: sess.m, bu: sess.b, scope: sess.s,
-        nhom_san_pham: sess.g, exp,
+        nhom_san_pham: sess.g, exp, at,
       }, secret);
       return json({ ok: true, token: newToken, expiresAt: exp });
     }

@@ -1,5 +1,6 @@
 const ALLOWED_ORIGINS = [
   "https://vietmedical-vmed.github.io",
+  "http://localhost:8080", // vite.config.js server.port
   "http://localhost:5173",
   "http://localhost:4173",
 ];
