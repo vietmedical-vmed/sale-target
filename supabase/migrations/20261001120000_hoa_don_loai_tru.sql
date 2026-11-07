@@ -227,7 +227,7 @@ comment on view app_sale.hoa_don_bovattu_chia is
   'hoa_don_bovattu sau khi chia PS theo phiếu SV (v_chia_ps). chia: goc = không chia, chia = phần ghép phiếu (ten_ps lấy từ phiếu), con_lai = phần chưa có phiếu (giữ PS gốc). Tổng so_luong/tong_gia_ban theo id bằng dòng gốc.';
 
 grant select on app_sale.v_chia_ps, app_sale.hoa_don_bovattu_chia
-  to service_role, anon, authenticated;
+  to service_role;  -- không cấp anon/authenticated: app_sale lộ qua PostgREST (xem 20261107110000)
 
 -- 4) RPC cho app (edge function gọi bằng service_role) ---------------------
 

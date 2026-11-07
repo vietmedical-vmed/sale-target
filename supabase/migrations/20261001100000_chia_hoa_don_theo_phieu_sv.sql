@@ -239,7 +239,7 @@ comment on view app_sale.hoa_don_bovattu_chia is
   'hoa_don_bovattu sau khi chia PS theo phiếu SV (v_chia_ps). chia: goc = không chia, chia = phần ghép phiếu (ten_ps lấy từ phiếu), con_lai = phần chưa có phiếu (giữ PS gốc). Tổng so_luong/tong_gia_ban theo id bằng dòng gốc.';
 
 grant select on app_sale.v_chia_ps, app_sale.hoa_don_bovattu_chia
-  to service_role, anon, authenticated;
+  to service_role;  -- không cấp anon/authenticated: app_sale lộ qua PostgREST (xem 20261107110000)
 
 -- 5) hoa_don_actual đọc từ hóa đơn đã chia (giữ nguyên 12 cột) -------------
 -- Tra dm_ps qua bảng 1-dòng-mỗi-tên (distinct on, ưu tiên Active) + hash join
@@ -282,7 +282,7 @@ select thang_ke_hoach,
 from base
 group by thang_ke_hoach, ps, ma_khach_hang, bo_vat_tu, san_pham;
 
-grant select on app_sale.hoa_don_actual to service_role, anon, authenticated;
+grant select on app_sale.hoa_don_actual to service_role;  -- không cấp anon/authenticated: app_sale lộ qua PostgREST (xem 20261107110000)
 
 -- 6) Phạm vi đầu tiên: Việt Đức, 2 PS Tùng Phạm + Tuyên Phạm -----------------
 insert into app_sale.chia_ps_pham_vi (ma_kh, nhom_san_pham, don_vi, tu_ngay, ghi_chu) values

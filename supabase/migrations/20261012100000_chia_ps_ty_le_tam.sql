@@ -109,7 +109,7 @@ select h.id, h.thang, h.ngay_tai_lieu, h.so_tai_lieu, h.so_eo, h.ma_kh, h.ten_kh
 comment on view app_sale.hoa_don_bovattu_chia is
   'hoa_don_bovattu (trừ HĐ loại trừ) sau khi chia PS theo phiếu SV (v_chia_ps). chia: goc = không chia, chia = phần ghép phiếu (ten_ps lấy từ phiếu), con_lai = phần chưa có phiếu (giữ PS gốc), tam = phần chưa có phiếu chia theo chia_ps_ty_le_tam. Tổng so_luong/tong_gia_ban theo id bằng dòng gốc.';
 
-grant select on app_sale.hoa_don_bovattu_chia to service_role, anon, authenticated;
+grant select on app_sale.hoa_don_bovattu_chia to service_role;  -- không cấp anon/authenticated: app_sale lộ qua PostgREST (xem 20261107110000)
 
 -- Tỷ lệ tạm cho BV0342 (chờ phiếu SV từ tháng 9)
 insert into app_sale.chia_ps_ty_le_tam (ma_kh, nhom_san_pham, ten_ps, ty_le, ghi_chu) values
