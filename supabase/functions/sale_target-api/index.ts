@@ -1,6 +1,6 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
-import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE, PLAN_MONTHS, PLAN_FY } from "./config.ts";
+import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE, PLAN_MONTHS, PLAN_FY, onlyPlanMonths } from "./config.ts";
 import { applyScope, scopeParams, parseGroups, mienScope } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
           .gt("_rev", fromRev)
           .order("_rev", { ascending: true })
           .range(from, from + PAGE - 1);
-        q = applyScope(q, sess, payload);
+        q = onlyPlanMonths(applyScope(q, sess, payload));
         const { data, error } = await q;
         if (error) throw new Error(error.message);
         changed.push(...(data || []));
@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
           .eq("ngoai_ke_hoach", true)
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
-        q = applyScope(q, sess, payload);
+        q = onlyPlanMonths(applyScope(q, sess, payload));
         const { data, error } = await q;
         if (error) throw new Error(error.message);
         out.push(...(data || []));

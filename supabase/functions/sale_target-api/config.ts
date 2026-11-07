@@ -34,5 +34,12 @@ export function fyFromMonth(mo: string) {
 }
 export const PLAN_FY = fyFromMonth(PLAN_MONTHS[0]);
 
+// Chỉ dòng thuộc 12 tháng kế hoạch: bảng còn ~5.800 dòng thực hiện ngoài kế hoạch FY25 mà
+// client không dùng (màn tổng hợp bỏ tháng ngoài FY) — bỏ ở server cho đỡ tải mỗi lần mở app.
+// deno-lint-ignore no-explicit-any
+export function onlyPlanMonths(q: any) {
+  return q.gte("thang_ke_hoach", PLAN_MONTHS[0]).lte("thang_ke_hoach", PLAN_MONTHS[PLAN_MONTHS.length - 1]);
+}
+
 export const PAGE = 1000;
 export const CONCURRENCY = 6;

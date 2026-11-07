@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import type { Session } from "../_shared/auth.ts";
 import { json } from "../_shared/cors.ts";
-import { COL, FIELDS, PAGE, CONCURRENCY } from "./config.ts";
+import { COL, FIELDS, PAGE, CONCURRENCY, onlyPlanMonths } from "./config.ts";
 import { applyScope, readScopeParams, parseGroups, mienScope, scopeParams } from "./scope.ts";
 
 // Đọc hết mọi trang của một truy vấn (PostgREST cắt mỗi lần ở max_rows = 1000).
@@ -116,23 +116,23 @@ export function admin() {
   );
 }
 
+// Rev lớn nhất TOÀN BẢNG (không lọc phạm vi). Dùng làm mốc con trỏ ở getData (chốt trước
+// khi đọc) và trả kèm các thao tác ghi; con trỏ lớn hơn rev trong phạm vi vẫn đúng vì mọi
+// thay đổi sau mốc đều có rev lớn hơn. Bỏ lọc phạm vi: bản admin có điều kiện
+// "bu is null or bu <> 'test'" mất ~320 ms, bản toàn cục ~5 ms. sess/payload giữ cho chữ ký cũ.
 export async function getRev(
   db: ReturnType<typeof createClient>,
-  sess: Session | null,
-  payload?: Record<string, unknown>,
+  _sess?: Session | null,
+  _payload?: Record<string, unknown>,
 ) {
-  let q = db.schema("shared").from("sale_target").select("_rev");
-  if (sess) q = applyScope(q, sess, payload);
-  q = q.order("_rev", { ascending: false }).limit(1);
-  const { data } = await q;
+  const [{ data }, { data: tData }] = await Promise.all([
+    db.schema("shared").from("sale_target").select("_rev")
+      .order("_rev", { ascending: false }).limit(1),
+    db.schema("shared").from("sale_target_tombstone").select("_rev")
+      .order("_rev", { ascending: false }).limit(1),
+  ]);
   const saleRev = data && data[0] ? Number(data[0]._rev) || 0 : 0;
-
-  let tq = db.schema("shared").from("sale_target_tombstone").select("_rev")
-    .order("_rev", { ascending: false }).limit(1);
-  if (sess) tq = applyScopeTombstone(tq, sess, payload);
-  const { data: tData } = await tq;
   const tombRev = tData && tData[0] ? Number(tData[0]._rev) || 0 : 0;
-
   return Math.max(saleRev, tombRev);
 }
 
@@ -299,7 +299,7 @@ export async function fetchAll(
 ) {
   const cols = FIELDS.map((f) => COL[f]).join(",") + ",id,_rev";
   let countQ = db.schema("shared").from("sale_target").select("id", { count: "exact", head: true });
-  countQ = applyScope(countQ, sess, payload);
+  countQ = onlyPlanMonths(applyScope(countQ, sess, payload));
   const { count, error: cErr } = await countQ;
   if (cErr) throw new Error(cErr.message);
   const total = count || 0;
@@ -314,7 +314,7 @@ export async function fetchAll(
       let q = db.schema("shared").from("sale_target").select(cols)
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
-      q = applyScope(q, sess, payload);
+      q = onlyPlanMonths(applyScope(q, sess, payload));
       const { data, error } = await q;
       if (error) throw new Error(error.message);
       for (let i = 0; i < (data as unknown[]).length; i++) out[from + i] = data[i];

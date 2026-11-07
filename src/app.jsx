@@ -688,9 +688,8 @@ function AppInner({ initialAuth, onLogin }) {
         oopObjs[i] = o;
       }
       setOopRows(oopObjs);
-      // sl_thuc_hien đã ghi lại ở sale_target -> rev đổi -> đánh dấu stale để user
-      // tự bấm Reload thay vì mình load ngầm cả bảng lớn.
-      if (typeof r.rev === 'number' && r.rev !== revRef.current) setStale(true);
+      // Không so r.rev với con trỏ nữa: rev server trả là rev toàn cục (không theo phạm vi)
+      // và thay đổi dòng kế hoạch đã do delta poll / epoch lo (xem checkForUpdates).
     } catch (e) {}
   }, [auth.role, loadScope]);
 
