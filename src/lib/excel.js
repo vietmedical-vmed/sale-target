@@ -1,4 +1,5 @@
-import { MONTHS, MONTH_LABELS, CURRENT_MONTH, HIEN_HET_HIEU_LUC } from '../config/constants.js';
+import { MONTHS, MONTH_LABELS, CURRENT_MONTH, HIEN_HET_HIEU_LUC, NO_MSET, isYtdMonth } from '../config/constants.js';
+import { quotaSanPham } from './quota.js';
 
 let _XLSX = null;
 export async function loadXLSX() {
@@ -436,4 +437,83 @@ export async function exportSoSanhKeHoach(rows, tenA, tenB, theo = 'chenh', mocT
   XLSX.utils.book_append_sheet(wb, ws1, 'BU-Miền-PS-KH-Nhóm');
   XLSX.utils.book_append_sheet(wb, ws2, 'Chi tiết tháng');
   XLSX.writeFile(wb, `SoSanh_KH_update_${_today()}.xlsx`);
+}
+
+// Tab Chi tiết kế hoạch: mỗi dòng = 1 sản phẩm (KH × nhóm SP × PS × SP × đơn giá) đúng như
+// lưới trên màn hình, theo bộ lọc + tìm kiếm đang áp. Số liệu tính giống ProductGroupSection:
+// SL update tháng đã qua (hoặc tháng hiện tại đã có thực hiện) = SL thực hiện.
+// tree: cây KH của màn Chi tiết; quota: { dotsByGroup, quotasByProduct } từ QuotaThauCtx.
+export async function exportChiTietKeHoach(tree, quota) {
+  const XLSX = await loadXLSX();
+  const qCols = HIEN_HET_HIEU_LUC
+    ? ['Quota 1/4', 'Quota thầu chính', 'Quota thầu bổ sung', 'Quota hết hiệu lực', 'Tổng quota']
+    : ['Quota 1/4', 'Quota thầu chính', 'Quota thầu bổ sung', 'Tổng quota'];
+  const H = [
+    'BU', 'Miền', 'PS', 'Mã KH', 'Khách hàng', 'Nhóm SP', 'Mã SP', 'Sản phẩm', 'Đơn giá',
+    ...qCols, 'Quota on hand', 'SL TH YTD', 'Quota khả dụng',
+    ...MONTH_LABELS.map((m) => `SL đầu năm ${m}`), 'Tổng SL đầu năm', 'DThu KH đầu năm',
+    ...MONTH_LABELS.map((m) => `SL update ${m}`), 'Tổng SL update', 'DThu KH update', 'Chênh lệch DThu',
+    'DThu TH YTD',
+  ];
+  const aoa = [H];
+  for (const c of tree) {
+    for (const g of c.groups) {
+      for (const p of g.products) {
+        const allRows = p.monthly.flatMap((cell) => cell.rows);
+        const anchor = allRows[0] || null;
+        const q = quota ? quotaSanPham(quota.dotsByGroup, quota.quotasByProduct, anchor, p.mset, p.product, CURRENT_MONTH) : null;
+        let ytd = 0, dtBase = 0, dtUpd = 0, dtThYtd = 0, slDn = 0, slUpd = 0;
+        const dn = [], upd = [];
+        p.monthly.forEach((cell, i) => {
+          const mo = MONTHS[i];
+          const daTH = mo < CURRENT_MONTH || (mo === CURRENT_MONTH && cell.hasAct);
+          const u = daTH ? cell.act : cell.hasUpd ? cell.revUpd : cell.rev;
+          dn.push(cell.rev);
+          upd.push(u);
+          slDn += cell.rev;
+          slUpd += u;
+          if (isYtdMonth(mo)) ytd += cell.act;
+          cell.rows.forEach((r) => {
+            const pr = Number(r.price) || 0;
+            const act = Number(r.act) || 0;
+            const useAct = mo < CURRENT_MONTH || (mo === CURRENT_MONTH && act !== 0);
+            dtBase += (Number(r.rev) || 0) * pr;
+            const v = useAct
+              ? act
+              : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+                ? Number(r.revUpd) || 0
+                : Number(r.rev) || 0;
+            dtUpd += v * pr;
+            if (isYtdMonth(mo)) dtThYtd += Number(r.dtAct) || 0;
+          });
+        });
+        const cu = q?.cu || 0, chinh = q?.chinh || 0, bs = q?.bo_sung || 0;
+        const het = q && HIEN_HET_HIEU_LUC ? q.het : 0;
+        aoa.push([
+          g.bu || '', c.region || '', g.ps || '', c.custId || '', c.customer || '', g.name || '',
+          p.mset === NO_MSET ? '' : p.mset || '', p.product || '', p.pPrice || 0,
+          cu, chinh, bs, ...(HIEN_HET_HIEU_LUC ? [het] : []), cu + chinh + bs - het,
+          q?.onHand || 0, ytd, q?.hasQuota ? (q.onHand || 0) - ytd : '',
+          ...dn, slDn, dtBase,
+          ...upd, slUpd, dtUpd, dtUpd - dtBase,
+          dtThYtd,
+        ]);
+      }
+    }
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [
+    6, 8, 16, 10, 34, 22, 16, 34, 13,
+    ...qCols.map(() => 10), 11, 10, 11,
+    ...MONTHS.map(() => 9), 11, 15,
+    ...MONTHS.map(() => 9), 11, 15, 14,
+    15,
+  ].map((wch) => ({ wch }));
+  ws['!autofilter'] = { ref: `A1:${_ec(aoa.length - 1, H.length - 1)}` };
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  for (let r = 1; r < aoa.length; r++)
+    for (let cc = 8; cc < H.length; cc++) _fmt(ws, r, cc, '#,##0');
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Chi tiết kế hoạch');
+  XLSX.writeFile(wb, `ChiTiet_KeHoach_${_today()}.xlsx`);
 }

@@ -1,4 +1,4 @@
-import { MONTHS } from '../config/constants.js';
+import { MONTHS, HIEN_HET_HIEU_LUC } from '../config/constants.js';
 
 const grpKey = (fy, ps, custId, grp) =>
   [fy || '', ps || '', custId || '', grp || ''].join('||');
@@ -70,4 +70,45 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
     daGan.add(k);
     return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _hasQuota: true };
   });
+}
+
+// Quota của MỘT dòng sản phẩm trên lưới chi tiết (khoá KH × nhóm × PS × SP × đơn giá).
+// Dùng chung cho lưới (ProductGroupSection) và file Excel tab Chi tiết để hai nơi
+// luôn ra cùng một số. anchor = dòng đầu tiên của sản phẩm (lấy fy/ps/custId/grp/price).
+// Chỉ lấy quota của đúng mức giá của dòng: cộng cả sản phẩm thì mọi dòng giá đều
+// hiện cùng một con số, nhìn như bị nhân đôi.
+export function quotaSanPham(dotsByGroup, quotasByProduct, anchor, mset, product, curMonth) {
+  if (!dotsByGroup || !quotasByProduct || !anchor) return null;
+  const gk = grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp);
+  const dots = dotsByGroup.get(gk) || [];
+  const list =
+    quotasByProduct.get(prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product)) || [];
+  const giaDong = Number(anchor.price) || 0;
+  const cungGia = list.filter((q) => (Number(q.price) || 0) === giaDong);
+  const dotInfo = new Map();
+  for (const d of dots) dotInfo.set(`${d.loai}|${d.dot}`, d);
+  let cu = 0,
+    chinh = 0,
+    bo_sung = 0,
+    onHand = 0,
+    het = 0;
+  for (const q of cungGia) {
+    const n = Number(q.qty) || 0;
+    if (q.loai === 'cu') {
+      cu += n;
+      onHand += n;
+    } else {
+      const d = dotInfo.get(`${q.loai}|${q.dot}`);
+      const tt = d ? trangThaiDot(d.thang, d.thoiGian, curMonth) : 'up';
+      if (tt === 'het') {
+        het += n;
+        // Đang ẩn phần hết hiệu lực: không cộng vào cột chính / BS để Tổng = cũ + chính + BS.
+        if (!HIEN_HET_HIEU_LUC) continue;
+      }
+      if (q.loai === 'chinh') chinh += n;
+      else bo_sung += n;
+      if (tt === 'on') onHand += n;
+    }
+  }
+  return { cu, chinh, bo_sung, onHand, het, hasQuota: cungGia.length > 0 };
 }

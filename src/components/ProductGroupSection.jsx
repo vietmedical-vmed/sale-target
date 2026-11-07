@@ -5,7 +5,7 @@ import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
 import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
-import { trangThaiDot } from '../lib/quota.js';
+import { trangThaiDot, quotaSanPham } from '../lib/quota.js';
 
 // ============ PRODUCT ROW ============
 // Inline-edit cho ô sticky (bộ vật tư / sản phẩm) — chỉ dùng cho admin.
@@ -82,46 +82,13 @@ const ProductRow = React.memo(function ProductRow({
   // Quota chỉ đọc từ shared.quota_thau (tách theo mức giá và theo đợt);
   // sale_target không còn lưu quota. Sản phẩm không có dòng quota thì hiện 0.
   const quotaCtx = useContext(QuotaThauCtx);
-  const qInfo = useMemo(() => {
-    if (!quotaCtx || !anchor) return null;
-    const gk = grpKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp);
-    const dots = quotaCtx.dotsByGroup.get(gk) || [];
-    const list = quotaCtx.quotasByProduct.get(
-      prodKey(anchor.fy, anchor.ps, anchor.custId, anchor.grp, mset, product),
-    ) || [];
-    // Dòng trên lưới là MỘT mức giá (khoá sản phẩm gồm cả đơn giá), nên chỉ lấy
-    // quota của đúng mức giá đó. Cộng cả sản phẩm thì mọi dòng giá của sản phẩm
-    // đều hiện cùng một con số, nhìn như bị nhân đôi. Quota ở mức giá không còn
-    // trên kế hoạch chỉ thấy trong modal (có dấu ⚠), không lên lưới.
-    const giaDong = Number(anchor.price) || 0;
-    const cungGia = list.filter((q) => (Number(q.price) || 0) === giaDong);
-    const dotInfo = new Map();
-    for (const d of dots) dotInfo.set(`${d.loai}|${d.dot}`, d);
-    let cu = 0,
-      chinh = 0,
-      bo_sung = 0,
-      onHand = 0,
-      het = 0;
-    for (const q of cungGia) {
-      const n = Number(q.qty) || 0;
-      if (q.loai === 'cu') {
-        cu += n;
-        onHand += n;
-      } else {
-        const d = dotInfo.get(`${q.loai}|${q.dot}`);
-        const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up';
-        if (tt === 'het') {
-          het += n;
-          // Đang ẩn phần hết hiệu lực: không cộng vào cột chính / BS để Tổng = cũ + chính + BS.
-          if (!HIEN_HET_HIEU_LUC) continue;
-        }
-        if (q.loai === 'chinh') chinh += n;
-        else bo_sung += n;
-        if (tt === 'on') onHand += n;
-      }
-    }
-    return { cu, chinh, bo_sung, onHand, het, hasQuota: cungGia.length > 0 };
-  }, [quotaCtx, anchor, mset, product]);
+  const qInfo = useMemo(
+    () =>
+      quotaCtx
+        ? quotaSanPham(quotaCtx.dotsByGroup, quotaCtx.quotasByProduct, anchor, mset, product, CURRENT_MONTH)
+        : null,
+    [quotaCtx, anchor, mset, product],
+  );
   const prices = useMemo(() => {
     const s = new Set();
     for (const r of allRows) s.add(Number(r.price) || 0);

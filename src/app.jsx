@@ -39,7 +39,7 @@ import { DiaBanView } from './components/DiaBanView.jsx';
 import { TabBtn, OopReasonButton, FixBoVatTuModal, OopDetailModal, DmpsForm, StatCard } from './components/SupportComponents.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './components/QuotaThau.jsx';
 import { ganQuotaTheoDot } from './lib/quota.js';
-import { exportQuotaThau } from './lib/excel.js';
+import { exportQuotaThau, exportChiTietKeHoach } from './lib/excel.js';
 import { dbCustKey, diaBanErrMsg } from './components/DiaBanView.jsx';
 import { CustomerCard } from './components/CustomerCard.jsx';
 import { OopCustomerCard, gomOopTheoKh, oopTheoTeam } from './components/OopBlock.jsx';
@@ -2021,6 +2021,12 @@ function AppInner({ initialAuth, onLogin }) {
   // tiêu đề/bộ lọc trong DOM) và đo lại khi danh sách KH đổi từ rỗng sang có
   // (thẻ KH đầu tiên mới xuất hiện thì mới đo được chiều cao của nó).
   useStickyBars(authed && !initialLoading && tab === 'detail', tree.length > 0);
+  // Tab Chi tiết: nút "Xuất Excel" trên thanh bộ lọc xuất đúng cây KH đang lọc.
+  useEffect(() => {
+    if (tab !== 'detail') return undefined;
+    setExporter(() => exportChiTietKeHoach(tree, { dotsByGroup, quotasByProduct }));
+    return () => setExporter(null);
+  }, [tab, tree, dotsByGroup, quotasByProduct, setExporter]);
   const stats = useMemo(() => {
     let plan = 0,
       dt = 0,
@@ -2618,7 +2624,11 @@ function AppInner({ initialAuth, onLogin }) {
             {exportFn && (
               <button
                 onClick={exportFn}
-                title="Xuất Excel giữ nguyên cấu trúc gập/mở"
+                title={
+                  tab === 'detail'
+                    ? 'Xuất Excel kế hoạch chi tiết theo bộ lọc đang chọn (mỗi dòng 1 sản phẩm của 1 khách hàng)'
+                    : 'Xuất Excel giữ nguyên cấu trúc gập/mở'
+                }
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50"
               >
                 <Download size={14} />
