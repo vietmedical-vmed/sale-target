@@ -264,15 +264,24 @@ Deno.serve(async (req) => {
     }
 
     if (action === "getCustomers") {
-      const out: { custId: string; cust: string; alias: string }[] = [];
+      const out: { custId: string; cust: string; alias: string; loaiBv: string }[] = [];
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await db.schema("shared").from("dm_khach_hang")
-          .select("customer_id, customer_name, customer_alias")
+          .select("customer_id, customer_name, customer_alias, type_lvl2")
           .order("customer_id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
         if (!data || data.length === 0) break;
-        for (const c of data) out.push({ custId: c.customer_id ?? "", cust: c.customer_name ?? "", alias: String(c.customer_alias ?? "").trim() });
+        for (const c of data) {
+          // type_lvl2 là Công/Tư cho bệnh viện; cột có lẫn giá trị rác (chức danh, tên NCC) nên chỉ nhận 2 giá trị này.
+          const t = String(c.type_lvl2 ?? "").trim();
+          out.push({
+            custId: c.customer_id ?? "",
+            cust: c.customer_name ?? "",
+            alias: String(c.customer_alias ?? "").trim(),
+            loaiBv: t === "Công" || t === "Tư" ? t : "",
+          });
+        }
         if (data.length < PAGE) break;
       }
       const customers = out.filter((c) => c.cust || c.custId);

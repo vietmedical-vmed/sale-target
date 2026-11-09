@@ -23,6 +23,11 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
     () => new Map(customers.map((c) => [String(c.custId), custLabel(c.custId, c.cust)])),
     [customers],
   );
+  // Công / Tư theo dm_khach_hang.type_lvl2 (edge getCustomers trả sẵn loaiBv, rỗng nếu chưa phân loại).
+  const loaiBv = useMemo(
+    () => new Map(customers.filter((c) => c.loaiBv).map((c) => [String(c.custId), c.loaiBv])),
+    [customers],
+  );
   const q = deaccent(search.trim());
   // Giá trị thầu của đợt = Σ SL quota × đơn giá các sản phẩm trong đợt.
   const giaTri = useMemo(() => {
@@ -54,7 +59,7 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
         .filter(
           (s) =>
             !q ||
-            [s.ps, s.custId, s.cust, s.grp, s.prod, s.mset === NO_MSET ? '' : s.mset].some((v) =>
+            [s.ps, s.custId, s.cust, loaiBv.get(String(s.custId)), s.grp, s.prod, s.mset === NO_MSET ? '' : s.mset].some((v) =>
               deaccent(v || '').includes(q),
             ),
         )
@@ -66,7 +71,7 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
             a.prod.localeCompare(b.prod) ||
             a.price - b.price,
         ),
-    [spAm, q],
+    [spAm, q, loaiBv],
   );
   if (!ctx) return null;
   const luu = async (d, thang, thoiGian) => {
@@ -163,19 +168,21 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className={`${th} text-left`}>PS</th>
                 <th className={`${th} text-left`}>Khách hàng</th>
+                <th className={`${th} text-left`}>Loại BV</th>
                 <th className={`${th} text-left`}>Nhóm SP</th>
                 <th className={`${th} text-left`}>Sản phẩm</th>
                 <th className={`${th} text-right`}>Đơn giá</th>
                 <th className={`${th} text-right`}>Quota on hand</th>
                 <th className={`${th} text-right`}>SL TH YTD</th>
                 <th className={`${th} text-right`}>Quota khả dụng</th>
+                <th className={`${th} text-right`}>Giá trị QKD</th>
                 <th className={`${th} text-left`}>Gợi ý</th>
                 <th className={th} />
               </tr>
             </thead>
             <tbody>
               {spList.length === 0 ? (
-                <tr><td colSpan={10} className="px-3 py-6 text-center text-slate-400">Không có sản phẩm nào âm quota khả dụng</td></tr>
+                <tr><td colSpan={12} className="px-3 py-6 text-center text-slate-400">Không có sản phẩm nào âm quota khả dụng</td></tr>
               ) : (
                 spList.map((s) => (
                   <tr key={s.key} className="border-b border-slate-100">
@@ -184,6 +191,7 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
                       <div className="text-slate-800">{tenKh.get(String(s.custId)) || s.cust}</div>
                       <div className="text-[10px] text-slate-400">{s.custId}</div>
                     </td>
+                    <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{loaiBv.get(String(s.custId)) || '—'}</td>
                     <td className="px-3 py-1.5 text-slate-600">{s.grp}</td>
                     <td className="px-3 py-1.5">
                       <div className="text-slate-800">{s.prod}</div>
@@ -193,6 +201,7 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
                     <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{fmtInt(s.onHand)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{fmtInt(s.ytd)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-red-600">{fmtInt(s.khaDung)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-red-600">{fmtInt(s.khaDung * s.price)}</td>
                     <td className="px-3 py-1.5 text-slate-500 max-w-[320px]">{s.lyDo}</td>
                     <td className="px-3 py-1.5 text-right whitespace-nowrap">
                       <button
