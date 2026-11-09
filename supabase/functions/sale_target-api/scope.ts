@@ -78,6 +78,18 @@ export function scopeParams(sess: Session) {
   return nhoms.length ? { ...base, p_groups: nhoms } : base;
 }
 
+// Phạm vi xem lịch sử cập nhật (RPC audit_*): luật lọc nằm ở public.audit_log_xem.
+// admin thấy mọi log; manager mọi log trừ của admin; area_manager log của mình + PS cùng BU
+// thuộc miền phụ trách; vai trò khác chỉ log của chính mình.
+export function auditScopeParams(sess: Session) {
+  return {
+    p_xem_role: String(sess.r || "").toLowerCase() || null,
+    p_xem_user: sess.u || null,
+    p_xem_bu: sess.b || null,
+    p_xem_mien: mienScope(sess),
+  };
+}
+
 export function readScopeParams(sess: Session, payload: Record<string, unknown> = {}) {
   const role = String(sess.r || "").toLowerCase();
   const p = scopeParams(sess);

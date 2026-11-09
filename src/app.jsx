@@ -2779,13 +2779,12 @@ function AppInner({ initialAuth, onLogin }) {
                 label="So sánh KH update"
               />
             )}
-            {(auth.role === 'admin' || auth.role === 'manager') && (
-              <TabBtn
-                active={tab === 'audit'}
-                onClick={() => setTab('audit')}
-                label="Lịch sử cập nhật"
-              />
-            )}
+            {/* Mọi vai trò xem được; server lọc log theo phạm vi của tài khoản. */}
+            <TabBtn
+              active={tab === 'audit'}
+              onClick={() => setTab('audit')}
+              label="Lịch sử cập nhật"
+            />
           </div>
           {error && (
             <div className="px-6 py-2 bg-red-50 border-t border-red-200 text-[12px] text-red-800 flex items-center gap-2">

@@ -3,7 +3,7 @@ import {
   Clock, Settings, Download, Filter, RefreshCw, Loader2,
   ChevronDown, ChevronRight, User, Search,
 } from './icons.jsx';
-import { ROLE_LABELS, TEAMS, setDeadlineDay as setDeadlineDayGlobal } from '../config/constants.js';
+import { ROLE_LABELS, TEAMS, DEADLINE_DAY, setDeadlineDay as setDeadlineDayGlobal } from '../config/constants.js';
 import { api } from '../api/client.js';
 import { loadXLSX } from '../lib/excel.js';
 import {
@@ -131,7 +131,17 @@ function ChiTietNhom({ g, cache, onLoad }) {
 }
 
 // ============ Dòng thời gian ============
-function NhatKy() {
+// Phạm vi log mỗi vai trò xem được (server lọc ở RPC audit_log_xem); dòng mô tả cho người xem.
+const PHAM_VI_XEM = {
+  manager: 'Bạn thấy thao tác của mọi người dùng, trừ tài khoản admin.',
+  area_manager: 'Bạn thấy thao tác của chính mình và của PS thuộc miền phụ trách.',
+};
+const phamViXem = (role) =>
+  role === 'admin' ? '' : PHAM_VI_XEM[role] || 'Bạn thấy các thao tác của chính mình.';
+// Lọc theo team chỉ có nghĩa với vai trò xem nhiều team.
+const xemNhieuTeam = (role) => role === 'admin' || role === 'manager';
+
+function NhatKy({ role }) {
   const [preset, setPreset] = useState('7d');
   const [tuNgay, setTuNgay] = useState('');
   const [denNgay, setDenNgay] = useState('');
@@ -297,10 +307,12 @@ function NhatKy() {
           <option value="">Mọi thao tác</option>
           {Object.entries(ACTION_GROUPS).map(([k, g]) => <option key={k} value={k}>{g.label}</option>)}
         </select>
-        <select value={filterBu} onChange={(e) => setFilterBu(e.target.value)} className={sel}>
-          <option value="">Mọi team</option>
-          {Object.entries(TEAMS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-        </select>
+        {xemNhieuTeam(role) && (
+          <select value={filterBu} onChange={(e) => setFilterBu(e.target.value)} className={sel}>
+            <option value="">Mọi team</option>
+            {Object.entries(TEAMS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+          </select>
+        )}
         <div className="relative">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -318,6 +330,7 @@ function NhatKy() {
         </span>
       </div>
 
+      {phamViXem(role) && <div className="text-[11.5px] text-slate-500">{phamViXem(role)}</div>}
       {error && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-md">{error}</div>}
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -389,7 +402,7 @@ const thangHienTai = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-function TongQuanDeadline({ deadlineDay }) {
+function TongQuanDeadline({ deadlineDay, role }) {
   const [thang, setThang] = useState(thangHienTai);
   const [bu, setBu] = useState('');
   const [data, setData] = useState(null);
@@ -424,10 +437,12 @@ function TongQuanDeadline({ deadlineDay }) {
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[12px] text-slate-600">Kỳ tháng</span>
         <input type="month" value={thang} onChange={(e) => e.target.value && setThang(e.target.value)} className={sel} />
-        <select value={bu} onChange={(e) => setBu(e.target.value)} className={sel}>
-          <option value="">Mọi team</option>
-          {Object.entries(TEAMS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-        </select>
+        {xemNhieuTeam(role) && (
+          <select value={bu} onChange={(e) => setBu(e.target.value)} className={sel}>
+            <option value="">Mọi team</option>
+            {Object.entries(TEAMS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+          </select>
+        )}
         {data && data.tu && (
           <span className="text-[12px] text-slate-500">
             {`Tính lượt sửa SL KH update từ ${fmtNgay(data.tu)} đến hết ${fmtNgay(den)} (hạn chót ngày ${data.han})`}
@@ -504,13 +519,18 @@ function TongQuanDeadline({ deadlineDay }) {
 }
 
 export function AuditLogView({ auth }) {
-  const [deadlineDay, setDeadlineDay] = useState(5);
+  const [deadlineDay, setDeadlineDay] = useState(DEADLINE_DAY);
   const [editingDeadline, setEditingDeadline] = useState(false);
-  const [deadlineInput, setDeadlineInput] = useState('5');
+  const [deadlineInput, setDeadlineInput] = useState(String(DEADLINE_DAY));
   const [subTab, setSubTab] = useState('log');
-  const isAdmin = auth.role === 'admin';
+  const role = auth.role;
+  const isAdmin = role === 'admin';
+  // Tổng quan deadline dành cho người theo dõi PS; PS và vai trò khác chỉ có dòng thời gian.
+  const coDeadline = isAdmin || role === 'manager' || role === 'area_manager';
 
   useEffect(() => {
+    // getAppConfig chỉ mở cho admin/manager; vai trò khác dùng hạn chót đã nạp cùng getData.
+    if (!isAdmin && role !== 'manager') return;
     api('getAppConfig')
       .then((r) => {
         const v = Number(r.config && r.config.deadline_day) || 5;
@@ -518,7 +538,7 @@ export function AuditLogView({ auth }) {
         setDeadlineInput(String(v));
       })
       .catch(() => {});
-  }, []);
+  }, [isAdmin, role]);
 
   const saveDeadline = async () => {
     const v = Math.max(1, Math.min(28, Number(deadlineInput) || 5));
@@ -570,11 +590,15 @@ export function AuditLogView({ auth }) {
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        {subTabBtn('log', 'Dòng thời gian', Clock)}
-        {subTabBtn('deadline', 'Tổng quan deadline', User)}
-      </div>
-      {subTab === 'deadline' ? <TongQuanDeadline deadlineDay={deadlineDay} /> : <NhatKy />}
+      {coDeadline && (
+        <div className="flex items-center gap-2">
+          {subTabBtn('log', 'Dòng thời gian', Clock)}
+          {subTabBtn('deadline', 'Tổng quan deadline', User)}
+        </div>
+      )}
+      {coDeadline && subTab === 'deadline'
+        ? <TongQuanDeadline deadlineDay={deadlineDay} role={role} />
+        : <NhatKy role={role} />}
     </div>
   );
 }

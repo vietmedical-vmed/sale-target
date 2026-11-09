@@ -1,7 +1,7 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
 import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE, PLAN_MONTHS, PLAN_FY, onlyPlanMonths } from "./config.ts";
-import { applyScope, scopeParams, parseGroups, mienScope } from "./scope.ts";
+import { applyScope, scopeParams, parseGroups, mienScope, auditScopeParams } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
@@ -1178,6 +1178,8 @@ Deno.serve(async (req) => {
         .select("*", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, from + limit - 1);
+      // Log của admin (và script, role trống) chỉ admin xem được.
+      if (sess.r !== "admin") q = q.not("role", "is", null).neq("role", "admin");
       if (payload.username) q = q.eq("username", payload.username);
       if (payload.action) q = q.eq("action", payload.action);
       if (payload.bu) q = q.eq("bu", payload.bu);
@@ -1189,8 +1191,8 @@ Deno.serve(async (req) => {
     }
 
     // Lịch sử cập nhật gom nhóm ở server (ngày VN + người + thao tác), phân trang theo nhóm.
+    // Mọi vai trò gọi được; RPC tự lọc theo phạm vi xem của phiên (auditScopeParams).
     if (action === "getAuditNhom") {
-      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const limit = Math.min(200, Math.max(1, Number(payload.limit) || 50));
       const page = Math.max(1, Number(payload.page) || 1);
       const actions = Array.isArray(payload.actions)
@@ -1205,44 +1207,40 @@ Deno.serve(async (req) => {
         p_q: payload.q ? String(payload.q).slice(0, 100) : null,
         p_offset: (page - 1) * limit,
         p_limit: limit,
+        ...auditScopeParams(sess),
       });
       if (error) throw new Error(error.message);
       return json({ ok: true, ...(data || {}), page, limit });
     }
 
     // Chi tiết một nhóm: thay đổi từng ô (updateCells) + details thô của các thao tác khác.
+    // Log id ngoài phạm vi xem của phiên bị RPC bỏ qua.
     if (action === "getAuditChiTiet") {
-      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const ids = (Array.isArray(payload.logIds) ? payload.logIds as unknown[] : [])
         .map(Number).filter((n) => Number.isFinite(n)).slice(0, 300);
       if (!ids.length) return json({ ok: true, thayDoi: [], logs: [] });
-      const [{ data: logs, error: lErr }, { data: thayDoi, error: tErr }] = await Promise.all([
-        db.schema("shared").from("audit_log")
-          .select("id, created_at, action, row_count, details, thang_ke_hoach")
-          .in("id", ids).order("created_at", { ascending: false }),
-        db.rpc("audit_thay_doi", { p_log_ids: ids, p_row_ids: null }),
-      ]);
-      if (lErr) throw new Error(lErr.message);
-      if (tErr) throw new Error(tErr.message);
+      const { data, error } = await db.rpc("audit_chi_tiet", { p_log_ids: ids, ...auditScopeParams(sess) });
+      if (error) throw new Error(error.message);
+      const logs = (data && data.logs) || [];
+      const thayDoi = (data && data.thay_doi) || [];
       // Bỏ mảng changes/ids nặng khỏi log thô: thay đổi đã trải phẳng ở thayDoi.
-      const slim = (logs || []).map((l: Record<string, unknown>) => {
+      const slim = logs.map((l: Record<string, unknown>) => {
         const d = (l.details || {}) as Record<string, unknown>;
         if (l.action !== "updateCells") return l;
         return { ...l, details: { columns: d.columns, so_dong_chi_tiet: Array.isArray(d.changes) ? d.changes.length : 0 } };
       });
-      return json({ ok: true, thayDoi: thayDoi || [], logs: slim });
+      return json({ ok: true, thayDoi, logs: slim });
     }
 
     // Tổng quan deadline theo kỳ tháng: ai đã / chưa cập nhật SL KH update trước hạn chót.
     if (action === "getAuditDeadline") {
-      if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
       const thang = String(payload.thang || "");
       if (!/^\d{4}-\d{2}$/.test(thang)) return json({ ok: false, error: "bad_thang" }, 400);
       const { data: cfg } = await db.schema("shared").from("app_config")
         .select("value").eq("key", "deadline_day").maybeSingle();
       const han = Math.min(28, Math.max(1, Number(cfg?.value) || 5));
       const { data, error } = await db.rpc("audit_deadline", {
-        p_thang: thang, p_han: han, p_bu: payload.bu || null,
+        p_thang: thang, p_han: han, p_bu: payload.bu || null, ...auditScopeParams(sess),
       });
       if (error) throw new Error(error.message);
       return json({ ok: true, han, ...(data || {}) });
@@ -1262,7 +1260,7 @@ Deno.serve(async (req) => {
         ids = (ok || []).map((r: { id: number }) => r.id);
         if (!ids.length) return json({ ok: true, thay_doi: [], thieu_chi_tiet: [] });
       }
-      const { data, error } = await db.rpc("audit_lich_su_dong", { p_row_ids: ids });
+      const { data, error } = await db.rpc("audit_lich_su_dong", { p_row_ids: ids, ...auditScopeParams(sess) });
       if (error) throw new Error(error.message);
       return json({ ok: true, ...(data || {}) });
     }
