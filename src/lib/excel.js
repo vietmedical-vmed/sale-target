@@ -74,20 +74,32 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
   numCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
-  H1.push(isDn ? 'Cả năm' : 'Target', '', '', '');
-  H2.push(
-    isSL ? 'SL đầu năm' : 'Target đầu năm',
-    isDn ? 'TH YTD' : isSL ? 'SL dự kiến' : 'DThu dự kiến',
-    isDn ? '% HT năm' : 'Chênh lệch',
-    isDn ? 'Còn lại' : 'KH còn lại',
-  );
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
-  cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
+  // Mốc KH update có thêm cột % DThu dự kiến / Target đầu năm ngay sau DThu dự kiến.
   if (isDn) {
+    H1.push('Cả năm', '', '', '');
+    H2.push(isSL ? 'SL đầu năm' : 'Target đầu năm', 'TH YTD', '% HT năm', 'Còn lại');
+  } else {
+    H1.push('Target', '', '', '', '');
+    H2.push(
+      isSL ? 'SL đầu năm' : 'Target đầu năm',
+      isSL ? 'SL dự kiến' : 'DThu dự kiến',
+      isSL ? '% Dự kiến / SL ĐN' : '% Dự kiến / Target',
+      'Chênh lệch',
+      'KH còn lại',
+    );
+  }
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + (isDn ? 3 : 4) } });
+  if (isDn) {
+    cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 });
     numCols.push(c, c + 1, c + 3);
     pctCols.push(c + 2);
-  } else numCols.push(c, c + 1, c + 2, c + 3);
-  c += 4;
+    c += 4;
+  } else {
+    cols.push({ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 });
+    numCols.push(c, c + 1, c + 3, c + 4);
+    pctCols.push(c + 2);
+    c += 5;
+  }
   const qCols = HIEN_HET_HIEU_LUC
     ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng']
     : ['On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng'];
@@ -130,14 +142,16 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
       tdKh == null ? '' : tdKh, clP,
     );
     if (isDn) row.push(tr(dtV), tr(dtYtdV), dtV > 0 ? dtYtdV / dtV : '', tr(dtV - dtYtdV));
-    else row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - dtYtdV));
+    else row.push(tr(dtV), tr(dtUpdV), dtV > 0 ? dtUpdV / dtV : '', tr(ch), tr(dtUpdV - dtYtdV));
     const q14V = isSL ? (d.q14 || 0) : (d.q14Dt || 0);
     const qUpV = isSL ? (d.qUpcoming || 0) : (d.qUpcomingDt || 0);
     const qHetV = isSL ? (d.qHet || 0) : (d.qHetDt || 0);
     const qFYV = isSL ? (d.quotaFY || 0) : (d.quotaFYDt || 0);
     const qAvail = isSL ? d.quotaAvail : d.quotaAvailDt;
-    const qYtdV = isSL ? (d.qYtd || 0) : (d.qDtYtd || 0);
-    const quotaRemain = qAvail == null ? '-' : tr(q14V - qYtdV);
+    // TH YTD của nhóm Quota lấy như màn (mọi dòng thực hiện), để On hand − TH YTD = Khả dụng.
+    const qYtdV = isSL ? (d.ytd || 0) : (d.dtYtd || 0);
+    // Cùng số với màn: on hand − TH YTD, khả dụng âm của BV tư đã tính là 0.
+    const quotaRemain = qAvail == null ? '-' : tr(qAvail);
     row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(qYtdV), quotaRemain);
     aoa.push(row);
     levels.push(level);
@@ -232,20 +246,32 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
   numCols.push(c, c + 1);
   pctCols.push(c + 2, c + 3, c + 4, c + 5);
   c += 6;
-  H1.push(isDn ? 'Cả năm' : 'Target', '', '', '');
-  H2.push(
-    isSL ? 'SL đầu năm' : 'Target đầu năm',
-    isDn ? 'TH YTD' : isSL ? 'SL dự kiến' : 'DThu dự kiến',
-    isDn ? '% HT năm' : 'Chênh lệch',
-    isDn ? 'Còn lại' : 'KH còn lại',
-  );
-  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
-  cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
+  // Mốc KH update có thêm cột % DThu dự kiến / Target đầu năm ngay sau DThu dự kiến.
   if (isDn) {
+    H1.push('Cả năm', '', '', '');
+    H2.push(isSL ? 'SL đầu năm' : 'Target đầu năm', 'TH YTD', '% HT năm', 'Còn lại');
+  } else {
+    H1.push('Target', '', '', '', '');
+    H2.push(
+      isSL ? 'SL đầu năm' : 'Target đầu năm',
+      isSL ? 'SL dự kiến' : 'DThu dự kiến',
+      isSL ? '% Dự kiến / SL ĐN' : '% Dự kiến / Target',
+      'Chênh lệch',
+      'KH còn lại',
+    );
+  }
+  merges.push({ s: { r: 0, c }, e: { r: 0, c: c + (isDn ? 3 : 4) } });
+  if (isDn) {
+    cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 });
     numCols.push(c, c + 1, c + 3);
     pctCols.push(c + 2);
-  } else numCols.push(c, c + 1, c + 2, c + 3);
-  c += 4;
+    c += 4;
+  } else {
+    cols.push({ wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 }, { wch: 13 });
+    numCols.push(c, c + 1, c + 3, c + 4);
+    pctCols.push(c + 2);
+    c += 5;
+  }
   const qCols = HIEN_HET_HIEU_LUC
     ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng']
     : ['On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng'];
@@ -272,6 +298,8 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
     const upcomingV = isSL ? (Number(d.upcoming) || 0) : (Number(d.upcomingDt) || 0);
     const hetV = isSL ? (Number(d.het) || 0) : (Number(d.hetDt) || 0);
     const quotaV = isSL ? (Number(d.quota) || 0) : (Number(d.quotaDt) || 0);
+    // Khả dụng âm của BV tư đã tính là 0 (phần bù kdBu, giống màn).
+    const kdBuV = isSL ? (Number(d.kdBu) || 0) : (Number(d.kdBuDt) || 0);
     const row = ['   '.repeat(level) + label];
     if (isSL) row.push(price > 0 ? price : '');
     for (let i = 0; i < 12; i++) {
@@ -289,10 +317,10 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
       tdKh == null ? '' : tdKh, clP,
     );
     if (isDn) row.push(tr(dtV), tr(thYtdV), dtV > 0 ? thYtdV / dtV : '', tr(dtV - thYtdV));
-    else row.push(tr(dtV), tr(dtUpdV), tr(ch), tr(dtUpdV - thYtdV));
+    else row.push(tr(dtV), tr(dtUpdV), dtV > 0 ? dtUpdV / dtV : '', tr(ch), tr(dtUpdV - thYtdV));
     row.push(
       tr(onHandV), tr(upcomingV), ...(HIEN_HET_HIEU_LUC ? [tr(hetV)] : []), tr(quotaV),
-      tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV),
+      tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV + kdBuV),
     );
     aoa.push(row);
     levels.push(level);

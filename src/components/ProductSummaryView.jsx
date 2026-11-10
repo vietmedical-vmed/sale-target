@@ -7,6 +7,7 @@ import { fmtInt, fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
 import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
 import { exportProductSummary } from '../lib/excel.js';
+import { buKhaDungBvTu } from '../lib/quota.js';
 
 const chCls = (v) =>
   v > 0 ? 'text-emerald-700' : v < 0 ? 'text-red-600' : 'text-slate-400';
@@ -21,6 +22,7 @@ export function ProductSummaryView({
   groupFilter,
   search,
   onExport,
+  bvTu,
 }) {
   const [open, setOpen] = useState(() => new Set());
   const initedRef = React.useRef(false);
@@ -67,11 +69,15 @@ export function ProductSummaryView({
       quotaDt: 0,
       het: 0,
       hetDt: 0,
+      kdBu: 0, // phần bù khả dụng âm của BV tư (SL)
+      kdBuDt: 0,
       slDauNam: 0,
       dt: 0,
       slUpd: 0,
       dtUpd: 0,
     });
+    // BV tư: khả dụng âm theo KH × SP tính là 0 (xem buKhaDungBvTu).
+    const buTu = buKhaDungBvTu(filtered, bvTu);
     const regMap = new Map();
     for (const r of filtered) {
       const i = MONTHS.indexOf(r.mo);
@@ -95,6 +101,7 @@ export function ProductSummaryView({
       const isOop = !!r._oop && !custInPlan(planCusts, r);
       const dMoKhDt = planUpd * price;
       const dMoActDt = dtActVal;
+      const bu = buTu.get(r);
 
       const bump = (o) => {
         o.moKh[i] += planUpd;
@@ -111,6 +118,10 @@ export function ProductSummaryView({
         o.quotaDt += dQuota * price;
         o.het += dHet;
         o.hetDt += dHet * price;
+        if (bu) {
+          o.kdBu += bu.sl;
+          o.kdBuDt += bu.dt;
+        }
         o.slDauNam += dSlDauNam;
         o.dt += dSlDauNam * price;
         o.slUpd += updQty;
@@ -202,6 +213,8 @@ export function ProductSummaryView({
       a.quotaDt += c.quotaDt;
       a.het += c.het;
       a.hetDt += c.hetDt;
+      a.kdBu += c.kdBu;
+      a.kdBuDt += c.kdBuDt;
       a.slDauNam += c.slDauNam;
       a.dt += c.dt;
       a.slUpd += c.slUpd;
@@ -238,7 +251,7 @@ export function ProductSummaryView({
     });
     regs.sort((a, b) => a.region.localeCompare(b.region, 'vi'));
     return { regs, grand: regs.reduce(add, fold()) };
-  }, [rows, psFilter, regionFilter, custFilter, groupFilter, search]);
+  }, [rows, psFilter, regionFilter, custFilter, groupFilter, search, bvTu]);
 
   useEffect(() => {
     if (!initedRef.current && data.regs.length > 0) {
@@ -262,7 +275,7 @@ export function ProductSummaryView({
       ? [curIdx]
       : [];
   const N_COLS =
-    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + (HIEN_HET_HIEU_LUC ? 6 : 5) + 4;
+    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + (HIEN_HET_HIEU_LUC ? 6 : 5) + (isDn ? 4 : 5);
 
   const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
   const pctCls = (th, kh) => {
@@ -297,7 +310,9 @@ export function ProductSummaryView({
     const upcomingV = isQty ? node.upcoming : node.upcomingDt;
     const quotaV = isQty ? node.quota : node.quotaDt;
     const hetV = isQty ? node.het : node.hetDt;
-    return { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV };
+    // Khả dụng = on hand − TH YTD, cộng phần bù để khả dụng âm của BV tư thành 0.
+    const khaDungV = onHandV - thYtdV + (isQty ? node.kdBu : node.kdBuDt);
+    return { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV, khaDungV };
   };
 
   const moHead = () => {
@@ -423,6 +438,7 @@ export function ProductSummaryView({
     return [
       <td key="tdn" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${tBg} ${extra || ''}`}>{fmt(dtV)}</td>,
       <td key="tup" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-blue-600 ${tBg} ${extra || ''}`}>{fmt(dtUpdV)}</td>,
+      <td key="tpct" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold ${tBg} ${pctCls(dtUpdV, dtV)}`}>{pctTxt(dtUpdV, dtV)}</td>,
       <td key="tch" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-semibold ${tBg} ${chCls(ch)}`}>{fmtCh(ch)}</td>,
       <td key="tkl" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 text-purple-600 ${tBg} ${extra || ''}`}>{fmt(dtUpdV - thYtdV)}</td>,
     ];
@@ -430,8 +446,8 @@ export function ProductSummaryView({
 
   const qBg = 'bg-teal-50/30';
   const quotaCells = (node, extra) => {
-    const { onHandV, upcomingV, quotaV, thYtdV, hetV } = pick(node);
-    const khaDung = node.oop ? null : onHandV - thYtdV;
+    const { onHandV, upcomingV, quotaV, thYtdV, hetV, khaDungV } = pick(node);
+    const khaDung = node.oop ? null : khaDungV;
     const t = tone(extra);
     return [
       <td key="qoh" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${qBg} ${extra || ''}`}>{fmt(onHandV)}</td>,
@@ -454,7 +470,7 @@ export function ProductSummaryView({
   }, [data, base, onExport]);
 
   const grandCells = (node, dark) => {
-    const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV } = pick(node);
+    const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV, khaDungV } = pick(node);
     const cells = [];
     for (const i of monthIdxs) {
       const kh = moKh[i], act = moAct[i];
@@ -493,6 +509,7 @@ export function ProductSummaryView({
     else cells.push(
       <td key="gtdn" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(dtV)}</td>,
       <td key="gtup" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-blue-200">{fmt(dtUpdV)}</td>,
+      <td key="gtpct" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-slate-300">{pctTxt(dtUpdV, dtV)}</td>,
       <td key="gtch" className={`px-3 py-2.5 text-right text-[12.5px] tabular-nums ${ch > 0 ? 'text-emerald-300' : ch < 0 ? 'text-red-300' : ''}`}>{fmtCh(ch)}</td>,
       <td key="gtkl" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-purple-200">{fmt(dtUpdV - thYtdV)}</td>,
     );
@@ -502,7 +519,7 @@ export function ProductSummaryView({
       HIEN_HET_HIEU_LUC && <td key="gqhet" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-red-200">{fmt(hetV)}</td>,
       <td key="gqtot" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(quotaV)}</td>,
       <td key="gqth" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-green-300">{fmt(thYtdV)}</td>,
-      <td key="gqkd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(onHandV - thYtdV)}</td>,
+      <td key="gqkd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(khaDungV)}</td>,
     );
     return cells;
   };
@@ -572,7 +589,7 @@ export function ProductSummaryView({
                   Luỹ kế YTD
                 </th>,
                 <th
-                  colSpan={4}
+                  colSpan={isDn ? 4 : 5}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
                 >
                   {isDn ? 'Cả năm' : 'Target'}
@@ -601,6 +618,9 @@ export function ProductSummaryView({
                 </th>,
                 <th key="tup" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
                   {isDn ? 'TH YTD' : isQty ? 'SL dự kiến' : 'DThu dự kiến'}
+                </th>,
+                !isDn && <th key="tpct" title={isQty ? 'SL dự kiến / SL đầu năm' : 'DThu dự kiến / Target đầu năm'} className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
+                  {isQty ? '% Dự kiến / SL ĐN' : '% Dự kiến / Target'}
                 </th>,
                 <th key="tch" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap">
                   {isDn ? '% HT năm' : 'Chênh lệch'}

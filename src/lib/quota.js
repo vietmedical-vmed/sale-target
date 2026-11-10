@@ -1,4 +1,4 @@
-import { MONTHS, HIEN_HET_HIEU_LUC, NO_MSET, OOP_CUST } from '../config/constants.js';
+import { MONTHS, HIEN_HET_HIEU_LUC, NO_MSET, OOP_CUST, isYtdMonth } from '../config/constants.js';
 import { fmtInt } from './format.js';
 
 const grpKey = (fy, ps, custId, grp) =>
@@ -71,6 +71,43 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
     daGan.add(k);
     return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _hasQuota: true };
   });
+}
+
+// Bệnh viện tư không cần thầu nên bán vượt quota là bình thường: khả dụng âm của họ
+// không được kéo tổng khả dụng của nhóm / PS / miền xuống. Hàm này tính khả dụng
+// (on hand − TH YTD) theo khoá PS × KH × nhóm SP × bộ vật tư × SP; khoá của BV tư
+// (custId nằm trong bvTu) mà khả dụng < 0 thì trả về phần bù = −khả dụng, gắn vào
+// dòng ĐẦU TIÊN của khoá. Hai màn tổng hợp cộng phần bù vào mọi cấp chứa dòng đó, nên
+// khả dụng của khoá thành 0. Khả dụng > 0 và BV công giữ nguyên.
+// SL và tiền bù riêng: mỗi chế độ xem tự về 0 khi số của chính nó âm.
+// rows: các dòng đã qua bộ lọc của màn (có _qOnHand từ ganQuotaTheoDot).
+// Trả Map(dòng → { sl, dt }).
+export function buKhaDungBvTu(rows, bvTu) {
+  const out = new Map();
+  if (!bvTu || !bvTu.size) return out;
+  const acc = new Map();
+  for (const r of rows) {
+    if (!MONTHS.includes(r.mo) || !bvTu.has(String(r.custId || ''))) continue;
+    const k = [r.ps || '', r.custId, r.grp || '', r.mset || '', r.prod || ''].join('||');
+    let a = acc.get(k);
+    if (!a) {
+      a = { first: r, sl: 0, dt: 0 };
+      acc.set(k, a);
+    }
+    const onHand = Number(r._qOnHand) || 0;
+    a.sl += onHand;
+    a.dt += onHand * (Number(r.price) || 0);
+    if (isYtdMonth(r.mo)) {
+      a.sl -= Number(r.act) || 0;
+      a.dt -= Number(r.dtAct) || 0;
+    }
+  }
+  for (const a of acc.values()) {
+    const sl = a.sl < 0 ? -a.sl : 0;
+    const dt = a.dt < 0 ? -a.dt : 0;
+    if (sl || dt) out.set(a.first, { sl, dt });
+  }
+  return out;
 }
 
 // Quota của MỘT dòng sản phẩm trên lưới chi tiết (khoá KH × nhóm × PS × SP × đơn giá).

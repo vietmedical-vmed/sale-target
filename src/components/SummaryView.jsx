@@ -8,6 +8,7 @@ import { fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
 import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
 import { exportSummaryPS } from '../lib/excel.js';
+import { buKhaDungBvTu } from '../lib/quota.js';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
 
 export function SummaryView({
@@ -19,6 +20,7 @@ export function SummaryView({
   search,
   onExport,
   auth,
+  bvTu,
 }) {
   const [noteInfo, setNoteInfo] = useState(null);
   useEffect(() => {
@@ -43,6 +45,8 @@ export function SummaryView({
     // Tính trên TOÀN BỘ rows (không phải `filtered`): bộ lọc có thể đang ẩn dòng kế
     // hoạch của KH đó, không vì thế mà coi họ là KH lạ.
     const planCusts = planCustKeys(rows);
+    // BV tư: khả dụng âm theo KH × SP tính là 0 (xem buKhaDungBvTu).
+    const buTu = buKhaDungBvTu(filtered, bvTu);
     const regMap = new Map();
     for (const r of filtered) {
       // Bỏ dòng ngoài 12 tháng của năm tài chính. Dòng kế hoạch luôn nằm trong FY,
@@ -89,6 +93,8 @@ export function SummaryView({
         ytd: 0,
         qYtd: 0,
         qDtYtd: 0,
+        kdBu: 0, // phần bù khả dụng âm của BV tư (SL)
+        kdBuDt: 0,
         khLeft: 0,
         khLeftDt: 0,
         moKh: MONTHS.map(() => 0),
@@ -144,6 +150,9 @@ export function SummaryView({
       const dDtYtd = inYtd ? dtActVal : 0;
       const dQYtd = r._hasQuota ? dYtd : 0;
       const dQDtYtd = r._hasQuota ? dYtd * price : 0;
+      const bu = buTu.get(r);
+      const dKdBu = bu ? bu.sl : 0;
+      const dKdBuDt = bu ? bu.dt : 0;
       const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const dKhLeftDt = dKhLeft * price;
       const dMoKh = planUpd * price; // DThu KH update của tháng này
@@ -163,6 +172,8 @@ export function SummaryView({
         o.ytd += dYtd;
         o.qYtd += dQYtd;
         o.qDtYtd += dQDtYtd;
+        o.kdBu += dKdBu;
+        o.kdBuDt += dKdBuDt;
         o.khLeft += dKhLeft;
         o.khLeftDt += dKhLeftDt;
         o.dtYtd += dDtYtd;
@@ -213,6 +224,8 @@ export function SummaryView({
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
+          kdBu: 0, // phần bù khả dụng âm của BV tư (SL)
+          kdBuDt: 0,
           khLeft: 0,
           khLeftDt: 0,
           moKh: MONTHS.map(() => 0),
@@ -252,6 +265,8 @@ export function SummaryView({
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
+          kdBu: 0, // phần bù khả dụng âm của BV tư (SL)
+          kdBuDt: 0,
           khLeft: 0,
           khLeftDt: 0,
           moKh: MONTHS.map(() => 0),
@@ -289,6 +304,8 @@ export function SummaryView({
       ytd: 0,
       qYtd: 0,
       qDtYtd: 0,
+      kdBu: 0, // phần bù khả dụng âm của BV tư (SL)
+      kdBuDt: 0,
       khLeft: 0,
       khLeftDt: 0,
       moKh: MONTHS.map(() => 0),
@@ -321,6 +338,8 @@ export function SummaryView({
       a.ytd += c.ytd;
       a.qYtd += c.qYtd;
       a.qDtYtd += c.qDtYtd;
+      a.kdBu += c.kdBu;
+      a.kdBuDt += c.kdBuDt;
       a.khLeft += c.khLeft;
       a.khLeftDt += c.khLeftDt;
       for (let i = 0; i < 12; i++) {
@@ -353,14 +372,16 @@ export function SummaryView({
         ? (b.dtUpd || 0) - (a.dtUpd || 0)
         : (b.dtYtd || 0) - (a.dtYtd || 0);
     };
+    // Khả dụng = on hand − TH YTD, cộng phần bù để khả dụng âm của BV tư thành 0.
+    const khaDung = (o) => o.q14 - o.ytd + o.kdBu;
+    const khaDungDt = (o) => o.q14Dt - o.dtYtd + o.kdBuDt;
     const regions = Array.from(regMap.values()).map((reg) => {
       const psList = Array.from(reg.psMap.values()).map((ps) => {
         // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
         const buildCust = (c) => {
           // KH ngoài kế hoạch: quotaAvail = null → hiển thị "—" (không tính, không để âm)
-          const avail = (o) => (c.oop ? null : o.q14 - o.qYtd);
-          const availDt = (o) =>
-            c.oop ? null : o.q14Dt - o.qDtYtd;
+          const avail = (o) => (c.oop ? null : khaDung(o));
+          const availDt = (o) => (c.oop ? null : khaDungDt(o));
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
           const grps = Array.from(c.grpMap.values()).map((gp) => {
             const prods = Array.from(gp.prodMap.values()).map((pp) => ({
@@ -399,8 +420,8 @@ export function SummaryView({
           ps: ps.ps,
           custs,
           ...tot,
-          quotaAvail: tot.q14 - tot.qYtd,
-          quotaAvailDt: tot.q14Dt - tot.qDtYtd,
+          quotaAvail: khaDung(tot),
+          quotaAvailDt: khaDungDt(tot),
         };
       });
       psList.sort(orderByUpd);
@@ -413,8 +434,8 @@ export function SummaryView({
         region: reg.region,
         psList,
         ...tot,
-        quotaAvail: tot.q14 - tot.qYtd,
-        quotaAvailDt: tot.q14Dt - tot.qDtYtd,
+        quotaAvail: khaDung(tot),
+        quotaAvailDt: khaDungDt(tot),
       };
     });
     regions.sort((a, b) => b.dt - a.dt);
@@ -423,13 +444,13 @@ export function SummaryView({
       a.custCount += rg.custCount;
       return a;
     }, fold());
-    grand.quotaAvail = grand.q14 - grand.qYtd;
-    grand.quotaAvailDt = grand.q14Dt - grand.qDtYtd;
+    grand.quotaAvail = khaDung(grand);
+    grand.quotaAvailDt = khaDungDt(grand);
     return {
       regions,
       grand,
     };
-  }, [rows, psFilter, regionFilter, custFilter, groupFilter, search]);
+  }, [rows, psFilter, regionFilter, custFilter, groupFilter, search, bvTu]);
   const g = data.grand;
   // Thu gọn/mở phần thực hiện theo tháng (mặc định thu gọn → chỉ còn Luỹ kế YTD).
   const [showMonths, setShowMonths] = useState(false);
@@ -665,7 +686,7 @@ function SummaryHead() {
           Luỹ kế YTD
         </th>,
         <th
-          colSpan={4}
+          colSpan={SUM_BASE === 'dn' ? 4 : 5}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-emerald-800 border-r border-b border-slate-200 bg-emerald-50/60"
         >
           {SUM_BASE === 'dn' ? 'Cả năm' : 'Target'}
@@ -704,6 +725,13 @@ function SummaryHead() {
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-blue-600 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
         >
           {SUM_BASE === 'dn' ? 'TH YTD' : SUM_VIEW_MODE === 'qty' ? 'SL dự kiến' : 'DThu dự kiến'}
+        </th>,
+        SUM_BASE !== 'dn' && <th
+          key="tpct"
+          title={SUM_VIEW_MODE === 'qty' ? 'SL dự kiến / SL đầu năm' : 'DThu dự kiến / Target đầu năm'}
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-emerald-700 border-b border-slate-200 bg-emerald-50/40 whitespace-nowrap`}
+        >
+          {SUM_VIEW_MODE === 'qty' ? '% Dự kiến / SL ĐN' : '% Dự kiến / Target'}
         </th>,
         <th
           key="tch"
@@ -881,6 +909,12 @@ function StatCells({ d, size, dark }) {
   cells.push(
     <td key="du" className={`px-3 ${p} text-right tabular-nums font-medium ${blue} ${tbg}`}>{fmt(dtUpdV)}</td>,
   );
+  // % Dthu dự kiến / Target đầu năm — xanh khi ≥ 90%, đỏ khi dưới
+  cells.push(
+    <td key="dp" className={`px-3 ${p} text-right tabular-nums font-semibold ${dark ? 'text-slate-300' : pctClsSum(dtUpdV || 0, dtV)} ${tbg}`}>
+      {pctTxtSum(dtUpdV || 0, dtV)}
+    </td>,
+  );
   cells.push(
     <td key="ch" className={`px-3 ${p} text-right tabular-nums font-semibold ${chCol} ${tbg}`}>{fmtCh(ch)}</td>,
   );
@@ -894,7 +928,7 @@ function StatCells({ d, size, dark }) {
   }
   // --- Quota ---
   const qbg = dark ? '' : 'bg-teal-50/30';
-  const quotaRemain = qAvV == null ? null : (q14V || 0) - (dtYtdV || 0);
+  const quotaRemain = qAvV; // on hand − TH YTD, BV tư âm đã tính là 0
   cells.push(
     <td key="q14" className={`px-3 ${p} text-right tabular-nums font-medium ${base} ${qbg}`}>{fmt(q14V)}</td>,
   );

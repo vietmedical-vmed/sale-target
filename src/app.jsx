@@ -1845,6 +1845,12 @@ function AppInner({ initialAuth, onLogin }) {
     });
     return Array.from(m.values()).sort((a, b) => a.cust.localeCompare(b.cust));
   }, [customers, rows]);
+  // Mã KH của bệnh viện tư (dm_khach_hang.type_lvl2 = 'Tư'): 2 màn tổng hợp tính
+  // khả dụng âm của họ là 0 để không kéo tổng khả dụng xuống.
+  const bvTu = useMemo(
+    () => new Set(customers.filter((c) => c.loaiBv === 'Tư').map((c) => String(c.custId))),
+    [customers],
+  );
   // Thêm khách hàng: chỉ ở màn chi tiết, cần quyền sửa + có danh mục để chọn
   const canAddCust =
     canEdit && catalog.length > 0 && custSource.length > 0 && tab === 'detail';
@@ -3114,6 +3120,7 @@ function AppInner({ initialAuth, onLogin }) {
             search={search}
             onExport={setExporter}
             auth={auth}
+            bvTu={bvTu}
           />
         ) : tab === 'prodsum' ? (
           <ProductSummaryView
@@ -3124,6 +3131,7 @@ function AppInner({ initialAuth, onLogin }) {
             groupFilter={groupFilter}
             search={search}
             onExport={setExporter}
+            bvTu={bvTu}
           />
         ) : (
           <React.Fragment>
