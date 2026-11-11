@@ -52,6 +52,7 @@ export function tyLeDinhMucDot(thang, hieuLuc, fyStart = MONTHS[0], fyEnd = MONT
 // 1 sản phẩm là ra quota của sản phẩm đó.
 // r._qDinhMuc = quota định mức: quota 1.4 (thầu cũ, tính đủ) + phần quota thầu
 // chính / bổ sung rơi vào năm tài chính (tyLeDinhMucDot), không phụ thuộc tháng hiện tại.
+// r._qCu = riêng quota 1.4 (thầu cũ), dùng cho cờ độ tin cậy của đánh giá dự kiến.
 // Màn tổng hợp hiện KD định mức = quota định mức − TH YTD (BV tư âm tính là 0).
 //
 // Nguồn duy nhất là shared.quota_thau (sale_target không còn lưu quota / tháng
@@ -69,12 +70,13 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
   for (const q of quotas || []) {
     const gk = grpKey(q.fy, q.ps, q.custId, q.grp);
     const k = `${prodKey(q.fy, q.ps, q.custId, q.grp, q.mset, q.prod)}|${Number(q.price) || 0}`;
-    if (!quotaTheoGia.has(k)) quotaTheoGia.set(k, { onHand: 0, up: 0, het: 0, dinhMuc: 0 });
+    if (!quotaTheoGia.has(k)) quotaTheoGia.set(k, { onHand: 0, up: 0, het: 0, dinhMuc: 0, cu: 0 });
     const o = quotaTheoGia.get(k);
     const n = Number(q.qty) || 0;
     if (q.loai === 'cu') {
       o.onHand += n;
       o.dinhMuc += n;
+      o.cu += n;
     } else {
       const d = thangDot.get(gk)?.get(`${q.loai}|${q.dot}`);
       const tt = d ? trangThaiDot(d.thang, d.hieuLuc, curMonth) : 'up';
@@ -91,9 +93,9 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
     const hasQuota = !!q;
     // Dòng ngoài kế hoạch / ngoài 12 tháng không mang quota.
     if (!q || r._oop || daGan.has(k) || !MONTHS.includes(r.mo))
-      return { ...r, _qOnHand: 0, _qUp: 0, _qHet: 0, _qDinhMuc: 0, _hasQuota: hasQuota && !r._oop };
+      return { ...r, _qOnHand: 0, _qUp: 0, _qHet: 0, _qDinhMuc: 0, _qCu: 0, _hasQuota: hasQuota && !r._oop };
     daGan.add(k);
-    return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _qDinhMuc: q.dinhMuc, _hasQuota: true };
+    return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _qDinhMuc: q.dinhMuc, _qCu: q.cu, _hasQuota: true };
   });
 }
 

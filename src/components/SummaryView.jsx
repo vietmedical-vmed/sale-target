@@ -9,6 +9,7 @@ import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
 import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
 import { exportSummaryPS } from '../lib/excel.js';
 import { buKhaDungBvTu } from '../lib/quota.js';
+import { danhGiaDuKien, dgRong, congDg, NHAN_DG } from '../lib/danhGia.js';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
 
 export function SummaryView({
@@ -95,6 +96,7 @@ export function SummaryView({
         qDinhMucDt: 0,
         kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
         kdDmBuDt: 0,
+        qCuDt: 0, // quota 1.4 (tiền), cho cờ tin cậy của đánh giá
         ytd: 0,
         qYtd: 0,
         qDtYtd: 0,
@@ -178,6 +180,7 @@ export function SummaryView({
         o.qHetDt += dQHet * price;
         o.qDinhMuc += dQDinhMuc;
         o.qDinhMucDt += dQDinhMuc * price;
+        o.qCuDt += (Number(r._qCu) || 0) * price;
         if (buDm) {
           o.kdDmBu += buDm.sl;
           o.kdDmBuDt += buDm.dt;
@@ -238,6 +241,7 @@ export function SummaryView({
           qDinhMucDt: 0,
           kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
           kdDmBuDt: 0,
+          qCuDt: 0, // quota 1.4 (tiền), cho cờ tin cậy của đánh giá
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
@@ -283,6 +287,7 @@ export function SummaryView({
           qDinhMucDt: 0,
           kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
           kdDmBuDt: 0,
+          qCuDt: 0, // quota 1.4 (tiền), cho cờ tin cậy của đánh giá
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
@@ -326,6 +331,7 @@ export function SummaryView({
       qDinhMucDt: 0,
       kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
       kdDmBuDt: 0,
+      qCuDt: 0, // quota 1.4 (tiền), cho cờ tin cậy của đánh giá
       ytd: 0,
       qYtd: 0,
       qDtYtd: 0,
@@ -364,6 +370,7 @@ export function SummaryView({
       a.qDinhMucDt += c.qDinhMucDt;
       a.kdDmBu += c.kdDmBu;
       a.kdDmBuDt += c.kdDmBuDt;
+      a.qCuDt += c.qCuDt;
       a.ytd += c.ytd;
       a.qYtd += c.qYtd;
       a.qDtYtd += c.qDtYtd;
@@ -404,6 +411,21 @@ export function SummaryView({
     // Khả dụng = on hand − TH YTD, cộng phần bù để khả dụng âm của BV tư thành 0.
     const khaDung = (o) => o.q14 - o.ytd + o.kdBu;
     const khaDungDt = (o) => o.q14Dt - o.dtYtd + o.kdBuDt;
+    // Đánh giá DThu dự kiến (chỉ admin xem): theo PS × KH × nhóm SP, bỏ BV tư và KH
+    // ngoài kế hoạch; cấp trên chỉ đếm theo màu (lib/danhGia.js).
+    const thangDaQua = Math.max(0, getCurIdx() + 1);
+    const thangConLai = MONTHS.length - thangDaQua;
+    const danhGia = (gp) =>
+      danhGiaDuKien({
+        target: gp.dt,
+        duKien: gp.dtUpd,
+        tieuChuan: gp.qDinhMucDt,
+        thYtd: gp.dtYtd,
+        quota14: gp.qCuDt,
+        thangDaQua,
+        thangConLai,
+      });
+    const tongDg = (list) => list.reduce((a, x) => congDg(a, x.dgTong), dgRong());
     const regions = Array.from(regMap.values()).map((reg) => {
       const psList = Array.from(reg.psMap.values()).map((ps) => {
         // Đệ quy: nhóm "Ngoài kế hoạch" có thêm 1 cấp KH thật (subs) trước khi tới Nhóm SP
@@ -412,6 +434,7 @@ export function SummaryView({
           const avail = (o) => (c.oop ? null : khaDung(o));
           const availDt = (o) => (c.oop ? null : khaDungDt(o));
           // Nhóm SP dưới KH, và Sản phẩm dưới Nhóm SP
+          const xet = !c.oop && !(bvTu && bvTu.has(String(c.custId || '')));
           const grps = Array.from(c.grpMap.values()).map((gp) => {
             const prods = Array.from(gp.prodMap.values()).map((pp) => ({
               ...pp,
@@ -427,6 +450,7 @@ export function SummaryView({
               prodCount: prods.length,
               quotaAvail: avail(gp),
               quotaAvailDt: availDt(gp),
+              dg: xet ? danhGia(gp) : null,
             };
           });
           grps.sort((a, b) => b.dt - a.dt);
@@ -439,6 +463,7 @@ export function SummaryView({
             prodCount: c.prods.size,
             quotaAvail: avail(c),
             quotaAvailDt: availDt(c),
+            dgTong: grps.reduce((a, gp) => congDg(a, gp.dg), dgRong()),
           };
         };
         const custs = Array.from(ps.custMap.values()).map(buildCust);
@@ -451,6 +476,7 @@ export function SummaryView({
           ...tot,
           quotaAvail: khaDung(tot),
           quotaAvailDt: khaDungDt(tot),
+          dgTong: tongDg(custs),
         };
       });
       psList.sort(orderByUpd);
@@ -465,6 +491,7 @@ export function SummaryView({
         ...tot,
         quotaAvail: khaDung(tot),
         quotaAvailDt: khaDungDt(tot),
+        dgTong: tongDg(psList),
       };
     });
     regions.sort((a, b) => b.dt - a.dt);
@@ -475,6 +502,7 @@ export function SummaryView({
     }, fold());
     grand.quotaAvail = khaDung(grand);
     grand.quotaAvailDt = khaDungDt(grand);
+    grand.dgTong = tongDg(regions);
     return {
       regions,
       grand,
@@ -489,6 +517,7 @@ export function SummaryView({
   SUM_SHOW_MONTHS = showMonths; // set trước khi render header/rows (chúng đọc biến module này)
   SUM_VIEW_MODE = viewMode;
   SUM_BASE = base;
+  SUM_SHOW_DG = auth?.role === 'admin'; // tạm thời chỉ admin xem đánh giá dự kiến
   // Nút xuất Excel nằm trên thanh bộ lọc (do App vẽ) → đăng ký hàm xuất lên đó
   useEffect(() => {
     onExport(() => exportSummaryPS(data, base));
@@ -603,6 +632,7 @@ const pctClsSum = (th, kh) => {
 let SUM_SHOW_MONTHS = false;
 let SUM_VIEW_MODE = 'money'; // 'money' | 'qty'
 let SUM_BASE = 'upd'; // 'upd' (KH update) | 'dn' (Target đầu năm)
+let SUM_SHOW_DG = false; // cột Đánh giá dự kiến — chỉ admin
 const baseLbl = () => (SUM_BASE === 'dn' ? 'Target' : 'KH');
 const fmtSL = (v) => (!v ? '—' : Math.round(v).toLocaleString('en-US'));
 // Các cột tháng hiển thị: mặc định chỉ tháng hiện tại; bấm "Chi tiết theo tháng" thì hiện cả 12.
@@ -726,6 +756,15 @@ function SummaryHead() {
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
         >
           Quota
+        </th>,
+        SUM_SHOW_DG && <th
+          key="dg"
+          rowSpan={2}
+          title="Đánh giá DThu dự kiến theo PS × KH × nhóm SP (không xét BV tư). Dthu tiêu chuẩn = quota định mức cả năm. Ô màu: % dự kiến / target (ngưỡng 90%) × % dự kiến / Dthu tiêu chuẩn (90–110%). ⚠ = dồn cuối năm, ? = quota thầu cũ chiếm > 50% nên kết luận chưa chắc. Cấp trên đếm số nhóm theo màu."
+          className={`px-2 py-2 text-center text-[11px] ${base} border-r text-indigo-700 align-bottom bg-indigo-50/60`}
+          style={{ minWidth: 120 }}
+        >
+          Đánh giá
         </th>,
         <th
           rowSpan={2}
@@ -998,7 +1037,68 @@ function StatCells({ d, size, dark }) {
       {qDmV == null ? '—' : fmt(qDmV)}
     </td>,
   );
+  if (SUM_SHOW_DG) cells.push(<DgCell key="dg" d={d} p={p} dark={dark} />);
   return React.createElement(React.Fragment, null, ...cells);
+}
+// Ô Đánh giá dự kiến (chỉ admin). Nhóm SP: nhãn ma trận + cờ; cấp trên: đếm theo màu.
+const DG_MAU = {
+  do: 'bg-red-100 text-red-700 border-red-200',
+  cam: 'bg-orange-100 text-orange-700 border-orange-200',
+  vang: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  xanh: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+};
+const DG_CHAM = { do: 'bg-red-500', cam: 'bg-orange-400', vang: 'bg-yellow-400', xanh: 'bg-emerald-500' };
+const pctDg = (v) => (v == null ? '—' : Math.round(v * 100) + '%');
+function DgCell({ d, p, dark }) {
+  const cls = `px-2 ${p} text-center border-r border-slate-100 whitespace-nowrap ${dark ? '' : 'bg-indigo-50/20'}`;
+  const x = d.dg;
+  if (x) {
+    const nhan = NHAN_DG[x.nhan];
+    const title = [
+      `${nhan.ten}: ${nhan.goiY}`,
+      `% Dự kiến / Target: ${pctDg(x.pTarget)}`,
+      `% Dự kiến / Dthu tiêu chuẩn: ${pctDg(x.pTc)}`,
+      `Dthu tiêu chuẩn (quota định mức): ${moneyTy3(d.qDinhMucDt)}`,
+      `Hụt target do thiếu quota: ${moneyTy3(x.thieuQuota)}`,
+      `Hụt target do chưa khai thác quota: ${moneyTy3(x.chuaKhaiThac)}`,
+      x.tocDoTh != null
+        ? `Tốc độ TH YTD: ${moneyTy3(x.tocDoTh)}/tháng; cần cho tháng còn lại: ${moneyTy3(x.tocDoCan)}/tháng`
+        : '',
+      x.donCuoiNam ? '⚠ Dự kiến dồn cuối năm (tốc độ cần > 1,3 × tốc độ TH YTD)' : '',
+      x.tinCayThap ? '? Quota thầu cũ chiếm > 50% Dthu tiêu chuẩn, chưa liên kết hợp đồng: kết luận chưa chắc' : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    return (
+      <td className={cls} title={title}>
+        <span className={`inline-block px-1.5 py-0.5 rounded border text-[10.5px] font-medium ${DG_MAU[x.mau]}`}>
+          {nhan.ten}
+        </span>
+        {x.donCuoiNam && <span className="ml-1 text-[11px] text-amber-600">⚠</span>}
+        {x.tinCayThap && <span className="ml-0.5 text-[11px] font-bold text-slate-400">?</span>}
+      </td>
+    );
+  }
+  const t = d.dgTong;
+  if (!t || !(t.do + t.cam + t.vang + t.xanh)) return <td className={cls} />;
+  const title = [
+    `Số nhóm PS × KH × nhóm SP: đỏ ${t.do}, cam ${t.cam}, vàng ${t.vang}, xanh ${t.xanh}`,
+    `Dồn cuối năm: ${t.donCuoiNam} nhóm`,
+    `Hụt target do thiếu quota: ${moneyTy3(t.thieuQuota)}`,
+    `Hụt target do chưa khai thác quota: ${moneyTy3(t.chuaKhaiThac)}`,
+  ].join('\n');
+  return (
+    <td className={cls} title={title}>
+      <span className={`inline-flex items-center gap-1.5 text-[10.5px] tabular-nums ${dark ? 'text-slate-200' : 'text-slate-600'}`}>
+        {['do', 'cam', 'vang', 'xanh'].map((m) => (
+          <span key={m} className={`inline-flex items-center gap-0.5 ${t[m] ? '' : 'opacity-30'}`}>
+            <span className={`inline-block w-2 h-2 rounded-full ${DG_CHAM[m]}`} />
+            {t[m]}
+          </span>
+        ))}
+      </span>
+    </td>
+  );
 }
 function SummaryRegionRow({ reg }) {
   const [open, setOpen] = useState(true);
