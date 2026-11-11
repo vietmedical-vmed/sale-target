@@ -107,6 +107,12 @@ describe("buKhaDungBvTu", () => {
     expect(bu.has(b)).toBe(false);
   });
 
+  it("can offset against another base quota field", () => {
+    const x = { ...r("TU1", "SP1", 50, 8), _qDinhMuc: 5 };
+    expect(buKhaDungBvTu([x], new Set(["TU1"])).has(x)).toBe(false);
+    expect(buKhaDungBvTu([x], new Set(["TU1"]), "_qDinhMuc").get(x)).toEqual({ sl: 3, dt: 300 });
+  });
+
   it("returns empty map without private hospitals", () => {
     expect(buKhaDungBvTu([r("TU1", "SP1", 0, 5)], new Set()).size).toBe(0);
   });

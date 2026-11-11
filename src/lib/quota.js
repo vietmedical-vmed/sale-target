@@ -50,8 +50,9 @@ export function tyLeDinhMucDot(thang, hieuLuc, fyStart = MONTHS[0], fyEnd = MONT
 // Gắn quota on-hand / upcoming (số lượng) vào từng dòng cho 2 màn tổng hợp:
 // r._qOnHand, r._qUp, r._qHet (hết hiệu lực trước năm tài chính, không vào tổng). Cộng mọi dòng của
 // 1 sản phẩm là ra quota của sản phẩm đó.
-// r._qDinhMuc = khả dụng định mức: quota 1.4 (thầu cũ, tính đủ) + phần quota thầu
+// r._qDinhMuc = quota định mức: quota 1.4 (thầu cũ, tính đủ) + phần quota thầu
 // chính / bổ sung rơi vào năm tài chính (tyLeDinhMucDot), không phụ thuộc tháng hiện tại.
+// Màn tổng hợp hiện KD định mức = quota định mức − TH YTD (BV tư âm tính là 0).
 //
 // Nguồn duy nhất là shared.quota_thau (sale_target không còn lưu quota / tháng
 // thầu); tháng thầu lấy theo TỪNG ĐỢT ở shared.dot_thau. Quota mỗi mức giá đặt lên
@@ -104,8 +105,9 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
 // khả dụng của khoá thành 0. Khả dụng > 0 và BV công giữ nguyên.
 // SL và tiền bù riêng: mỗi chế độ xem tự về 0 khi số của chính nó âm.
 // rows: các dòng đã qua bộ lọc của màn (có _qOnHand từ ganQuotaTheoDot).
+// field: cột quota gốc của khả dụng — '_qOnHand' (khả dụng) hoặc '_qDinhMuc' (KD định mức).
 // Trả Map(dòng → { sl, dt }).
-export function buKhaDungBvTu(rows, bvTu) {
+export function buKhaDungBvTu(rows, bvTu, field = '_qOnHand') {
   const out = new Map();
   if (!bvTu || !bvTu.size) return out;
   const acc = new Map();
@@ -117,7 +119,7 @@ export function buKhaDungBvTu(rows, bvTu) {
       a = { first: r, sl: 0, dt: 0 };
       acc.set(k, a);
     }
-    const onHand = Number(r._qOnHand) || 0;
+    const onHand = Number(r[field]) || 0;
     a.sl += onHand;
     a.dt += onHand * (Number(r.price) || 0);
     if (isYtdMonth(r.mo)) {

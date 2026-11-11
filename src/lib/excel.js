@@ -152,9 +152,12 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
     const qYtdV = isSL ? (d.ytd || 0) : (d.dtYtd || 0);
     // Cùng số với màn: on hand − TH YTD, khả dụng âm của BV tư đã tính là 0.
     const quotaRemain = qAvail == null ? '-' : tr(qAvail);
-    // Khả dụng định mức = quota 1.4 + phần quota chính / BS rơi vào năm tài chính.
-    const qDmV = isSL ? (d.qDinhMuc || 0) : (d.qDinhMucDt || 0);
-    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(qYtdV), quotaRemain, tr(qDmV));
+    // KD định mức = quota 1.4 + phần quota chính / BS rơi vào năm tài chính − TH YTD,
+    // BV tư âm tính là 0 (giống màn).
+    const qDmV = isSL
+      ? (d.qDinhMuc || 0) - (d.ytd || 0) + (d.kdDmBu || 0)
+      : (d.qDinhMucDt || 0) - (d.dtYtd || 0) + (d.kdDmBuDt || 0);
+    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(qYtdV), quotaRemain, qAvail == null ? '-' : tr(qDmV));
     aoa.push(row);
     levels.push(level);
   };
@@ -323,7 +326,7 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
     row.push(
       tr(onHandV), tr(upcomingV), ...(HIEN_HET_HIEU_LUC ? [tr(hetV)] : []), tr(quotaV),
       tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV + kdBuV),
-      tr(isSL ? d.dinhMuc : d.dinhMucDt),
+      d.oop ? '-' : tr((isSL ? (Number(d.dinhMuc) || 0) + (Number(d.kdDmBu) || 0) : (Number(d.dinhMucDt) || 0) + (Number(d.kdDmBuDt) || 0)) - thYtdV),
     );
     aoa.push(row);
     levels.push(level);

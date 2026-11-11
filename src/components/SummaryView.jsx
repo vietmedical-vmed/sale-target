@@ -47,6 +47,7 @@ export function SummaryView({
     const planCusts = planCustKeys(rows);
     // BV tư: khả dụng âm theo KH × SP tính là 0 (xem buKhaDungBvTu).
     const buTu = buKhaDungBvTu(filtered, bvTu);
+    const buTuDm = buKhaDungBvTu(filtered, bvTu, '_qDinhMuc');
     const regMap = new Map();
     for (const r of filtered) {
       // Bỏ dòng ngoài 12 tháng của năm tài chính. Dòng kế hoạch luôn nằm trong FY,
@@ -92,6 +93,8 @@ export function SummaryView({
         qHetDt: 0,
         qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
         qDinhMucDt: 0,
+        kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
+        kdDmBuDt: 0,
         ytd: 0,
         qYtd: 0,
         qDtYtd: 0,
@@ -156,6 +159,7 @@ export function SummaryView({
       const bu = buTu.get(r);
       const dKdBu = bu ? bu.sl : 0;
       const dKdBuDt = bu ? bu.dt : 0;
+      const buDm = buTuDm.get(r);
       const dKhLeft = inYtd ? 0 : updQty; // KH còn lại YTD = KH update các tháng SAU tháng hiện tại
       const dKhLeftDt = dKhLeft * price;
       const dMoKh = planUpd * price; // DThu KH update của tháng này
@@ -174,6 +178,10 @@ export function SummaryView({
         o.qHetDt += dQHet * price;
         o.qDinhMuc += dQDinhMuc;
         o.qDinhMucDt += dQDinhMuc * price;
+        if (buDm) {
+          o.kdDmBu += buDm.sl;
+          o.kdDmBuDt += buDm.dt;
+        }
         o.ytd += dYtd;
         o.qYtd += dQYtd;
         o.qDtYtd += dQDtYtd;
@@ -228,6 +236,8 @@ export function SummaryView({
           qHetDt: 0,
           qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
           qDinhMucDt: 0,
+          kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
+          kdDmBuDt: 0,
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
@@ -271,6 +281,8 @@ export function SummaryView({
           qHetDt: 0,
           qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
           qDinhMucDt: 0,
+          kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
+          kdDmBuDt: 0,
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
@@ -312,6 +324,8 @@ export function SummaryView({
       qHetDt: 0,
       qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
       qDinhMucDt: 0,
+      kdDmBu: 0, // phần bù KD định mức âm của BV tư (SL)
+      kdDmBuDt: 0,
       ytd: 0,
       qYtd: 0,
       qDtYtd: 0,
@@ -348,6 +362,8 @@ export function SummaryView({
       a.qHetDt += c.qHetDt;
       a.qDinhMuc += c.qDinhMuc;
       a.qDinhMucDt += c.qDinhMucDt;
+      a.kdDmBu += c.kdDmBu;
+      a.kdDmBuDt += c.kdDmBuDt;
       a.ytd += c.ytd;
       a.qYtd += c.qYtd;
       a.qDtYtd += c.qDtYtd;
@@ -560,7 +576,7 @@ export function SummaryView({
           đợt hết hạn trong năm tài chính này); Upcoming = chưa tới tháng hoặc đợt chưa
           đủ tháng / hiệu lực; đợt hết hạn trước năm tài chính không tính; Khả dụng = On
           hand − TH YTD; KD định mức = quota 1.4 + quota chính / BS × số tháng hiệu
-          lực (từ tháng thầu + 3) nằm trong năm tài chính / hiệu lực.
+          lực (từ tháng thầu + 3) nằm trong năm tài chính / hiệu lực − TH YTD.
         </p>
       </div>
     </React.Fragment>
@@ -798,7 +814,7 @@ function SummaryHead() {
         </th>,
         <th
           key="qqdm"
-          title="Khả dụng định mức = quota 1.4 (thầu cũ) + phần quota thầu chính / BS dùng được trong năm tài chính: quota × số tháng hiệu lực trong năm / hiệu lực. Hiệu lực tính từ tháng thầu + 3."
+          title="Khả dụng định mức = quota 1.4 (thầu cũ) + phần quota thầu chính / BS dùng được trong năm tài chính (quota × số tháng hiệu lực trong năm / hiệu lực, hiệu lực tính từ tháng thầu + 3) − TH YTD. BV tư âm tính là 0."
           className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
         >
           KD định mức
@@ -829,7 +845,13 @@ function StatCells({ d, size, dark }) {
   const qHetV = isQty ? d.qHet : d.qHetDt;
   const qFYV = isQty ? d.quotaFY : d.quotaFYDt;
   const qAvV = isQty ? d.quotaAvail : d.quotaAvailDt;
-  const qDmV = isQty ? d.qDinhMuc : d.qDinhMucDt;
+  // KD định mức = quota định mức − TH YTD, BV tư âm tính là 0; KH ngoài kế hoạch → "—".
+  const qDmV =
+    d.quotaAvail == null
+      ? null
+      : isQty
+        ? d.qDinhMuc - d.ytd + d.kdDmBu
+        : d.qDinhMucDt - d.dtYtd + d.kdDmBuDt;
   const p =
     size === 'sm'
       ? 'py-1.5 text-[12px]'
@@ -972,7 +994,9 @@ function StatCells({ d, size, dark }) {
     </td>,
   );
   cells.push(
-    <td key="qdm" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${base} ${qbg}`}>{fmt(qDmV)}</td>,
+    <td key="qdm" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${qDmV == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}>
+      {qDmV == null ? '—' : fmt(qDmV)}
+    </td>,
   );
   return React.createElement(React.Fragment, null, ...cells);
 }
