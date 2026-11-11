@@ -69,6 +69,8 @@ export function ProductSummaryView({
       quotaDt: 0,
       het: 0,
       hetDt: 0,
+      dinhMuc: 0, // khả dụng định mức (lib/quota.js)
+      dinhMucDt: 0,
       kdBu: 0, // phần bù khả dụng âm của BV tư (SL)
       kdBuDt: 0,
       slDauNam: 0,
@@ -98,6 +100,7 @@ export function ProductSummaryView({
       const dUpcoming = Number(r._qUp) || 0;
       const dQuota = dOnHand + dUpcoming;
       const dHet = Number(r._qHet) || 0; // hết hiệu lực: hiện riêng, không vào tổng
+      const dDinhMuc = Number(r._qDinhMuc) || 0;
       const isOop = !!r._oop && !custInPlan(planCusts, r);
       const dMoKhDt = planUpd * price;
       const dMoActDt = dtActVal;
@@ -118,6 +121,8 @@ export function ProductSummaryView({
         o.quotaDt += dQuota * price;
         o.het += dHet;
         o.hetDt += dHet * price;
+        o.dinhMuc += dDinhMuc;
+        o.dinhMucDt += dDinhMuc * price;
         if (bu) {
           o.kdBu += bu.sl;
           o.kdBuDt += bu.dt;
@@ -213,6 +218,8 @@ export function ProductSummaryView({
       a.quotaDt += c.quotaDt;
       a.het += c.het;
       a.hetDt += c.hetDt;
+      a.dinhMuc += c.dinhMuc;
+      a.dinhMucDt += c.dinhMucDt;
       a.kdBu += c.kdBu;
       a.kdBuDt += c.kdBuDt;
       a.slDauNam += c.slDauNam;
@@ -275,7 +282,7 @@ export function ProductSummaryView({
       ? [curIdx]
       : [];
   const N_COLS =
-    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + (HIEN_HET_HIEU_LUC ? 6 : 5) + (isDn ? 4 : 5);
+    1 + monthIdxs.reduce((s, i) => s + (hasAct(i) ? 3 : 1), 0) + 6 + (HIEN_HET_HIEU_LUC ? 7 : 6) + (isDn ? 4 : 5);
 
   const pctTxt = (th, kh) => (kh > 0 ? Math.round((th / kh) * 100) + '%' : '—');
   const pctCls = (th, kh) => {
@@ -312,7 +319,8 @@ export function ProductSummaryView({
     const hetV = isQty ? node.het : node.hetDt;
     // Khả dụng = on hand − TH YTD, cộng phần bù để khả dụng âm của BV tư thành 0.
     const khaDungV = onHandV - thYtdV + (isQty ? node.kdBu : node.kdBuDt);
-    return { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV, khaDungV };
+    const dinhMucV = isQty ? node.dinhMuc : node.dinhMucDt;
+    return { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV, khaDungV, dinhMucV };
   };
 
   const moHead = () => {
@@ -446,7 +454,7 @@ export function ProductSummaryView({
 
   const qBg = 'bg-teal-50/30';
   const quotaCells = (node, extra) => {
-    const { onHandV, upcomingV, quotaV, thYtdV, hetV, khaDungV } = pick(node);
+    const { onHandV, upcomingV, quotaV, thYtdV, hetV, khaDungV, dinhMucV } = pick(node);
     const khaDung = node.oop ? null : khaDungV;
     const t = tone(extra);
     return [
@@ -455,9 +463,10 @@ export function ProductSummaryView({
       HIEN_HET_HIEU_LUC && <td key="qhet" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium text-red-500 ${qBg} ${extra || ''}`}>{fmt(hetV)}</td>,
       <td key="qtot" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.base} ${qBg} ${extra || ''}`}>{fmt(quotaV)}</td>,
       <td key="qth" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${t.th} ${qBg} ${extra || ''}`}>{fmt(thYtdV)}</td>,
-      <td key="qkd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 ${qBg} ${node.oop ? 'text-slate-300' : t.base} ${extra || ''}`}>
+      <td key="qkd" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium ${qBg} ${node.oop ? 'text-slate-300' : t.base} ${extra || ''}`}>
         {khaDung == null ? '—' : fmt(khaDung)}
       </td>,
+      <td key="qdm" className={`px-3 py-1.5 text-right text-[12px] tabular-nums font-medium border-r border-slate-200 ${t.base} ${qBg} ${extra || ''}`}>{fmt(dinhMucV)}</td>,
     ];
   };
 
@@ -470,7 +479,7 @@ export function ProductSummaryView({
   }, [data, base, onExport]);
 
   const grandCells = (node, dark) => {
-    const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV, khaDungV } = pick(node);
+    const { moKh, moAct, khYtdV, thYtdV, dtV, dtUpdV, onHandV, upcomingV, quotaV, hetV, khaDungV, dinhMucV } = pick(node);
     const cells = [];
     for (const i of monthIdxs) {
       const kh = moKh[i], act = moAct[i];
@@ -520,6 +529,7 @@ export function ProductSummaryView({
       <td key="gqtot" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(quotaV)}</td>,
       <td key="gqth" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums text-green-300">{fmt(thYtdV)}</td>,
       <td key="gqkd" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(khaDungV)}</td>,
+      <td key="gqdm" className="px-3 py-2.5 text-right text-[12.5px] tabular-nums">{fmt(dinhMucV)}</td>,
     );
     return cells;
   };
@@ -595,7 +605,7 @@ export function ProductSummaryView({
                   {isDn ? 'Cả năm' : 'Target'}
                 </th>,
                 <th
-                  colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
+                  colSpan={HIEN_HET_HIEU_LUC ? 7 : 6}
                   className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
                 >
                   Quota
@@ -633,7 +643,8 @@ export function ProductSummaryView({
                 HIEN_HET_HIEU_LUC && <th key="qhet" title="Quota của đợt đã quá tháng hết hiệu lực (tháng thầu + 3 + hiệu lực − 1). Không tính vào Tổng / Khả dụng." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-red-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Hết HL</th>,
                 <th key="qtot" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Tổng</th>,
                 <th key="qth" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-green-600 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">TH YTD</th>,
-                <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Khả dụng</th>,
+                <th key="qkd" className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">Khả dụng</th>,
+                <th key="qdm" title="Khả dụng định mức = quota 1.4 (thầu cũ) + phần quota thầu chính / BS dùng được trong năm tài chính: quota × số tháng hiệu lực trong năm / hiệu lực. Hiệu lực tính từ tháng thầu + 3." className="px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap">KD định mức</th>,
               )}
             </thead>
             <tbody>

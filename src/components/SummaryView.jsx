@@ -90,6 +90,8 @@ export function SummaryView({
         qUpcomingDt: 0,
         qHet: 0,
         qHetDt: 0,
+        qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
+        qDinhMucDt: 0,
         ytd: 0,
         qYtd: 0,
         qDtYtd: 0,
@@ -142,6 +144,7 @@ export function SummaryView({
       const dQ14 = Number(r._qOnHand) || 0;
       const dQUpcoming = Number(r._qUp) || 0;
       const dQHet = Number(r._qHet) || 0; // hết hiệu lực: hiện riêng, không vào tổng
+      const dQDinhMuc = Number(r._qDinhMuc) || 0;
       const dQuota = dQ14 + dQUpcoming;
       const dQuotaDt = dQuota * price;
       const dQ14Dt = dQ14 * price;
@@ -169,6 +172,8 @@ export function SummaryView({
         o.qUpcomingDt += dQUpcomingDt;
         o.qHet += dQHet;
         o.qHetDt += dQHet * price;
+        o.qDinhMuc += dQDinhMuc;
+        o.qDinhMucDt += dQDinhMuc * price;
         o.ytd += dYtd;
         o.qYtd += dQYtd;
         o.qDtYtd += dQDtYtd;
@@ -221,6 +226,8 @@ export function SummaryView({
           qUpcomingDt: 0,
           qHet: 0,
           qHetDt: 0,
+          qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
+          qDinhMucDt: 0,
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
@@ -262,6 +269,8 @@ export function SummaryView({
           qUpcomingDt: 0,
           qHet: 0,
           qHetDt: 0,
+          qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
+          qDinhMucDt: 0,
           ytd: 0,
           qYtd: 0,
           qDtYtd: 0,
@@ -301,6 +310,8 @@ export function SummaryView({
       qUpcomingDt: 0,
       qHet: 0,
       qHetDt: 0,
+      qDinhMuc: 0, // khả dụng định mức (lib/quota.js)
+      qDinhMucDt: 0,
       ytd: 0,
       qYtd: 0,
       qDtYtd: 0,
@@ -335,6 +346,8 @@ export function SummaryView({
       a.qUpcomingDt += c.qUpcomingDt;
       a.qHet += c.qHet;
       a.qHetDt += c.qHetDt;
+      a.qDinhMuc += c.qDinhMuc;
+      a.qDinhMucDt += c.qDinhMucDt;
       a.ytd += c.ytd;
       a.qYtd += c.qYtd;
       a.qDtYtd += c.qDtYtd;
@@ -546,7 +559,8 @@ export function SummaryView({
           hand = quota thầu cũ + quota chính / BS đã tới tháng và còn hiệu lực (kể cả
           đợt hết hạn trong năm tài chính này); Upcoming = chưa tới tháng hoặc đợt chưa
           đủ tháng / hiệu lực; đợt hết hạn trước năm tài chính không tính; Khả dụng = On
-          hand − TH YTD.
+          hand − TH YTD; KD định mức = quota 1.4 + quota chính / BS × số tháng hiệu
+          lực (từ tháng thầu + 3) nằm trong năm tài chính / hiệu lực.
         </p>
       </div>
     </React.Fragment>
@@ -692,7 +706,7 @@ function SummaryHead() {
           {SUM_BASE === 'dn' ? 'Cả năm' : 'Target'}
         </th>,
         <th
-          colSpan={HIEN_HET_HIEU_LUC ? 6 : 5}
+          colSpan={HIEN_HET_HIEU_LUC ? 7 : 6}
           className="px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-teal-800 border-r border-b border-slate-200 bg-teal-50/60"
         >
           Quota
@@ -778,9 +792,16 @@ function SummaryHead() {
         </th>,
         <th
           key="qqav"
-          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
         >
           Khả dụng
+        </th>,
+        <th
+          key="qqdm"
+          title="Khả dụng định mức = quota 1.4 (thầu cũ) + phần quota thầu chính / BS dùng được trong năm tài chính: quota × số tháng hiệu lực trong năm / hiệu lực. Hiệu lực tính từ tháng thầu + 3."
+          className={`px-2 py-1 text-right text-[9.5px] font-medium uppercase text-teal-700 border-r border-b border-slate-200 bg-teal-50/40 whitespace-nowrap`}
+        >
+          KD định mức
         </th>,
       )}
     </React.Fragment>
@@ -808,6 +829,7 @@ function StatCells({ d, size, dark }) {
   const qHetV = isQty ? d.qHet : d.qHetDt;
   const qFYV = isQty ? d.quotaFY : d.quotaFYDt;
   const qAvV = isQty ? d.quotaAvail : d.quotaAvailDt;
+  const qDmV = isQty ? d.qDinhMuc : d.qDinhMucDt;
   const p =
     size === 'sm'
       ? 'py-1.5 text-[12px]'
@@ -945,9 +967,12 @@ function StatCells({ d, size, dark }) {
     <td key="qth" className={`px-3 ${p} text-right tabular-nums font-medium ${green} ${qbg}`}>{fmt(dtYtdV)}</td>,
   );
   cells.push(
-    <td key="qav" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}>
+    <td key="qav" className={`px-3 ${p} text-right tabular-nums font-medium ${quotaRemain == null ? (dark ? 'text-slate-500' : 'text-slate-300') : base} ${qbg}`}>
       {quotaRemain == null ? '—' : fmt(quotaRemain)}
     </td>,
+  );
+  cells.push(
+    <td key="qdm" className={`px-3 ${p} text-right tabular-nums font-medium border-r border-slate-100 ${base} ${qbg}`}>{fmt(qDmV)}</td>,
   );
   return React.createElement(React.Fragment, null, ...cells);
 }

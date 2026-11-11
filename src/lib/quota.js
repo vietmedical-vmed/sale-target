@@ -29,9 +29,29 @@ export function trangThaiDot(thang, hieuLuc, curMonth, fyStart = MONTHS[0]) {
   return het < curMonth && het < fyStart ? 'het' : 'on';
 }
 
+const thangSo = (s) => {
+  const [y, m] = s.split('-').map(Number);
+  return y * 12 + (m - 1);
+};
+
+// Tỷ lệ quota của 1 đợt thầu chính / bổ sung dùng được trong năm tài chính đang xem
+// = số tháng hiệu lực rơi vào năm tài chính / hiệu lực. Cửa sổ hiệu lực giống
+// hetHanDot: [tháng thầu + 3, tháng thầu + 3 + hiệu lực − 1]. Đợt thiếu tháng / hiệu
+// lực → 0. Vd 2026-09, 12 tháng → 2026-12..2027-11, trong FY26 có 4 tháng → 4/12.
+export function tyLeDinhMucDot(thang, hieuLuc, fyStart = MONTHS[0], fyEnd = MONTHS[MONTHS.length - 1]) {
+  const het = hetHanDot(thang, hieuLuc);
+  if (!het) return 0;
+  const hl = Math.trunc(Number(hieuLuc));
+  const tu = Math.max(thangSo(thang) + THANG_CONG_THEM_HIEU_LUC, thangSo(fyStart));
+  const den = Math.min(thangSo(het), thangSo(fyEnd));
+  return den < tu ? 0 : (den - tu + 1) / hl;
+}
+
 // Gắn quota on-hand / upcoming (số lượng) vào từng dòng cho 2 màn tổng hợp:
 // r._qOnHand, r._qUp, r._qHet (hết hiệu lực trước năm tài chính, không vào tổng). Cộng mọi dòng của
 // 1 sản phẩm là ra quota của sản phẩm đó.
+// r._qDinhMuc = khả dụng định mức: quota 1.4 (thầu cũ, tính đủ) + phần quota thầu
+// chính / bổ sung rơi vào năm tài chính (tyLeDinhMucDot), không phụ thuộc tháng hiện tại.
 //
 // Nguồn duy nhất là shared.quota_thau (sale_target không còn lưu quota / tháng
 // thầu); tháng thầu lấy theo TỪNG ĐỢT ở shared.dot_thau. Quota mỗi mức giá đặt lên
@@ -44,20 +64,23 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
     if (!thangDot.has(k)) thangDot.set(k, new Map());
     thangDot.get(k).set(`${d.loai}|${d.dot}`, { thang: d.thang || '', hieuLuc: d.thoiGian });
   }
-  const quotaTheoGia = new Map(); // prodKey|giá → { onHand, up, het }
+  const quotaTheoGia = new Map(); // prodKey|giá → { onHand, up, het, dinhMuc }
   for (const q of quotas || []) {
     const gk = grpKey(q.fy, q.ps, q.custId, q.grp);
     const k = `${prodKey(q.fy, q.ps, q.custId, q.grp, q.mset, q.prod)}|${Number(q.price) || 0}`;
-    if (!quotaTheoGia.has(k)) quotaTheoGia.set(k, { onHand: 0, up: 0, het: 0 });
+    if (!quotaTheoGia.has(k)) quotaTheoGia.set(k, { onHand: 0, up: 0, het: 0, dinhMuc: 0 });
     const o = quotaTheoGia.get(k);
     const n = Number(q.qty) || 0;
-    if (q.loai === 'cu') o.onHand += n;
-    else {
+    if (q.loai === 'cu') {
+      o.onHand += n;
+      o.dinhMuc += n;
+    } else {
       const d = thangDot.get(gk)?.get(`${q.loai}|${q.dot}`);
       const tt = d ? trangThaiDot(d.thang, d.hieuLuc, curMonth) : 'up';
       if (tt === 'on') o.onHand += n;
       else if (tt === 'het') o.het += n;
       else o.up += n;
+      if (d) o.dinhMuc += n * tyLeDinhMucDot(d.thang, d.hieuLuc);
     }
   }
   const daGan = new Set();
@@ -67,9 +90,9 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
     const hasQuota = !!q;
     // Dòng ngoài kế hoạch / ngoài 12 tháng không mang quota.
     if (!q || r._oop || daGan.has(k) || !MONTHS.includes(r.mo))
-      return { ...r, _qOnHand: 0, _qUp: 0, _qHet: 0, _hasQuota: hasQuota && !r._oop };
+      return { ...r, _qOnHand: 0, _qUp: 0, _qHet: 0, _qDinhMuc: 0, _hasQuota: hasQuota && !r._oop };
     daGan.add(k);
-    return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _hasQuota: true };
+    return { ...r, _qOnHand: q.onHand, _qUp: q.up, _qHet: q.het, _qDinhMuc: q.dinhMuc, _hasQuota: true };
   });
 }
 

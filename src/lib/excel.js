@@ -101,12 +101,12 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
     c += 5;
   }
   const qCols = HIEN_HET_HIEU_LUC
-    ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng']
-    : ['On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng'];
+    ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng quota', 'TH YTD', 'Khả dụng', 'KD định mức']
+    : ['On hand', 'Upcoming', 'Tổng quota', 'TH YTD', 'Khả dụng', 'KD định mức'];
   H1.push('Quota', ...qCols.slice(1).map(() => ''));
   H2.push(...qCols);
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + qCols.length - 1 } });
-  qCols.forEach((_, k) => { cols.push({ wch: k === qCols.length - 1 ? 16 : 14 }); numCols.push(c + k); });
+  qCols.forEach((_, k) => { cols.push({ wch: k >= qCols.length - 2 ? 16 : 14 }); numCols.push(c + k); });
   c += qCols.length;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
@@ -152,7 +152,9 @@ function _buildSumPSSheet(XLSX, wb, data, mode, base) {
     const qYtdV = isSL ? (d.ytd || 0) : (d.dtYtd || 0);
     // Cùng số với màn: on hand − TH YTD, khả dụng âm của BV tư đã tính là 0.
     const quotaRemain = qAvail == null ? '-' : tr(qAvail);
-    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(qYtdV), quotaRemain);
+    // Khả dụng định mức = quota 1.4 + phần quota chính / BS rơi vào năm tài chính.
+    const qDmV = isSL ? (d.qDinhMuc || 0) : (d.qDinhMucDt || 0);
+    row.push(tr(q14V), tr(qUpV), ...(HIEN_HET_HIEU_LUC ? [tr(qHetV)] : []), tr(qFYV), tr(qYtdV), quotaRemain, tr(qDmV));
     aoa.push(row);
     levels.push(level);
   };
@@ -273,12 +275,12 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
     c += 5;
   }
   const qCols = HIEN_HET_HIEU_LUC
-    ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng']
-    : ['On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng'];
+    ? ['On hand', 'Upcoming', 'Hết hiệu lực', 'Tổng', 'TH YTD', 'Khả dụng', 'KD định mức']
+    : ['On hand', 'Upcoming', 'Tổng', 'TH YTD', 'Khả dụng', 'KD định mức'];
   H1.push('Quota', ...qCols.slice(1).map(() => ''));
   H2.push(...qCols);
   merges.push({ s: { r: 0, c }, e: { r: 0, c: c + qCols.length - 1 } });
-  qCols.forEach((_, k) => { cols.push({ wch: k === qCols.length - 1 ? 13 : 11 }); numCols.push(c + k); });
+  qCols.forEach((_, k) => { cols.push({ wch: k >= qCols.length - 2 ? 13 : 11 }); numCols.push(c + k); });
   c += qCols.length;
   const LAST_COL = c - 1;
   const aoa = [H1, H2];
@@ -321,6 +323,7 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
     row.push(
       tr(onHandV), tr(upcomingV), ...(HIEN_HET_HIEU_LUC ? [tr(hetV)] : []), tr(quotaV),
       tr(thYtdV), d.oop ? '-' : tr(onHandV - thYtdV + kdBuV),
+      tr(isSL ? d.dinhMuc : d.dinhMucDt),
     );
     aoa.push(row);
     levels.push(level);

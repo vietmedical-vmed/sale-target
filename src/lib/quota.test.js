@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanPhamAmQuota, buKhaDungBvTu } from "./quota.js";
+import { sanPhamAmQuota, buKhaDungBvTu, tyLeDinhMucDot, ganQuotaTheoDot } from "./quota.js";
 import { MONTHS } from "../config/constants.js";
 
 const prodKey = (fy, ps, custId, grp, mset, prod) =>
@@ -109,5 +109,45 @@ describe("buKhaDungBvTu", () => {
 
   it("returns empty map without private hospitals", () => {
     expect(buKhaDungBvTu([r("TU1", "SP1", 0, 5)], new Set()).size).toBe(0);
+  });
+});
+
+describe("tyLeDinhMucDot", () => {
+  it("prorates months of validity inside the fiscal year", () => {
+    // 2026-09 + 3 = 2026-12 .. 2027-11 → 4 tháng trong FY26 (đến 2027-03)
+    expect(tyLeDinhMucDot("2026-09", 12)).toBeCloseTo(4 / 12);
+    // 2026-01 + 3 = 2026-04 .. 2027-03 → đủ 12 tháng
+    expect(tyLeDinhMucDot("2026-01", 12)).toBe(1);
+    // thầu trước năm tài chính: chỉ tính phần còn lại trong FY (2025-10 → 2026-01..2026-12)
+    expect(tyLeDinhMucDot("2025-10", 12)).toBeCloseTo(9 / 12);
+    // 24 tháng: 2026-06 → 2026-09..2028-08, trong FY26 có 7 tháng
+    expect(tyLeDinhMucDot("2026-06", 24)).toBeCloseTo(7 / 24);
+  });
+
+  it("returns 0 outside the fiscal year or when data is missing", () => {
+    expect(tyLeDinhMucDot("2027-01", 12)).toBe(0); // bắt đầu 2027-04
+    expect(tyLeDinhMucDot("2024-10", 12)).toBe(0); // hết 2025-12
+    expect(tyLeDinhMucDot("", 12)).toBe(0);
+    expect(tyLeDinhMucDot("2026-09", null)).toBe(0);
+  });
+});
+
+describe("ganQuotaTheoDot _qDinhMuc", () => {
+  it("adds old quota in full plus the in-year share of new tenders", () => {
+    const k = { fy: "FY26", ps: "PS A", custId: "KH1", grp: "G", mset: "M", prod: "SP1", price: 100 };
+    const dots = [
+      { ...k, loai: "chinh", dot: 1, thang: "2026-09", thoiGian: 12 },
+      { ...k, loai: "bo_sung", dot: 1, thang: "2027-02", thoiGian: 12 },
+    ];
+    const quotas = [
+      { ...k, loai: "cu", dot: 0, qty: 30 },
+      { ...k, loai: "chinh", dot: 1, qty: 120 },
+      { ...k, loai: "bo_sung", dot: 1, qty: 60 },
+      { ...k, loai: "bo_sung", dot: 2, qty: 50 }, // không có đợt → 0
+    ];
+    const rows = [{ ...k, mo: MONTHS[0] }, { ...k, mo: MONTHS[1] }];
+    const out = ganQuotaTheoDot(rows, dots, quotas, MONTHS[7]);
+    expect(out[0]._qDinhMuc).toBeCloseTo(30 + 40);
+    expect(out[1]._qDinhMuc).toBe(0);
   });
 });
