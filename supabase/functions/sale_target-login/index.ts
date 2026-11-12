@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   // vẫn là chốt chặn cuối.
   const since = new Date(Date.now() - LOCKOUT_WINDOW_SEC * 1000).toISOString();
   const fails = (col: "username" | "ip" | "pair") => {
-    let q = db.schema("shared").from("login_attempts")
+    let q = db.schema("app_sale").from("login_attempts")
       .select("id", { count: "exact", head: true })
       .eq("success", false)
       .gte("attempted_at", since);
@@ -195,7 +195,7 @@ async function recordAttempt(
   ip: string,
 ) {
   try {
-    await db.schema("shared").from("login_attempts")
+    await db.schema("app_sale").from("login_attempts")
       .insert({ username, success, ip: ip || null });
   } catch (_) { /* logging failure is non-fatal */ }
 }

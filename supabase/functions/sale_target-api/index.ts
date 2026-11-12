@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
       let maxRev = sinceRev;
       for (const r of changed) maxRev = Math.max(maxRev, Number(r._rev) || 0);
       for (let from = 0; ; from += PAGE) {
-        let q = db.schema("shared").from("sale_target_tombstone")
+        let q = db.schema("app_sale").from("sale_target_tombstone")
           .select("id, _rev")
           .gt("_rev", fromRev)
           .order("_rev", { ascending: true })
@@ -1174,7 +1174,7 @@ Deno.serve(async (req) => {
       const page = Math.max(1, Number(payload.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(payload.limit) || 50));
       const from = (page - 1) * limit;
-      let q = db.schema("shared").from("audit_log")
+      let q = db.schema("app_sale").from("audit_log")
         .select("*", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, from + limit - 1);
@@ -1302,7 +1302,7 @@ Deno.serve(async (req) => {
       }
       const gLimits = parseGroups(sess.g);
       if (gLimits.length && grp && !gLimits.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
-      let q = db.schema("shared").from("giai_trinh")
+      let q = db.schema("app_sale").from("giai_trinh")
         .select("id, content, created_by, created_at")
         .eq("ps", ps).eq("customer_id", custId);
       if (grp) q = q.eq("grp", grp);
@@ -1331,7 +1331,7 @@ Deno.serve(async (req) => {
       }
       const gLimits = parseGroups(sess.g);
       if (gLimits.length && grp && !gLimits.includes(grp)) return json({ ok: false, error: "out_of_scope" }, 403);
-      const { data, error } = await db.schema("shared").from("giai_trinh")
+      const { data, error } = await db.schema("app_sale").from("giai_trinh")
         .insert({ ps, customer_id: custId, grp, content, created_by: sess.n || sess.u })
         .select("id, content, created_by, created_at")
         .single();
@@ -1359,7 +1359,7 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const jid = payload.jobId;
       if (!jid) return json({ ok: false, error: "jobId required" }, 400);
-      const { data, error } = await db.schema("shared").from("sync_job")
+      const { data, error } = await db.schema("app_sale").from("sync_job")
         .select("id, status, started_at, finished_at, result, error")
         .eq("id", jid).single();
       if (error) throw new Error(error.message);
@@ -1371,7 +1371,7 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const rows: Record<string, unknown>[] = [];
       for (let from = 0; ; from += PAGE) {
-        const { data, error } = await db.schema("shared").from("v_quota_thau_xuat")
+        const { data, error } = await db.schema("app_sale").from("v_quota_thau_xuat")
           .select("*").order("stt", { ascending: true }).range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
         if (!data || data.length === 0) break;
@@ -1523,7 +1523,7 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // ---- Bản chụp kế hoạch update hằng tháng (shared.ke_hoach_chot*) — xem: admin + manager; chụp/xoá: admin ----
+    // ---- Bản chụp kế hoạch update hằng tháng (app_sale.ke_hoach_chot*) — xem: admin + manager; chụp/xoá: admin ----
     // Lỗi nghiệp vụ từ RPC có tiền tố chot_*: trả nguyên câu tiếng Việt sau dấu ':'.
     const loiChot = (msg: string) => {
       const m = msg.match(/chot_[a-z_]+:\s*(.*)$/);
@@ -1532,7 +1532,7 @@ Deno.serve(async (req) => {
 
     if (action === "getChotKy") {
       if (sess.r !== "admin" && sess.r !== "manager") return json({ ok: false, error: "forbidden" }, 403);
-      const { data, error } = await db.schema("shared").from("ke_hoach_chot_ky")
+      const { data, error } = await db.schema("app_sale").from("ke_hoach_chot_ky")
         .select("ky,nam_tai_chinh,thang_hien_tai,chot_luc,nguon,nguoi,so_dong,tong_dt_kh_update")
         .order("ky", { ascending: false });
       if (error) throw new Error(error.message);
@@ -1561,7 +1561,7 @@ Deno.serve(async (req) => {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
       const ky = String(payload.ky || "").trim();
       if (!ky) return json({ ok: false, error: "thieu_du_lieu" }, 400);
-      const { data, error } = await db.schema("shared").from("ke_hoach_chot_ky")
+      const { data, error } = await db.schema("app_sale").from("ke_hoach_chot_ky")
         .delete().eq("ky", ky).select("ky,so_dong");
       if (error) throw new Error(error.message);
       if (!data || !data.length) return json({ ok: false, error: "khong_ton_tai" }, 404);

@@ -362,7 +362,7 @@ function _buildProdSheet(XLSX, wb, data, mode, base) {
   XLSX.utils.book_append_sheet(wb, ws, isSL ? 'Theo SP (SL)' : 'Theo SP (Tien)');
 }
 
-// Quota thầu gộp 2 nguồn (view shared.v_quota_thau_xuat) — tạm chỉ admin.
+// Quota thầu gộp 2 nguồn (view app_sale.v_quota_thau_xuat) — tạm chỉ admin.
 export async function exportQuotaThau(rows) {
   const XLSX = await loadXLSX();
   const LOAI = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Thầu bổ sung' };

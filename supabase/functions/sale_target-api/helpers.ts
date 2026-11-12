@@ -128,7 +128,7 @@ export async function getRev(
   const [{ data }, { data: tData }] = await Promise.all([
     db.schema("shared").from("sale_target").select("_rev")
       .order("_rev", { ascending: false }).limit(1),
-    db.schema("shared").from("sale_target_tombstone").select("_rev")
+    db.schema("app_sale").from("sale_target_tombstone").select("_rev")
       .order("_rev", { ascending: false }).limit(1),
   ]);
   const saleRev = data && data[0] ? Number(data[0]._rev) || 0 : 0;
@@ -189,7 +189,7 @@ export async function writeAuditLog(
   thangKeHoach?: string | null,
 ) {
   try {
-    await db.schema("shared").from("audit_log").insert({
+    await db.schema("app_sale").from("audit_log").insert({
       username: sess.u,
       ho_ten: sess.n || sess.u,
       role: sess.r,
