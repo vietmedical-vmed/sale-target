@@ -48,6 +48,26 @@ import { useVirtualizer, observeElementOffset } from '@tanstack/react-virtual';
 
 const VIRTUAL_THRESHOLD = 30;
 
+// Thứ tự thẻ kế hoạch: "Ngoài KH" cuối, còn lại theo mã bệnh viện (so tự nhiên:
+// BV0099 < BV0100), KH chưa có mã xếp sau, trùng mã thì theo tên.
+const cmpTheThuTuMaBv = (a, b) => {
+  const oa = a.cust === OOP_CUST ? 1 : 0,
+    ob = b.cust === OOP_CUST ? 1 : 0;
+  if (oa !== ob) return oa - ob;
+  const ia = String(a.id || '').trim(),
+    ib = String(b.id || '').trim();
+  if (!ia !== !ib) return ia ? -1 : 1;
+  return (
+    ia.localeCompare(ib, 'vi', { numeric: true, sensitivity: 'base' }) ||
+    (a.cust || '').localeCompare(b.cust || '', 'vi')
+  );
+};
+const cmpTheoMaBv = (a, b) =>
+  cmpTheThuTuMaBv(
+    { id: a.custId, cust: a.customer },
+    { id: b.custId, cust: b.customer },
+  );
+
 // Cuộn ngang không đổi scrollTop nhưng vẫn bật isScrolling -> re-render mọi thẻ.
 const observeVerticalOffset = (instance, cb) => {
   let last = null;
@@ -2047,21 +2067,7 @@ function AppInner({ initialAuth, onLogin }) {
           .sort((a, b) => b._dt - a._dt),
       }))
       .filter((c) => c.groups.length > 0)
-      .sort((a, b) => {
-        // Ngoài KH luôn xuống cuối
-        const oa = a.customer === OOP_CUST ? 1 : 0,
-          ob = b.customer === OOP_CUST ? 1 : 0;
-        if (oa !== ob) return oa - ob;
-        // Xếp theo target đầu năm (không đổi khi sửa kế hoạch nên thứ tự thẻ ổn định).
-        // Có target xếp trước (giảm dần theo target); không có thì xếp sau (giảm dần theo TH YTD).
-        const ha = a._dt > 0 ? 0 : 1,
-          hb = b._dt > 0 ? 0 : 1;
-        if (ha !== hb) return ha - hb;
-        return (
-          (ha === 0 ? b._dt - a._dt : b._thYtd - a._thYtd) ||
-          (a.customer || '').localeCompare(b.customer || '', 'vi')
-        );
-      });
+      .sort(cmpTheoMaBv);
   }, [
     teamRows,
     deferredSearch,
@@ -2280,11 +2286,7 @@ function AppInner({ initialAuth, onLogin }) {
     const keys = new Set(tree.map((c) => c.custId || c.customer));
     return Array.from(oopTheoKh.values())
       .filter((e) => !keys.has(e.key))
-      .sort((a, b) => {
-        const oa = a.cust === OOP_CUST ? 1 : 0,
-          ob = b.cust === OOP_CUST ? 1 : 0;
-        return oa - ob || b.dt - a.dt;
-      });
+      .sort((a, b) => cmpTheThuTuMaBv({ id: a.custId, cust: a.cust }, { id: b.custId, cust: b.cust }));
   }, [showOop, tree, oopTheoKh]);
   const oopActions = useMemo(
     () => ({
@@ -3219,21 +3221,8 @@ function AppInner({ initialAuth, onLogin }) {
                             const filtered = c.groups.filter((g) => g.bu === tk);
                             return filtered.length === c.groups.length ? c : { ...c, groups: filtered };
                           })
-                          .filter((c) => c.groups.length > 0)
-                          .sort((a, b) => {
-                            const oa = a.customer === OOP_CUST ? 1 : 0,
-                              ob = b.customer === OOP_CUST ? 1 : 0;
-                            if (oa !== ob) return oa - ob;
-                            // Theo target đầu năm của BU này (giống thứ tự khi xem 1 BU).
-                            const aDt = a.groups.reduce((s, g) => s + (g._dt || 0), 0);
-                            const bDt = b.groups.reduce((s, g) => s + (g._dt || 0), 0);
-                            const ha = aDt > 0 ? 0 : 1, hb = bDt > 0 ? 0 : 1;
-                            if (ha !== hb) return ha - hb;
-                            return (
-                              (ha === 0 ? bDt - aDt : (b._thYtd || 0) - (a._thYtd || 0)) ||
-                              (a.customer || '').localeCompare(b.customer || '', 'vi')
-                            );
-                          });
+                          .filter((c) => c.groups.length > 0);
+                        // tree đã xếp theo mã BV, filter giữ nguyên thứ tự.
                         if (custs.length === 0) return null;
                         const t = TEAMS[tk];
                         let secDt = 0,
