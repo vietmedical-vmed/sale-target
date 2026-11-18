@@ -18,6 +18,7 @@ export const ACTION_LABELS = {
   loaiQuotaThau: 'Loại quota',
   duyetDotThau: 'Duyệt đợt thầu',
   loaiDotThau: 'Loại đợt thầu',
+  ganQuotaHopDong: 'Gắn quota ↔ hợp đồng',
   saveDiaBan: 'Lưu địa bàn',
   deleteDiaBan: 'Xóa địa bàn',
   chuyenDiaBan: 'Chuyển địa bàn',
@@ -41,7 +42,7 @@ export const ACTION_GROUPS = {
   quota: {
     label: 'Quota – Thầu',
     color: 'bg-emerald-100 text-emerald-700',
-    actions: ['saveQuotaThau', 'saveDotThau', 'deleteDotThau', 'duyetQuotaThau', 'loaiQuotaThau', 'duyetDotThau', 'loaiDotThau'],
+    actions: ['saveQuotaThau', 'saveDotThau', 'deleteDotThau', 'duyetQuotaThau', 'loaiQuotaThau', 'duyetDotThau', 'loaiDotThau', 'ganQuotaHopDong'],
   },
   diaban: {
     label: 'Địa bàn – PS',

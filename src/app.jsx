@@ -249,6 +249,8 @@ function AppInner({ initialAuth, onLogin }) {
   const [curMonth, setCurMonth] = useState(CURRENT_MONTH);
   const [maxDocDate, setMaxDocDate] = useState(null);
   const [helpContent, setHelpContent] = useState('');
+  // Lần chạy cuối gắn liên kết quota ↔ hợp đồng (app_config.gan_quota_hop_dong_lan_cuoi).
+  const [ganLanCuoi, setGanLanCuoi] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
   const [maskMoney, setMaskMoney] = useState(false);
   const [showBasePlan, setShowBasePlan] = useState(false);
@@ -478,6 +480,7 @@ function AppInner({ initialAuth, onLogin }) {
         if (typeof r.rev === 'number') setDataRev(r.rev);
         if (r.maxDocDate) setMaxDocDate(r.maxDocDate);
         if (r.config && r.config.help_content) setHelpContent(String(r.config.help_content));
+        if (r.config && r.config.gan_quota_hop_dong_lan_cuoi) setGanLanCuoi(r.config.gan_quota_hop_dong_lan_cuoi);
         setStale(false);
         if (r.role)
           setAuth({
@@ -581,6 +584,31 @@ function AppInner({ initialAuth, onLogin }) {
       setError('Xuất quota thầu thất bại: ' + e.message);
     } finally {
       setQuotaXuatBusy(false);
+    }
+  }, []);
+
+  // Gắn lại liên kết quota ↔ hợp đồng cho các khoá KH × SP đã khớp (admin). Cron 01:30
+  // hằng đêm cũng chạy; nút dùng khi vừa sửa quota / danh mục / hợp đồng muốn thấy ngay.
+  const [ganBusy, setGanBusy] = useState(false);
+  const ganQuotaHopDong = useCallback(async () => {
+    setGanBusy(true);
+    setError('');
+    try {
+      const r = await api('ganQuotaHopDong');
+      const k = r.result || {};
+      if (k.dang_chay) {
+        setNotice('Đang có lượt gắn quota ↔ hợp đồng khác chạy, thử lại sau ít giây.');
+      } else {
+        setGanLanCuoi(k);
+        setNotice(
+          `Đã gắn ${k.them || 0} liên kết quota ↔ hợp đồng: ` +
+            `${k.so_dong_quota_co_lien_ket || 0} dòng quota, ${k.so_dong_hd_co_lien_ket || 0} dòng hợp đồng.`,
+        );
+      }
+    } catch (e) {
+      setError('Gắn quota ↔ hợp đồng thất bại: ' + e.message);
+    } finally {
+      setGanBusy(false);
     }
   }, []);
 
@@ -2691,21 +2719,6 @@ function AppInner({ initialAuth, onLogin }) {
                 Xuất Excel
               </button>
             )}
-            {isAdmin && tab !== 'diaban' && (
-              <button
-                onClick={xuatQuotaThau}
-                disabled={quotaXuatBusy}
-                title="Xuất quota thầu toàn bộ (đợt thầu mới + cột cũ), kèm On hand / Upcoming và cảnh báo quota lệch kế hoạch"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 disabled:opacity-60"
-              >
-                {quotaXuatBusy ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Download size={14} />
-                )}
-                Xuất quota thầu
-              </button>
-            )}
             {tab === 'diaban' && diaBanToolbar && diaBanToolbar()}
             {tab !== 'diaban' && (
               <div className="relative">
@@ -3021,7 +3034,13 @@ function AppInner({ initialAuth, onLogin }) {
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
         ) : tab === 'dotthieu' && (isAdmin || auth.role === 'manager') ? (
-          <DotThieuThongTinView customers={custSource} rows={teamRows} canEdit={canEdit} />
+          <DotThieuThongTinView
+            customers={custSource}
+            rows={teamRows}
+            canEdit={canEdit}
+            ganQuotaHd={isAdmin ? { onGan: ganQuotaHopDong, busy: ganBusy, lanCuoi: ganLanCuoi } : null}
+            xuatQuota={isAdmin ? { onXuat: xuatQuotaThau, busy: quotaXuatBusy } : null}
+          />
         ) : tab === 'sosanhkh' && (isAdmin || auth.role === 'manager') ? (
           <SoSanhKeHoachView viewBu={viewBu} isAdmin={isAdmin} curMonth={curMonth} />
         ) : tab === 'sosanhgia' && (isAdmin || auth.role === 'manager') ? (

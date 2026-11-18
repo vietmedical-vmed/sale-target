@@ -1,5 +1,5 @@
 import { useState, useMemo, useContext } from 'react';
-import { Clock } from './icons.jsx';
+import { Clock, Download, Loader2, RefreshCw } from './icons.jsx';
 import { CURRENT_MONTH, NO_MSET } from '../config/constants.js';
 import { QuotaThauCtx, DotEditor, dotDuThongTin, QuotaThauModal } from './QuotaThau.jsx';
 import { sanPhamAmQuota } from '../lib/quota.js';
@@ -14,7 +14,13 @@ const ty = (v) => (v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 }
 //  1. Đợt chính thức còn thiếu tháng thầu / hiệu lực (dữ liệu cũ). Quota mới không nhập
 //     được vào các đợt này cho tới khi điền đủ; điền ngay tại đây.
 //  2. Sản phẩm trên Chi tiết kế hoạch có quota khả dụng âm → quota chưa điền / điền sai.
-export function DotThieuThongTinView({ customers = [], rows = [], canEdit = false }) {
+//  Admin có thêm 2 nút:
+//   - "Xuất quota thầu" (xuatQuota = { onXuat, busy }): xuất Excel quota thầu toàn bộ BU.
+//   - "Gắn quota ↔ HĐ" (ganQuotaHd = { onGan, busy, lanCuoi }): gắn lại liên kết quota ↔ hợp
+//     đồng cho các khoá KH × SP đã khớp; cron 01:30 mỗi đêm cũng chạy.
+export function DotThieuThongTinView({
+  customers = [], rows = [], canEdit = false, ganQuotaHd = null, xuatQuota = null,
+}) {
   const ctx = useContext(QuotaThauCtx);
   const [loi, setLoi] = useState('');
   const [search, setSearch] = useState('');
@@ -90,12 +96,42 @@ export function DotThieuThongTinView({ customers = [], rows = [], canEdit = fals
           <Clock size={20} className="text-emerald-600" />
           <h2 className="text-lg font-bold text-slate-800">Kiểm tra thông tin thầu</h2>
         </div>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Lọc PS, KH, nhóm, sản phẩm…"
-          className="px-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-64 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          {xuatQuota && (
+            <button
+              onClick={xuatQuota.onXuat}
+              disabled={xuatQuota.busy}
+              title="Xuất quota thầu toàn bộ (đợt thầu mới + cột cũ), kèm On hand / Upcoming và cảnh báo quota lệch kế hoạch"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 disabled:opacity-60"
+            >
+              {xuatQuota.busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Xuất quota thầu
+            </button>
+          )}
+          {ganQuotaHd && (
+            <button
+              onClick={ganQuotaHd.onGan}
+              disabled={ganQuotaHd.busy}
+              title={
+                'Gắn lại liên kết quota ↔ hợp đồng cho các khoá KH × SP đã khớp (tự chạy 01:30 mỗi đêm).' +
+                (ganQuotaHd.lanCuoi && ganQuotaHd.lanCuoi.luc
+                  ? `\nLần chạy cuối: ${new Date(ganQuotaHd.lanCuoi.luc).toLocaleString('vi-VN')}` +
+                    ` (${ganQuotaHd.lanCuoi.nguoi || ''}) — ${ganQuotaHd.lanCuoi.them || 0} liên kết`
+                  : '')
+              }
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 disabled:opacity-60"
+            >
+              {ganQuotaHd.busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Gắn quota ↔ HĐ
+            </button>
+          )}
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Lọc PS, KH, nhóm, sản phẩm…"
+            className="px-3 py-1.5 text-[13px] border border-slate-200 rounded-md w-64 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          />
+        </div>
       </div>
 
       <section className="space-y-3">

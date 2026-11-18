@@ -1385,6 +1385,18 @@ Deno.serve(async (req) => {
       return json({ ok: true, rows });
     }
 
+    // ---- Gắn lại liên kết quota ↔ hợp đồng (cron 01:30 hằng đêm cũng chạy) — chỉ admin ----
+    if (action === "ganQuotaHopDong") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+      const { data, error } = await db.schema("app_sale").rpc("chay_gan_quota_hop_dong", {
+        p_actor: sess.u || null,
+      });
+      if (error) throw new Error(error.message);
+      const r = (data || {}) as Record<string, unknown>;
+      if (!r.dang_chay) await writeAuditLog(db, sess, "ganQuotaHopDong", Number(r.them) || 0, r);
+      return json({ ok: true, result: r });
+    }
+
     // ---- Quota chờ duyệt (chuyển từ cột cũ sale_target, app chưa hiện) — chỉ admin ----
     if (action === "getQuotaChoDuyet") {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
