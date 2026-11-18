@@ -2773,7 +2773,7 @@ function AppInner({ initialAuth, onLogin }) {
                 label="Kiểm tra thông tin thầu"
               />
             )}
-            {isAdmin && (
+            {(isAdmin || auth.role === 'manager') && (
               <TabBtn
                 active={tab === 'sosanhgia'}
                 onClick={() => setTab('sosanhgia')}
@@ -3024,7 +3024,7 @@ function AppInner({ initialAuth, onLogin }) {
           <DotThieuThongTinView customers={custSource} rows={teamRows} canEdit={canEdit} />
         ) : tab === 'sosanhkh' && (isAdmin || auth.role === 'manager') ? (
           <SoSanhKeHoachView viewBu={viewBu} isAdmin={isAdmin} curMonth={curMonth} />
-        ) : tab === 'sosanhgia' && isAdmin ? (
+        ) : tab === 'sosanhgia' && (isAdmin || auth.role === 'manager') ? (
           <SoSanhGiaView rows={teamRows} priceOf={priceOf} onUpdatePrice={updatePriceRows} />
         ) : tab === 'diaban' ? (
           <DiaBanView

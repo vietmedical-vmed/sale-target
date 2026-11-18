@@ -434,20 +434,24 @@ Deno.serve(async (req) => {
         if (!patch) { patch = {}; byRow.set(id, patch); }
         patch[COL[u.key]] = u.value === "" ? null : u.value;
       }
-      // Manager không được ghi thẳng doanh thu đầu năm: server tự tính = SL × đơn giá
-      // (đơn giá mới trong cùng lượt sửa nếu có, không thì đơn giá trên dòng).
-      if (isManager) {
-        const revIds = [...byRow].filter(([, p]) => COL.rev in p).map(([id]) => id);
-        if (revIds.length) {
-          const { data: priceRows, error: priceErr } = await db.schema("shared").from("sale_target")
-            .select("id, don_gia").in("id", revIds);
-          if (priceErr) throw new Error(priceErr.message);
-          const priceMap = new Map<number, unknown>();
-          for (const r of priceRows || []) priceMap.set(r.id, r.don_gia);
-          for (const id of revIds) {
+      // Ngoài admin, không ai ghi thẳng doanh thu đầu năm: khi lượt sửa đổi SL đầu năm hoặc
+      // đơn giá, server tự tính = SL × đơn giá (giá trị mới trong lượt sửa nếu có, không thì
+      // giá trị đang có trên dòng). Trước đây chỉ tính khi đổi SL nên manager đổi đơn giá
+      // (tab So sánh đơn giá / ô chi tiết) để doanh thu đầu năm lệch giá mới.
+      if (!isAdmin) {
+        const dtIds = [...byRow].filter(([, p]) => COL.rev in p || COL.price in p).map(([id]) => id);
+        if (dtIds.length) {
+          const { data: curRows, error: curErr } = await db.schema("shared").from("sale_target")
+            .select(`id, ${COL.price}, ${COL.rev}`).in("id", dtIds);
+          if (curErr) throw new Error(curErr.message);
+          const curMap = new Map<number, Record<string, unknown>>();
+          for (const r of curRows || []) curMap.set(r.id, r);
+          for (const id of dtIds) {
             const patch = byRow.get(id)!;
-            const price = COL.price in patch ? patch[COL.price] : priceMap.get(id);
-            patch[COL.dt] = (Number(patch[COL.rev]) || 0) * (Number(price) || 0);
+            const cur = curMap.get(id) || {};
+            const price = COL.price in patch ? patch[COL.price] : cur[COL.price];
+            const sl = COL.rev in patch ? patch[COL.rev] : cur[COL.rev];
+            patch[COL.dt] = (Number(sl) || 0) * (Number(price) || 0);
           }
         }
       }
