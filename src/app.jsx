@@ -2884,7 +2884,10 @@ function AppInner({ initialAuth, onLogin }) {
             </div>
           )}
         </header>
-        {tab !== 'audit' && tab !== 'dotthieu' && tab !== 'sosanhgia' && tab !== 'sosanhkh' && (
+        {/* Thẻ BU hiện ở mọi tab có lọc theo viewBu. Lịch sử cập nhật không dùng
+            viewBu (server lọc theo quyền) nên không hiện. Thẻ thống kê chỉ ở 3 tab kế hoạch. */}
+        {tab !== 'audit' &&
+          (canSwitchTeam(auth.role) || !['dotthieu', 'sosanhgia', 'sosanhkh'].includes(tab)) && (
           <div className="px-6 pt-4">
             {canSwitchTeam(auth.role) && (
               <TeamSummaryBar
@@ -2894,7 +2897,7 @@ function AppInner({ initialAuth, onLogin }) {
                 onChange={setViewBu}
               />
             )}
-            {tab !== 'diaban' && (
+            {(tab === 'detail' || tab === 'summary' || tab === 'prodsum') && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
                 {/* Lưới 4 cột thẳng hàng với thẻ BU: 2 thanh | top 5 nhóm SP | waterfall (2 cột) */}
                 <div className="flex flex-col gap-2">
