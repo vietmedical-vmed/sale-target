@@ -1,7 +1,7 @@
 import { useState, useMemo, useContext, useEffect, useCallback, useRef } from 'react';
 import { Clock, Download, Loader2, RefreshCw, AlertCircle, Search } from './icons.jsx';
 import { CURRENT_MONTH, NO_MSET, TEAMS } from '../config/constants.js';
-import { QuotaThauCtx, DotEditor, dotDuThongTin, QuotaThauModal } from './QuotaThau.jsx';
+import { QuotaThauCtx, DotEditor, dotDuThongTin, QuotaThauModal, grpKey } from './QuotaThau.jsx';
 import { MultiSelect } from './MultiSelect.jsx';
 import { sanPhamAmQuota } from '../lib/quota.js';
 import { deaccent, custLabel } from '../lib/text.js';
@@ -877,6 +877,14 @@ export function KiemTraThauView({
             if (dong) setChiTiet(null);
           }}
           onSuaQuota={moSuaQuotaTuHd}
+          dotsOf={(ps, custId, grp) => {
+            const fy = (rows.find((x) => x.fy) || {}).fy || 'FY26';
+            return ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || [];
+          }}
+          onQuotaDoi={async () => {
+            // Quota / đợt đổi trên server: nạp lại để lưới, bước 1 và bước 2 thấy ngay.
+            if (ctx.napLai) await ctx.napLai();
+          }}
         />
       )}
       {suaQuota && (

@@ -348,8 +348,9 @@ function AppInner({ initialAuth, onLogin }) {
       saveDot,
       deleteDot,
       saveQuota,
+      napLai: napLaiQuota,
     }),
-    [dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota],
+    [dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota, napLaiQuota],
   );
   const applyLogin = (a) => {
     setAuth(a);

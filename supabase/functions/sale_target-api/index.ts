@@ -1597,6 +1597,30 @@ Deno.serve(async (req) => {
       return json({ ok: true, deleted: Number(data) || 0 });
     }
 
+    // Quota 1.4 có HĐ ký trong năm → thầu chính / bổ sung (quy tắc R1): vào đợt có sẵn đã tới
+    // tháng thầu, hoặc tạo đợt mới theo tháng ký + hạn HĐ; rồi chạy lại gắn liên kết tự động.
+    if (action === "ktChuyen14TheoHd") {
+      const quotaId = Number(payload.quotaId);
+      const itemId = Number(payload.itemId);
+      const sl = Number(payload.sl);
+      const khoa = String(payload.khoa || "").trim();
+      const loaiDich = String(payload.loaiDich || "chinh");
+      const dotDich = payload.dotDich == null || payload.dotDich === "" ? null : Number(payload.dotDich);
+      const hieuLuc = payload.hieuLuc == null || payload.hieuLuc === "" ? null : Number(payload.hieuLuc);
+      if (!Number.isFinite(quotaId) || !Number.isFinite(itemId) || !khoa || !(sl > 0)) {
+        return json({ ok: false, error: "thieu_tham_so" }, 400);
+      }
+      const { data, error } = await db.schema("app_sale").rpc("chuyen_quota_1_4_theo_hop_dong", {
+        p_quota_id: quotaId, p_contract_item_id: itemId, p_khoa: khoa, p_sl: sl,
+        p_loai_dich: loaiDich, p_dot_dich: dotDich, p_thang: String(payload.thang || "").trim() || null,
+        p_hieu_luc: hieuLuc, p_nguoi: sess.n || sess.u,
+      });
+      if (error) return json({ ok: false, error: error.message }, 409);
+      const gan = await db.schema("app_sale").rpc("chay_gan_quota_hop_dong", { p_actor: sess.u || null });
+      await writeAuditLog(db, sess, "ktChuyen14TheoHd", 1, { quotaId, itemId, khoa, sl, ketQua: data });
+      return json({ ok: true, result: data, gan: gan.data ?? null });
+    }
+
     // Ghép mã quota → khoá HĐ riêng 1 KH rồi chạy lại gắn liên kết tự động để thấy kết quả ngay.
     if (action === "ktThemAlias") {
       const kh = String(payload.kh || "").trim();

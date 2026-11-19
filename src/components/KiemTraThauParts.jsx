@@ -4,6 +4,7 @@ import { Modal } from './Modal.jsx';
 import { api } from '../api/client.js';
 import { fmtInt, moneyTy3 } from '../lib/format.js';
 import { TRANG_THAI, trangThaiCua, LOAI_DOT } from '../lib/kiemTraThau.js';
+import { CURRENT_MONTH } from '../config/constants.js';
 
 // ---------- ô trạng thái xử lý của 1 việc ----------
 export function XuLyPill({ rec, onClick }) {
@@ -274,7 +275,19 @@ export const KqPill = ({ kq }) => (
   </span>
 );
 
-export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDaDoi, onSuaQuota }) {
+// Cửa sổ của dòng quota: 1.4 ứng với HĐ ký trước năm TC ('truoc'), chính / BS ứng với HĐ ký
+// trong năm ('trong'). Gắn khác cửa sổ = dấu hiệu quota bị phân loại nhầm.
+const khacCuaSo = (ttQuota, cuaSoHd) =>
+  (ttQuota === 'cu' && cuaSoHd === 'trong') || (ttQuota !== 'cu' && cuaSoHd === 'truoc');
+const soThang = (tu, den) => {
+  if (!tu || !den) return null;
+  const [y1, m1] = tu.split('-').map(Number);
+  const [y2, m2] = den.split('-').map(Number);
+  const n = y2 * 12 + m2 - (y1 * 12 + m1);
+  return n >= 1 && n <= 120 ? n : null;
+};
+
+export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDaDoi, onSuaQuota, dotsOf, onQuotaDoi }) {
   const r = viec.row;
   const [data, setData] = useState(null);
   const [loi, setLoi] = useState('');
@@ -282,6 +295,8 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
   const [chonQ, setChonQ] = useState(null);
   const [chonH, setChonH] = useState(null);
   const [sl, setSl] = useState('');
+  // khung chuyển 1.4 → thầu chính theo HĐ
+  const [cv, setCv] = useState({ sl: '', dot: '', loai: 'chinh', thang: '', hl: '' });
   const tai = () => {
     setLoi('');
     api('ktChiTietKhoa', { kh: r.kh, khoa: r.khoa })
@@ -314,6 +329,32 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
       .sort((a, b) => Number(b.cungNhom) - Number(a.cungNhom) || String(a.tenSp).localeCompare(String(b.tenSp), 'vi'))
       .slice(0, 30);
   }, [hdRows, r, viec]);
+  const lienKetLech = (l) => {
+    const hh = hopDong.find((x) => x.itemId === l.itemId);
+    return !!hh && ((l.cuaSo === 'quota_1_4' && hh.cuaSo === 'trong') || (l.cuaSo === 'trong_nam' && hh.cuaSo === 'truoc'));
+  };
+  const qChon = quota.find((q) => q.quotaId === chonQ) || null;
+  const hChon = hopDong.find((h) => h.itemId === chonH) || null;
+  const lechCuaSo = !!(qChon && hChon && khacCuaSo(qChon.tt, hChon.cuaSo));
+  const coTheChuyen = !!(canEdit && qChon && hChon && qChon.tt === 'cu' && hChon.cuaSo === 'trong' && !qChon.bung);
+  // Đợt đích có sẵn: cùng PS × KH × nhóm, loại đang chọn, đủ tháng + HL và đã tới tháng thầu.
+  const dotCoSan = useMemo(() => {
+    if (!qChon || !dotsOf) return [];
+    return dotsOf(qChon.ps, r.kh, qChon.nhom).filter(
+      (d) => d.loai === cv.loai && /^\d{4}-\d{2}$/.test(d.thang || '') && Number(d.thoiGian) > 0 && d.thang <= CURRENT_MONTH,
+    );
+  }, [qChon, dotsOf, r.kh, cv.loai]);
+  useEffect(() => {
+    if (!qChon || !hChon) return;
+    const thang = (hChon.ngayKy || '').slice(0, 7);
+    setCv({
+      sl: String(Math.min(Number(qChon.soLuong) || 0, Number(hChon.soLuong) || 0) || ''),
+      dot: '',
+      loai: 'chinh',
+      thang,
+      hl: String(soThang(thang, (hChon.thoiHan || '').slice(0, 7)) || ''),
+    });
+  }, [qChon, hChon]);
   const run = async (fn) => {
     setBusy(true);
     setLoi('');
@@ -329,10 +370,54 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
     run(async () => {
       const v = Number(String(sl).replace(',', '.'));
       if (!chonQ || !chonH || !(v > 0)) throw new Error('Chọn 1 dòng quota, 1 dòng HĐ và nhập SL > 0.');
+      if (
+        lechCuaSo &&
+        !confirm(
+          `Dòng quota là ${qChon.tt === 'cu' ? 'Quota 1.4' : 'thầu chính / BS'} nhưng HĐ ${hChon.cuaSo === 'trong' ? 'ký trong năm' : 'ký trước năm TC'}: gắn khác cửa sổ.\n\n` +
+            'Liên kết tay KHÔNG đổi kết quả đối chiếu hay loại quota, khoá vẫn báo lệch.' +
+            (qChon.tt === 'cu' && hChon.cuaSo === 'trong' ? ' Nên dùng "Chuyển sang thầu chính" ở trên.' : '') +
+            '\n\nVẫn gắn tay?',
+        )
+      )
+        return;
       await api('ktGanTay', { quotaId: chonQ, itemId: chonH, khoa: r.khoa, slHd: v });
       setChonQ(null);
       setChonH(null);
       setSl('');
+      tai();
+      onDaDoi && onDaDoi(false);
+    });
+  const chuyen = () =>
+    run(async () => {
+      const v = Number(String(cv.sl).replace(',', '.'));
+      if (!(v > 0) || v > Number(qChon.soLuong)) throw new Error(`SL chuyển phải từ 1 đến ${fmtInt(qChon.soLuong)}.`);
+      const dotMoi = cv.dot === '';
+      if (dotMoi && (!/^\d{4}-\d{2}$/.test(cv.thang) || !(Number(cv.hl) >= 1 && Number(cv.hl) <= 120)))
+        throw new Error('Đợt mới cần tháng thầu (yyyy-mm) và hiệu lực 1..120 tháng.');
+      const dich = dotMoi
+        ? `${LOAI_DOT[cv.loai]} đợt MỚI, tháng ${cv.thang}, hiệu lực ${cv.hl} tháng`
+        : `${LOAI_DOT[cv.loai]} đợt ${cv.dot}`;
+      if (
+        !confirm(
+          `Chuyển ${fmtInt(v)} quota 1.4 "${qChon.sp}" (${qChon.ps}) sang ${dich}?\n\n` +
+            `Theo HĐ ${hChon.soHd} ký ${hChon.ngayKy}${hChon.thoiHan ? ', hạn ' + hChon.thoiHan : ''}. ` +
+            'Quota đổi loại ngay (on hand từ tháng thầu), kế hoạch không đổi. Hệ thống chạy lại gắn liên kết tự động.',
+        )
+      )
+        return;
+      const res = await api('ktChuyen14TheoHd', {
+        quotaId: qChon.quotaId,
+        itemId: hChon.itemId,
+        khoa: r.khoa,
+        sl: v,
+        loaiDich: cv.loai,
+        dotDich: dotMoi ? null : Number(cv.dot),
+        thang: dotMoi ? cv.thang : null,
+        hieuLuc: dotMoi ? Number(cv.hl) : null,
+      });
+      if (onQuotaDoi) await onQuotaDoi(res.result);
+      setChonQ(null);
+      setChonH(null);
       tai();
       onDaDoi && onDaDoi(false);
     });
@@ -416,7 +501,7 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                   <table className="w-full">
                     <thead className="bg-slate-50">
                       <tr>
-                        {isAdmin && <th className={th} />}
+                        {(isAdmin || canEdit) && <th className={th} />}
                         <th className={th}>PS</th>
                         <th className={th}>Loại · đợt</th>
                         <th className={th}>Tháng thầu</th>
@@ -437,7 +522,7 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                       )}
                       {quota.map((q) => (
                         <tr key={q.quotaId} className="border-t border-slate-100">
-                          {isAdmin && (
+                          {(isAdmin || canEdit) && (
                             <td className={td}>
                               <input type="radio" name="kt-q" checked={chonQ === q.quotaId} onChange={() => setChonQ(q.quotaId)} />
                             </td>
@@ -469,7 +554,7 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                   <table className="w-full">
                     <thead className="bg-slate-50">
                       <tr>
-                        {isAdmin && <th className={th} />}
+                        {(isAdmin || canEdit) && <th className={th} />}
                         <th className={th}>Số HĐ</th>
                         <th className={th}>Ngày ký</th>
                         <th className={th}>Hạn</th>
@@ -492,7 +577,7 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                       )}
                       {hopDong.map((h) => (
                         <tr key={h.itemId} className="border-t border-slate-100">
-                          {isAdmin && (
+                          {(isAdmin || canEdit) && (
                             <td className={td}>
                               <input
                                 type="radio"
@@ -526,6 +611,80 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                   </table>
                 </div>
               </section>
+              {lechCuaSo && (
+                <div className="px-3 py-2 rounded border border-amber-300 bg-amber-50 text-amber-900">
+                  <b>Khác cửa sổ:</b> dòng quota là {qChon.tt === 'cu' ? 'Quota 1.4' : 'thầu chính / BS'} nhưng HĐ{' '}
+                  {hChon.cuaSo === 'trong' ? 'ký trong năm' : 'ký trước năm TC'}. Gắn tay chỉ ghi liên kết, không đổi kết
+                  quả đối chiếu hay loại quota.
+                  {qChon.tt === 'cu' && hChon.cuaSo === 'trong' && ' Đúng ra quota phải là thầu chính / bổ sung theo HĐ này.'}
+                </div>
+              )}
+              {coTheChuyen && (
+                <div className="px-3 py-2.5 rounded border border-blue-200 bg-blue-50/50 space-y-2">
+                  <div className="font-semibold text-slate-700">
+                    Chuyển quota 1.4 → thầu chính / bổ sung theo HĐ {hChon.soHd}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-slate-600">SL</span>
+                    <input
+                      value={cv.sl}
+                      onChange={(e) => setCv((p) => ({ ...p, sl: e.target.value }))}
+                      className="w-20 px-2 py-1 border border-slate-200 rounded text-right tabular-nums bg-white"
+                    />
+                    <span className="text-slate-400">/ {fmtInt(qChon.soLuong)}</span>
+                    <select
+                      value={cv.loai}
+                      onChange={(e) => setCv((p) => ({ ...p, loai: e.target.value, dot: '' }))}
+                      className="px-2 py-1 border border-slate-200 rounded bg-white"
+                    >
+                      <option value="chinh">Thầu chính</option>
+                      <option value="bo_sung">Thầu bổ sung</option>
+                    </select>
+                    <select
+                      value={cv.dot}
+                      onChange={(e) => setCv((p) => ({ ...p, dot: e.target.value }))}
+                      className="px-2 py-1 border border-slate-200 rounded bg-white"
+                    >
+                      <option value="">Đợt mới theo HĐ</option>
+                      {dotCoSan.map((d) => (
+                        <option key={d.dot} value={d.dot}>
+                          Đợt {d.dot} · {d.thang} · {d.thoiGian} th
+                        </option>
+                      ))}
+                    </select>
+                    {cv.dot === '' && (
+                      <>
+                        <span className="text-slate-600">tháng thầu</span>
+                        <input
+                          value={cv.thang}
+                          onChange={(e) => setCv((p) => ({ ...p, thang: e.target.value }))}
+                          placeholder="yyyy-mm"
+                          className="w-24 px-2 py-1 border border-slate-200 rounded bg-white"
+                        />
+                        <span className="text-slate-600">hiệu lực</span>
+                        <input
+                          value={cv.hl}
+                          onChange={(e) => setCv((p) => ({ ...p, hl: e.target.value }))}
+                          className="w-14 px-2 py-1 border border-slate-200 rounded text-right bg-white"
+                        />
+                        <span className="text-slate-600">tháng</span>
+                      </>
+                    )}
+                    <button
+                      onClick={chuyen}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold rounded border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      {busy && <Loader2 size={12} className="animate-spin" />}
+                      Chuyển sang {cv.loai === 'chinh' ? 'thầu chính' : 'thầu bổ sung'}
+                    </button>
+                  </div>
+                  <div className="text-slate-500">
+                    Mặc định theo quy tắc R1: tháng thầu = tháng ký ({(hChon.ngayKy || '').slice(0, 7)}), hiệu lực = số tháng
+                    từ tháng ký tới tháng hết hạn HĐ. Đợt có sẵn chỉ hiện đợt đủ thông tin và đã tới tháng thầu.
+                  </div>
+                </div>
+              )}
               {isAdmin && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-slate-600">Gắn tay dòng quota ↔ dòng HĐ đã chọn, SL theo đơn vị HĐ:</span>
@@ -569,7 +728,17 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                           <tr key={l.id} className="border-t border-slate-100">
                             <td className={td}>#{l.quotaId}</td>
                             <td className={td}>{l.maHd}</td>
-                            <td className={td}>{l.cuaSo === 'quota_1_4' ? 'Quota 1.4' : 'Trong năm'}</td>
+                            <td className={td}>
+                              {l.cuaSo === 'quota_1_4' ? 'Quota 1.4' : 'Trong năm'}
+                              {lienKetLech(l) && (
+                                <span
+                                  className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-medium"
+                                  title="Cửa sổ của liên kết khác cửa sổ của dòng HĐ"
+                                >
+                                  khác cửa sổ
+                                </span>
+                              )}
+                            </td>
                             <td className={`${td} text-right tabular-nums`}>{fmtInt(l.slHd)}</td>
                             <td className={`${td} text-right tabular-nums`}>{fmtInt(l.slQuota)}</td>
                             <td className={td}>
