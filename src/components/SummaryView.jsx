@@ -524,19 +524,25 @@ export function SummaryView({
     onExport(() => exportSummaryPS(data, base));
     return () => onExport(null);
   }, [data, base, onExport]);
-  // Xuất giải trình tháng hiện tại theo PS × KH × nhóm SP đang hiện.
+  // Xuất giải trình 1 tháng (mặc định tháng hiện tại) theo PS × KH × nhóm SP đang hiện.
+  // Chọn được các tháng của năm tài chính tới tháng hiện tại, mới nhất trước.
+  // Tính mỗi lần render: admin đổi tháng hiện tại thì danh sách đổi theo.
+  const curIdxGt = getCurIdx();
+  const thangChonGt = (curIdxGt >= 0 ? MONTHS.slice(0, curIdxGt + 1) : MONTHS).slice().reverse();
+  const [thangChon, setThangChon] = useState(CURRENT_MONTH);
+  const thangGt = thangChonGt.includes(thangChon) ? thangChon : thangChonGt[0];
   const [xuatGt, setXuatGt] = useState(false);
   const xuatGiaiTrinh = async () => {
     setXuatGt(true);
     try {
-      const r = await api('getGiaiTrinhThang', { month: CURRENT_MONTH });
-      await exportGiaiTrinh(data, r.logs || [], CURRENT_MONTH);
+      const r = await api('getGiaiTrinhThang', { month: thangGt });
+      await exportGiaiTrinh(data, r.logs || [], thangGt);
     } catch (e) {
       alert('Lỗi xuất giải trình: ' + (e.message || e));
     }
     setXuatGt(false);
   };
-  const thangGt = CURRENT_MONTH ? `T${Number(CURRENT_MONTH.slice(5))}/${CURRENT_MONTH.slice(2, 4)}` : '';
+  const nhanThang = (mo) => (mo ? `T${Number(mo.slice(5))}/${mo.slice(2, 4)}` : '');
   return (
     <React.Fragment>
       <GiaiTrinhModal
@@ -547,14 +553,29 @@ export function SummaryView({
       <div className="px-6 pb-8">
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
-            <button
-              onClick={xuatGiaiTrinh}
-              disabled={xuatGt}
-              title={`Xuất Excel giải trình ${thangGt} theo PS × Khách hàng × Nhóm SP đang hiện (chưa có giải trình thì để trống)`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-60"
-            >
-              {xuatGt ? 'Đang xuất…' : `📝 Xuất giải trình ${thangGt}`}
-            </button>
+            <div className="inline-flex items-center rounded-md border border-amber-200 bg-white overflow-hidden text-[12px] font-medium">
+              <button
+                onClick={xuatGiaiTrinh}
+                disabled={xuatGt}
+                title={`Xuất Excel giải trình ${nhanThang(thangGt)} theo PS × Khách hàng × Nhóm SP đang hiện (chưa có giải trình thì để trống; KH / TH YTD luỹ kế tới hết tháng chọn)`}
+                className="px-3 py-1.5 text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+              >
+                {xuatGt ? 'Đang xuất…' : '📝 Xuất giải trình'}
+              </button>
+              <select
+                value={thangGt}
+                onChange={(e) => setThangChon(e.target.value)}
+                disabled={xuatGt}
+                title="Chọn tháng giải trình cần xuất"
+                className="py-1.5 pl-2 pr-1 border-l border-amber-200 text-amber-700 bg-white outline-none cursor-pointer"
+              >
+                {thangChonGt.map((mo) => (
+                  <option key={mo} value={mo}>
+                    {nhanThang(mo)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="inline-flex items-center rounded-md border border-slate-200 bg-white overflow-hidden text-[12px] font-medium">
               <span className="px-2.5 py-1.5 text-slate-400 border-r border-slate-200">So TH với</span>
               {[

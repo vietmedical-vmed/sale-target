@@ -574,8 +574,12 @@ export async function exportGiaiTrinh(data, logs, month) {
     if (!byKey.has(k)) byKey.set(k, []);
     byKey.get(k).push(l);
   }
-  // KH YTD = DThu KH update luỹ kế tới hết tháng hiện tại; TH YTD = DThu thực hiện luỹ kế (VNĐ).
-  const H = ['Miền', 'PS', 'Mã KH', 'Khách hàng', 'Ngoài KH', 'Nhóm SP', 'DThu KH YTD', 'DThu TH YTD', 'Thời gian giải trình', 'Nội dung giải trình'];
+  // KH YTD = DThu KH update luỹ kế tới hết tháng `month`; TH YTD = DThu thực hiện luỹ kế
+  // tới hết tháng đó (VNĐ). Cộng từ mảng theo tháng nên khớp màn hình khi month = tháng hiện tại.
+  const mIdx = MONTHS.indexOf(month);
+  const luyKe = (arr) => (arr || []).reduce((a, v, i) => (i <= mIdx ? a + (Number(v) || 0) : a), 0);
+  const nhan = `T${Number(month.slice(5))}/${month.slice(2, 4)}`;
+  const H = ['Miền', 'PS', 'Mã KH', 'Khách hàng', 'Ngoài KH', 'Nhóm SP', `DThu KH YTD ${nhan}`, `DThu TH YTD ${nhan}`, 'Thời gian giải trình', 'Nội dung giải trình'];
   const aoa = [H];
   const daCo = new Set();
   for (const rg of data.regions) {
@@ -586,7 +590,7 @@ export async function exportGiaiTrinh(data, logs, month) {
           const k = key(g._ps, g._custId, g.grp);
           if (daCo.has(k)) continue;
           daCo.add(k);
-          const head = [rg.region, g._ps, g._custId, c.cust, c.oop ? 'x' : '', g.grp, g.khYtdDt || 0, g.dtYtd || 0];
+          const head = [rg.region, g._ps, g._custId, c.cust, c.oop ? 'x' : '', g.grp, c.oop ? 0 : luyKe(g.moKhDt), luyKe(g.moActDt)];
           const list = byKey.get(k);
           if (!list) aoa.push([...head, '', '']);
           else for (const l of list) aoa.push([...head, new Date(l.created_at), l.content || '']);
@@ -598,7 +602,7 @@ export async function exportGiaiTrinh(data, logs, month) {
   ws['!cols'] = [10, 18, 10, 36, 8, 24, 15, 15, 17, 80].map((wch) => ({ wch }));
   ws['!autofilter'] = { ref: `A1:${_ec(aoa.length - 1, H.length - 1)}` };
   const cTg = H.indexOf('Thời gian giải trình');
-  const cKh = H.indexOf('DThu KH YTD');
+  const cKh = 6; // DThu KH YTD, liền sau là DThu TH YTD
   for (let r = 1; r < aoa.length; r++) {
     _fmt(ws, r, cTg, 'dd/mm/yyyy hh:mm');
     _fmt(ws, r, cKh, '#,##0');
