@@ -1437,6 +1437,183 @@ Deno.serve(async (req) => {
       return json({ ok: true, result: r });
     }
 
+    // ---- Tab "Kiểm tra thông tin thầu" (admin + manager; ghi liên kết / ghép mã: admin) ----
+    // Bước: 'dot' đợt thiếu tháng / hiệu lực, 'am' SP quota khả dụng âm, 'hd' quota ↔ hợp đồng.
+    // Danh sách việc do app tính; server lưu trạng thái xử lý + ảnh chụp số liệu theo ngày.
+    if (_action.startsWith("kt") && sess.r !== "admin" && sess.r !== "manager") {
+      return json({ ok: false, error: "forbidden" }, 403);
+    }
+    const KT_BUOC = ["dot", "am", "hd"];
+    const ngayVn = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+
+    if (action === "ktGetTrangThai") {
+      const [xuLy, snap] = await Promise.all([
+        fetchPaged((from, to) => db.schema("app_sale").from("kiem_tra_thau_xu_ly")
+          .select("buoc, khoa, bu, trang_thai, nguoi_phu_trach, ghi_chu, mo_ta, cap_nhat_boi, cap_nhat_luc, xong_luc")
+          .order("buoc", { ascending: true }).order("khoa", { ascending: true }).range(from, to)),
+        // 45 ngày gần nhất là đủ để tìm bản trước ngày hôm nay của mỗi bước × BU.
+        fetchPaged((from, to) => db.schema("app_sale").from("kiem_tra_thau_snapshot")
+          .select("ngay, bu, buoc, so_viec, gia_tri, chi_tiet")
+          .gte("ngay", new Date(Date.now() - 45 * 86400e3).toISOString().slice(0, 10))
+          .order("ngay", { ascending: false }).range(from, to)),
+      ]);
+      return json({ ok: true, xuLy, snapshot: snap, homNay: ngayVn() });
+    }
+
+    if (action === "ktCapNhatXuLy") {
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      if (!items.length) return json({ ok: false, error: "no_items" }, 400);
+      if (items.length > 2000) return json({ ok: false, error: "too_many_items" }, 400);
+      const up: Record<string, unknown>[] = [];
+      const xoa: { buoc: string; khoa: string }[] = [];
+      const now = new Date().toISOString();
+      for (const it of items as Record<string, unknown>[]) {
+        const buoc = String(it.buoc || "");
+        const khoa = String(it.khoa || "");
+        if (!KT_BUOC.includes(buoc) || !khoa) return json({ ok: false, error: "item_khong_hop_le" }, 400);
+        const tt = it.trangThai == null || it.trangThai === "" ? null : String(it.trangThai);
+        if (tt === null) {
+          xoa.push({ buoc, khoa });
+          continue;
+        }
+        if (!["dang_xu_ly", "bo_qua", "xong"].includes(tt)) return json({ ok: false, error: "trang_thai_khong_hop_le" }, 400);
+        const ghiChu = String(it.ghiChu ?? "").trim();
+        if (tt === "bo_qua" && !ghiChu) return json({ ok: false, error: "bo_qua_can_ly_do" }, 400);
+        up.push({
+          buoc, khoa, bu: String(it.bu ?? ""), trang_thai: tt,
+          nguoi_phu_trach: String(it.nguoiPhuTrach ?? "").trim() || null,
+          ghi_chu: ghiChu || null,
+          mo_ta: String(it.moTa ?? "").slice(0, 500) || null,
+          cap_nhat_boi: sess.n || sess.u, cap_nhat_luc: now,
+          xong_luc: tt === "xong" ? now : null,
+        });
+      }
+      for (let i = 0; i < up.length; i += 500) {
+        const { error } = await db.schema("app_sale").from("kiem_tra_thau_xu_ly")
+          .upsert(up.slice(i, i + 500), { onConflict: "buoc,khoa" });
+        if (error) throw new Error(error.message);
+      }
+      for (const b of KT_BUOC) {
+        const keys = xoa.filter((x) => x.buoc === b).map((x) => x.khoa);
+        for (let i = 0; i < keys.length; i += 200) {
+          const { error } = await db.schema("app_sale").from("kiem_tra_thau_xu_ly")
+            .delete().eq("buoc", b).in("khoa", keys.slice(i, i + 200));
+          if (error) throw new Error(error.message);
+        }
+      }
+      // Tự đóng việc (xong) không ghi nhật ký để khỏi làm nhiễu tab Lịch sử.
+      if (!payload.tuDong) {
+        await writeAuditLog(db, sess, "ktCapNhatXuLy", items.length, {
+          items: (items as Record<string, unknown>[]).slice(0, 50).map((it) => ({
+            buoc: it.buoc, khoa: it.khoa, trangThai: it.trangThai ?? null,
+            nguoiPhuTrach: it.nguoiPhuTrach ?? null, ghiChu: it.ghiChu ?? null,
+          })),
+        });
+      }
+      return json({ ok: true, upserted: up.length, deleted: xoa.length });
+    }
+
+    if (action === "ktLuuSnapshot") {
+      const bu = String(payload.bu ?? "");
+      if (bu === "test") return json({ ok: true, skipped: true });
+      const items = Array.isArray(payload.items) ? payload.items as Record<string, unknown>[] : [];
+      const rows = items
+        .filter((it) => KT_BUOC.includes(String(it.buoc)))
+        .map((it) => ({
+          ngay: ngayVn(), bu, buoc: String(it.buoc),
+          so_viec: Math.max(0, Math.trunc(Number(it.soViec) || 0)),
+          gia_tri: Number(it.giaTri) || 0,
+          chi_tiet: it.chiTiet ?? null,
+          cap_nhat_boi: sess.n || sess.u, cap_nhat_luc: new Date().toISOString(),
+        }));
+      if (!rows.length) return json({ ok: false, error: "no_items" }, 400);
+      const { error } = await db.schema("app_sale").from("kiem_tra_thau_snapshot")
+        .upsert(rows, { onConflict: "ngay,bu,buoc" });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, ngay: rows[0].ngay });
+    }
+
+    if (action === "ktDoiChieuHopDong") {
+      const { data, error } = await db.schema("app_sale").rpc("kiem_tra_doi_chieu_hop_dong");
+      if (error) throw new Error(error.message);
+      const lanCuoi = await db.schema("shared").from("app_config")
+        .select("value").eq("key", "gan_quota_hop_dong_lan_cuoi").maybeSingle();
+      return json({ ok: true, rows: data || [], lanGan: lanCuoi.data?.value ?? null });
+    }
+
+    if (action === "ktGoiYDot") {
+      const { data, error } = await db.schema("app_sale").rpc("goi_y_dot_tu_hop_dong");
+      if (error) throw new Error(error.message);
+      return json({ ok: true, rows: data || [] });
+    }
+
+    if (action === "ktHopDongTheoSanPham") {
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      if (items.length > 5000) return json({ ok: false, error: "too_many_items" }, 400);
+      if (!items.length) return json({ ok: true, rows: [] });
+      const { data, error } = await db.schema("app_sale").rpc("hop_dong_theo_san_pham", { p_items: items });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, rows: data || [] });
+    }
+
+    if (action === "ktChiTietKhoa") {
+      const kh = String(payload.kh || "").trim();
+      const khoa = String(payload.khoa || "").trim();
+      if (!kh || !khoa) return json({ ok: false, error: "thieu_tham_so" }, 400);
+      const { data, error } = await db.schema("app_sale").rpc("chi_tiet_khoa_hop_dong", {
+        p_ma_kh: kh, p_khoa: khoa,
+      });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, ...(data || {}) });
+    }
+
+    if (action === "ktGanTay" || action === "ktBoGanTay" || action === "ktThemAlias") {
+      if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);
+    }
+
+    if (action === "ktGanTay") {
+      const quotaId = Number(payload.quotaId);
+      const itemId = Number(payload.itemId);
+      const slHd = Number(payload.slHd);
+      const khoa = String(payload.khoa || "").trim();
+      if (!Number.isFinite(quotaId) || !Number.isFinite(itemId) || !khoa || !(slHd > 0)) {
+        return json({ ok: false, error: "thieu_tham_so" }, 400);
+      }
+      const { data, error } = await db.schema("app_sale").rpc("gan_tay_quota_hop_dong", {
+        p_quota_id: quotaId, p_contract_item_id: itemId, p_khoa: khoa, p_sl_hd: slHd,
+        p_nguoi: sess.n || sess.u,
+      });
+      if (error) return json({ ok: false, error: error.message }, 409);
+      await writeAuditLog(db, sess, "ktGanTay", 1, { quotaId, itemId, khoa, slHd });
+      return json({ ok: true, result: data });
+    }
+
+    if (action === "ktBoGanTay") {
+      const id = Number(payload.id);
+      if (!Number.isFinite(id)) return json({ ok: false, error: "thieu_tham_so" }, 400);
+      const { data, error } = await db.schema("app_sale").rpc("bo_gan_tay_quota_hop_dong", { p_id: id });
+      if (error) throw new Error(error.message);
+      await writeAuditLog(db, sess, "ktBoGanTay", Number(data) || 0, { id });
+      return json({ ok: true, deleted: Number(data) || 0 });
+    }
+
+    // Ghép mã quota → khoá HĐ riêng 1 KH rồi chạy lại gắn liên kết tự động để thấy kết quả ngay.
+    if (action === "ktThemAlias") {
+      const kh = String(payload.kh || "").trim();
+      const khoaDen = String(payload.khoaDen || "").trim();
+      const maSp = (Array.isArray(payload.maSp) ? payload.maSp : [])
+        .map((x: unknown) => String(x || "").trim()).filter(Boolean);
+      if (!kh || !khoaDen || !maSp.length) return json({ ok: false, error: "thieu_tham_so" }, 400);
+      const { data, error } = await db.schema("app_sale").rpc("them_alias_khoa_sp", {
+        p_ma_kh: kh, p_ma_sp: maSp, p_khoa_den: khoaDen,
+        p_ghi_chu: String(payload.ghiChu || "").slice(0, 500) || null, p_nguoi: sess.n || sess.u,
+      });
+      if (error) return json({ ok: false, error: error.message }, 409);
+      const gan = await db.schema("app_sale").rpc("chay_gan_quota_hop_dong", { p_actor: sess.u || null });
+      await writeAuditLog(db, sess, "ktThemAlias", Number(data) || 0, { kh, maSp, khoaDen });
+      return json({ ok: true, them: Number(data) || 0, gan: gan.data ?? null });
+    }
+
     // ---- Quota chờ duyệt (chuyển từ cột cũ sale_target, app chưa hiện) — chỉ admin ----
     if (action === "getQuotaChoDuyet") {
       if (sess.r !== "admin") return json({ ok: false, error: "forbidden" }, 403);

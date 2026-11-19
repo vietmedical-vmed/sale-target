@@ -25,7 +25,7 @@ import { LoginGate } from './components/LoginGate.jsx';
 import { Modal } from './components/Modal.jsx';
 import { MultiSelect } from './components/MultiSelect.jsx';
 import { AuditLogView } from './components/AuditLogView.jsx';
-import { DotThieuThongTinView } from './components/DotThieuThongTinView.jsx';
+import { KiemTraThauView } from './components/KiemTraThauView.jsx';
 import { SoSanhGiaView } from './components/SoSanhGiaView.jsx';
 import { SoSanhKeHoachView } from './components/SoSanhKeHoachView.jsx';
 import { TeamSummaryBar } from './components/TeamBar.jsx';
@@ -3037,10 +3037,13 @@ function AppInner({ initialAuth, onLogin }) {
         {tab === 'audit' ? (
           <AuditLogView auth={auth} viewBu={viewBu} />
         ) : tab === 'dotthieu' && (isAdmin || auth.role === 'manager') ? (
-          <DotThieuThongTinView
+          <KiemTraThauView
             customers={custSource}
             rows={teamRows}
+            buRows={effectiveRows}
             canEdit={canEdit}
+            isAdmin={isAdmin}
+            viewBu={viewBu}
             ganQuotaHd={isAdmin ? { onGan: ganQuotaHopDong, busy: ganBusy, lanCuoi: ganLanCuoi } : null}
             xuatQuota={isAdmin ? { onXuat: xuatQuotaThau, busy: quotaXuatBusy } : null}
           />
