@@ -295,8 +295,8 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
   const [chonQ, setChonQ] = useState(null);
   const [chonH, setChonH] = useState(null);
   const [sl, setSl] = useState('');
-  // khung chuyển 1.4 → thầu chính theo HĐ
-  const [cv, setCv] = useState({ sl: '', dot: '', loai: 'chinh', thang: '', hl: '' });
+  // khung chuyển quota theo HĐ ký trong năm (1.4 → chính / BS, upcoming → đợt on hand)
+  const [cv, setCv] = useState({ sl: '', slDich: '', dot: '', loai: 'chinh', thang: '', hl: '' });
   const tai = () => {
     setLoi('');
     api('ktChiTietKhoa', { kh: r.kh, khoa: r.khoa })
@@ -336,7 +336,11 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
   const qChon = quota.find((q) => q.quotaId === chonQ) || null;
   const hChon = hopDong.find((h) => h.itemId === chonH) || null;
   const lechCuaSo = !!(qChon && hChon && khacCuaSo(qChon.tt, hChon.cuaSo));
-  const coTheChuyen = !!(canEdit && qChon && hChon && qChon.tt === 'cu' && hChon.cuaSo === 'trong' && !qChon.bung);
+  // Quota upcoming (đợt chưa tới tháng thầu / thiếu thông tin) mà HĐ đã ký trong năm.
+  const upDaKy = !!(qChon && hChon && qChon.tt === 'up' && hChon.cuaSo === 'trong');
+  const coTheChuyen = !!(
+    canEdit && qChon && hChon && (qChon.tt === 'cu' || qChon.tt === 'up') && hChon.cuaSo === 'trong' && !qChon.bung
+  );
   // Đợt đích có sẵn: cùng PS × KH × nhóm, loại đang chọn, đủ tháng + HL và đã tới tháng thầu.
   const dotCoSan = useMemo(() => {
     if (!qChon || !dotsOf) return [];
@@ -347,10 +351,13 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
   useEffect(() => {
     if (!qChon || !hChon) return;
     const thang = (hChon.ngayKy || '').slice(0, 7);
+    const lay = Math.min(Number(qChon.soLuong) || 0, Number(hChon.soLuong) || 0) || '';
     setCv({
-      sl: String(Math.min(Number(qChon.soLuong) || 0, Number(hChon.soLuong) || 0) || ''),
+      sl: String(lay),
+      // 1.4 → chính (R1): giữ tổng quota. Upcoming → on hand (V4): SL đợt mới theo HĐ.
+      slDich: String(qChon.tt === 'up' ? Number(hChon.soLuong) || lay : lay),
       dot: '',
-      loai: 'chinh',
+      loai: qChon.tt === 'up' && (qChon.loai === 'chinh' || qChon.loai === 'bo_sung') ? qChon.loai : 'chinh',
       thang,
       hl: String(soThang(thang, (hChon.thoiHan || '').slice(0, 7)) || ''),
     });
@@ -371,6 +378,14 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
       const v = Number(String(sl).replace(',', '.'));
       if (!chonQ || !chonH || !(v > 0)) throw new Error('Chọn 1 dòng quota, 1 dòng HĐ và nhập SL > 0.');
       if (
+        upDaKy &&
+        !confirm(
+          'Quota này đang upcoming nhưng HĐ đã ký trong năm. Liên kết tay KHÔNG đổi quota sang on hand, khoá vẫn báo lệch. ' +
+            'Nên dùng "Chuyển sang đợt on hand" ở trên.\n\nVẫn gắn tay?',
+        )
+      )
+        return;
+      if (
         lechCuaSo &&
         !confirm(
           `Dòng quota là ${qChon.tt === 'cu' ? 'Quota 1.4' : 'thầu chính / BS'} nhưng HĐ ${hChon.cuaSo === 'trong' ? 'ký trong năm' : 'ký trước năm TC'}: gắn khác cửa sổ.\n\n` +
@@ -390,7 +405,9 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
   const chuyen = () =>
     run(async () => {
       const v = Number(String(cv.sl).replace(',', '.'));
-      if (!(v > 0) || v > Number(qChon.soLuong)) throw new Error(`SL chuyển phải từ 1 đến ${fmtInt(qChon.soLuong)}.`);
+      if (!(v > 0) || v > Number(qChon.soLuong)) throw new Error(`SL lấy từ quota nguồn phải từ 1 đến ${fmtInt(qChon.soLuong)}.`);
+      const vDich = Number(String(cv.slDich).replace(',', '.'));
+      if (!(vDich > 0)) throw new Error('SL ở đợt đích phải > 0.');
       const dotMoi = cv.dot === '';
       if (dotMoi && (!/^\d{4}-\d{2}$/.test(cv.thang) || !(Number(cv.hl) >= 1 && Number(cv.hl) <= 120)))
         throw new Error('Đợt mới cần tháng thầu (yyyy-mm) và hiệu lực 1..120 tháng.');
@@ -399,17 +416,19 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
         : `${LOAI_DOT[cv.loai]} đợt ${cv.dot}`;
       if (
         !confirm(
-          `Chuyển ${fmtInt(v)} quota 1.4 "${qChon.sp}" (${qChon.ps}) sang ${dich}?\n\n` +
-            `Theo HĐ ${hChon.soHd} ký ${hChon.ngayKy}${hChon.thoiHan ? ', hạn ' + hChon.thoiHan : ''}. ` +
-            'Quota đổi loại ngay (on hand từ tháng thầu), kế hoạch không đổi. Hệ thống chạy lại gắn liên kết tự động.',
+          `Chuyển ${fmtInt(v)} quota ${qChon.tt === 'cu' ? '1.4' : 'upcoming (' + (LOAI_DOT[qChon.loai] || qChon.loai) + ' đợt ' + qChon.dot + ')'} "${qChon.sp}" (${qChon.ps}) sang ${dich}` +
+            (vDich !== v ? `, ghi ${fmtInt(vDich)} ở đợt đích (tổng quota ${vDich > v ? 'tăng' : 'giảm'} ${fmtInt(Math.abs(vDich - v))})` : '') +
+            `?\n\nTheo HĐ ${hChon.soHd} ký ${hChon.ngayKy}${hChon.thoiHan ? ', hạn ' + hChon.thoiHan : ''}. ` +
+            'Quota thành on hand ngay (từ tháng thầu của đợt đích), kế hoạch không đổi. Hệ thống chạy lại gắn liên kết tự động.',
         )
       )
         return;
-      const res = await api('ktChuyen14TheoHd', {
+      const res = await api('ktChuyenTheoHd', {
         quotaId: qChon.quotaId,
         itemId: hChon.itemId,
         khoa: r.khoa,
         sl: v,
+        slDich: vDich,
         loaiDich: cv.loai,
         dotDich: dotMoi ? null : Number(cv.dot),
         thang: dotMoi ? cv.thang : null,
@@ -619,19 +638,36 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                   {qChon.tt === 'cu' && hChon.cuaSo === 'trong' && ' Đúng ra quota phải là thầu chính / bổ sung theo HĐ này.'}
                 </div>
               )}
+              {upDaKy && (
+                <div className="px-3 py-2 rounded border border-amber-300 bg-amber-50 text-amber-900">
+                  <b>Upcoming đã ký HĐ:</b> quota thuộc {LOAI_DOT[qChon.loai] || qChon.loai} đợt {qChon.dot}
+                  {qChon.thang ? ` (tháng thầu ${qChon.thang})` : ' (đợt thiếu tháng / hiệu lực)'} nên còn tính upcoming, nhưng HĐ
+                  đã ký {hChon.ngayKy}. Gắn tay không đổi quota sang on hand; nên tách SP này sang đợt on hand theo HĐ.
+                </div>
+              )}
               {coTheChuyen && (
                 <div className="px-3 py-2.5 rounded border border-blue-200 bg-blue-50/50 space-y-2">
                   <div className="font-semibold text-slate-700">
-                    Chuyển quota 1.4 → thầu chính / bổ sung theo HĐ {hChon.soHd}
+                    {qChon.tt === 'cu'
+                      ? `Chuyển quota 1.4 → thầu chính / bổ sung theo HĐ ${hChon.soHd}`
+                      : `Tách quota upcoming → đợt on hand theo HĐ ${hChon.soHd}`}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-slate-600">SL</span>
+                    <span className="text-slate-600">Lấy</span>
                     <input
                       value={cv.sl}
                       onChange={(e) => setCv((p) => ({ ...p, sl: e.target.value }))}
+                      title="SL lấy khỏi dòng quota nguồn"
                       className="w-20 px-2 py-1 border border-slate-200 rounded text-right tabular-nums bg-white"
                     />
                     <span className="text-slate-400">/ {fmtInt(qChon.soLuong)}</span>
+                    <span className="text-slate-600">→ ghi</span>
+                    <input
+                      value={cv.slDich}
+                      onChange={(e) => setCv((p) => ({ ...p, slDich: e.target.value }))}
+                      title="SL ghi vào đợt đích. Khác SL lấy = đổi tổng quota (vd SL theo HĐ)"
+                      className="w-20 px-2 py-1 border border-slate-200 rounded text-right tabular-nums bg-white"
+                    />
                     <select
                       value={cv.loai}
                       onChange={(e) => setCv((p) => ({ ...p, loai: e.target.value, dot: '' }))}
@@ -676,12 +712,22 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold rounded border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
                     >
                       {busy && <Loader2 size={12} className="animate-spin" />}
-                      Chuyển sang {cv.loai === 'chinh' ? 'thầu chính' : 'thầu bổ sung'}
+                      {qChon.tt === 'cu'
+                        ? `Chuyển sang ${cv.loai === 'chinh' ? 'thầu chính' : 'thầu bổ sung'}`
+                        : 'Chuyển sang đợt on hand'}
                     </button>
                   </div>
                   <div className="text-slate-500">
-                    Mặc định theo quy tắc R1: tháng thầu = tháng ký ({(hChon.ngayKy || '').slice(0, 7)}), hiệu lực = số tháng
-                    từ tháng ký tới tháng hết hạn HĐ. Đợt có sẵn chỉ hiện đợt đủ thông tin và đã tới tháng thầu.
+                    Mặc định theo quy tắc {qChon.tt === 'cu' ? 'R1 (giữ tổng quota)' : 'V4 (chỉ tách SP có HĐ, SL ở đợt mới theo HĐ)'}:
+                    tháng thầu = tháng ký ({(hChon.ngayKy || '').slice(0, 7)}), hiệu lực = số tháng từ tháng ký tới tháng hết hạn
+                    HĐ. Đợt có sẵn chỉ hiện đợt đủ thông tin và đã tới tháng thầu.
+                    {Number(cv.slDich) !== Number(cv.sl) && Number(cv.sl) > 0 && Number(cv.slDich) > 0 && (
+                      <b className="text-amber-700">
+                        {' '}
+                        Tổng quota sẽ {Number(cv.slDich) > Number(cv.sl) ? 'tăng' : 'giảm'}{' '}
+                        {fmtInt(Math.abs(Number(cv.slDich) - Number(cv.sl)))}.
+                      </b>
+                    )}
                   </div>
                 </div>
               )}

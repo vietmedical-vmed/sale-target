@@ -1597,12 +1597,15 @@ Deno.serve(async (req) => {
       return json({ ok: true, deleted: Number(data) || 0 });
     }
 
-    // Quota 1.4 có HĐ ký trong năm → thầu chính / bổ sung (quy tắc R1): vào đợt có sẵn đã tới
-    // tháng thầu, hoặc tạo đợt mới theo tháng ký + hạn HĐ; rồi chạy lại gắn liên kết tự động.
-    if (action === "ktChuyen14TheoHd") {
+    // Chuyển quota theo HĐ ký trong năm: Quota 1.4 → thầu chính / BS (quy tắc R1), hoặc quota
+    // upcoming → đợt on hand (quy tắc V4). Đích: đợt có sẵn đã tới tháng thầu, hoặc đợt mới theo
+    // tháng ký + hạn HĐ; rồi chạy lại gắn liên kết tự động. ktChuyen14TheoHd = tên cũ (client cũ).
+    if (action === "ktChuyenTheoHd" || action === "ktChuyen14TheoHd") {
       const quotaId = Number(payload.quotaId);
       const itemId = Number(payload.itemId);
       const sl = Number(payload.sl);
+      const slDich = payload.slDich == null || payload.slDich === "" ? null : Number(payload.slDich);
+      if (slDich !== null && !(slDich > 0)) return json({ ok: false, error: "sl_khong_hop_le" }, 400);
       const khoa = String(payload.khoa || "").trim();
       const loaiDich = String(payload.loaiDich || "chinh");
       const dotDich = payload.dotDich == null || payload.dotDich === "" ? null : Number(payload.dotDich);
@@ -1610,14 +1613,14 @@ Deno.serve(async (req) => {
       if (!Number.isFinite(quotaId) || !Number.isFinite(itemId) || !khoa || !(sl > 0)) {
         return json({ ok: false, error: "thieu_tham_so" }, 400);
       }
-      const { data, error } = await db.schema("app_sale").rpc("chuyen_quota_1_4_theo_hop_dong", {
-        p_quota_id: quotaId, p_contract_item_id: itemId, p_khoa: khoa, p_sl: sl,
+      const { data, error } = await db.schema("app_sale").rpc("chuyen_quota_theo_hop_dong", {
+        p_quota_id: quotaId, p_contract_item_id: itemId, p_khoa: khoa, p_sl: sl, p_sl_dich: slDich,
         p_loai_dich: loaiDich, p_dot_dich: dotDich, p_thang: String(payload.thang || "").trim() || null,
         p_hieu_luc: hieuLuc, p_nguoi: sess.n || sess.u,
       });
       if (error) return json({ ok: false, error: error.message }, 409);
       const gan = await db.schema("app_sale").rpc("chay_gan_quota_hop_dong", { p_actor: sess.u || null });
-      await writeAuditLog(db, sess, "ktChuyen14TheoHd", 1, { quotaId, itemId, khoa, sl, ketQua: data });
+      await writeAuditLog(db, sess, "ktChuyenTheoHd", 1, { quotaId, itemId, khoa, sl, slDich, ketQua: data });
       return json({ ok: true, result: data, gan: gan.data ?? null });
     }
 
