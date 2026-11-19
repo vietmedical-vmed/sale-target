@@ -560,3 +560,45 @@ export async function exportChiTietKeHoach(tree, quota) {
   XLSX.utils.book_append_sheet(wb, ws, 'Chi tiết kế hoạch');
   XLSX.writeFile(wb, `ChiTiet_KeHoach_${_today()}.xlsx`);
 }
+
+// Màn Tổng hợp theo PS: giải trình trong tháng `month` ('YYYY-MM') theo PS × KH × nhóm SP
+// đang hiện (theo bộ lọc). Mỗi giải trình 1 dòng (cũ → mới); cặp nào chưa có giải trình
+// vẫn ra 1 dòng, để trống phần giải trình. KH lạ trong nhóm "Ngoài kế hoạch" lấy theo KH thật.
+// data: kết quả useMemo của SummaryView; logs: action getGiaiTrinhThang.
+export async function exportGiaiTrinh(data, logs, month) {
+  const XLSX = await loadXLSX();
+  const key = (ps, custId, grp) => `${ps}\0${custId}\0${grp}`;
+  const byKey = new Map();
+  for (const l of [...logs].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) {
+    const k = key(l.ps || '', l.customer_id || '', l.grp || '');
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(l);
+  }
+  const H = ['Miền', 'PS', 'Mã KH', 'Khách hàng', 'Ngoài KH', 'Nhóm SP', 'Thời gian giải trình', 'Người giải trình', 'Nội dung giải trình'];
+  const aoa = [H];
+  const daCo = new Set();
+  for (const rg of data.regions) {
+    for (const ps of rg.psList) {
+      const custs = ps.custs.flatMap((c) => (c.oop ? c.subs : [c]));
+      for (const c of custs) {
+        for (const g of c.grps) {
+          const k = key(g._ps, g._custId, g.grp);
+          if (daCo.has(k)) continue;
+          daCo.add(k);
+          const head = [rg.region, g._ps, g._custId, c.cust, c.oop ? 'x' : '', g.grp];
+          const list = byKey.get(k);
+          if (!list) aoa.push([...head, '', '', '']);
+          else for (const l of list) aoa.push([...head, new Date(l.created_at), l.created_by || '', l.content || '']);
+        }
+      }
+    }
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true, dateNF: 'dd/mm/yyyy hh:mm' });
+  ws['!cols'] = [10, 18, 10, 36, 8, 24, 17, 20, 80].map((wch) => ({ wch }));
+  ws['!autofilter'] = { ref: `A1:${_ec(aoa.length - 1, H.length - 1)}` };
+  const cTg = H.indexOf('Thời gian giải trình');
+  for (let r = 1; r < aoa.length; r++) _fmt(ws, r, cTg, 'dd/mm/yyyy hh:mm');
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Giải trình');
+  XLSX.writeFile(wb, `GiaiTrinh_${month.replace('-', '')}_${_today()}.xlsx`);
+}

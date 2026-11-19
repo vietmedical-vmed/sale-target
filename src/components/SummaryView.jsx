@@ -7,7 +7,8 @@ import {
 import { fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
 import { useFitHeight, useSummaryScrollbar, useStickyRows } from '../hooks/useLayout.jsx';
-import { exportSummaryPS } from '../lib/excel.js';
+import { exportSummaryPS, exportGiaiTrinh } from '../lib/excel.js';
+import { api } from '../api/client.js';
 import { buKhaDungBvTu } from '../lib/quota.js';
 import { danhGiaDuKien, dgRong, congDg, NHAN_DG } from '../lib/danhGia.js';
 import { GiaiTrinhModal, _openGiaiTrinh, setOpenGiaiTrinh } from './GiaiTrinhModal.jsx';
@@ -523,6 +524,19 @@ export function SummaryView({
     onExport(() => exportSummaryPS(data, base));
     return () => onExport(null);
   }, [data, base, onExport]);
+  // Xuất giải trình tháng hiện tại theo PS × KH × nhóm SP đang hiện.
+  const [xuatGt, setXuatGt] = useState(false);
+  const xuatGiaiTrinh = async () => {
+    setXuatGt(true);
+    try {
+      const r = await api('getGiaiTrinhThang', { month: CURRENT_MONTH });
+      await exportGiaiTrinh(data, r.logs || [], CURRENT_MONTH);
+    } catch (e) {
+      alert('Lỗi xuất giải trình: ' + (e.message || e));
+    }
+    setXuatGt(false);
+  };
+  const thangGt = CURRENT_MONTH ? `T${Number(CURRENT_MONTH.slice(5))}/${CURRENT_MONTH.slice(2, 4)}` : '';
   return (
     <React.Fragment>
       <GiaiTrinhModal
@@ -533,6 +547,14 @@ export function SummaryView({
       <div className="px-6 pb-8">
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
+            <button
+              onClick={xuatGiaiTrinh}
+              disabled={xuatGt}
+              title={`Xuất Excel giải trình ${thangGt} theo PS × Khách hàng × Nhóm SP đang hiện (chưa có giải trình thì để trống)`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-md border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+            >
+              {xuatGt ? 'Đang xuất…' : `📝 Xuất giải trình ${thangGt}`}
+            </button>
             <div className="inline-flex items-center rounded-md border border-slate-200 bg-white overflow-hidden text-[12px] font-medium">
               <span className="px-2.5 py-1.5 text-slate-400 border-r border-slate-200">So TH với</span>
               {[

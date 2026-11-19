@@ -1316,6 +1316,46 @@ Deno.serve(async (req) => {
       return json({ ok: true, logs: data || [] });
     }
 
+    // Xuất giải trình của một tháng (theo giờ VN) cho màn Tổng hợp theo PS.
+    // Client tự ghép vào cây PS × KH × nhóm SP đang lọc; server chỉ chặn phạm vi.
+    if (action === "getGiaiTrinhThang") {
+      const month = String(payload.month || "").trim();
+      if (!/^\d{4}-\d{2}$/.test(month)) return json({ ok: false, error: "bad_month" }, 400);
+      const [y, m] = month.split("-").map(Number);
+      // 00:00 ngày 1 giờ VN (UTC+7) = 17:00 UTC ngày cuối tháng trước.
+      const tu = new Date(Date.UTC(y, m - 1, 1, -7)).toISOString();
+      const den = new Date(Date.UTC(y, m, 1, -7)).toISOString();
+      let psList: string[] | null = null;
+      if (sess.r === "ps") psList = [String(sess.s || "")];
+      else if (sess.r === "area_manager") {
+        const { data: dm, error: dmErr } = await db.schema("shared").from("dm_ps")
+          .select("ps, area").limit(2000);
+        if (dmErr) throw new Error(dmErr.message);
+        const miens = mienScope(sess);
+        psList = [...new Set((dm || [])
+          .filter((d: Record<string, unknown>) => miens.includes(String(d.area)))
+          .map((d: Record<string, unknown>) => String(d.ps || "").trim())
+          .filter(Boolean))];
+      }
+      if (psList && !psList.length) return json({ ok: true, logs: [] });
+      let grpList: string[] = [];
+      if (sess.r === "product_manager") grpList = parseGroups(sess.s);
+      const gLimits = parseGroups(sess.g);
+      if (gLimits.length) grpList = grpList.length ? grpList.filter((g) => gLimits.includes(g)) : gLimits;
+      if (sess.r === "product_manager" && (parseGroups(sess.s).length || gLimits.length) && !grpList.length) {
+        return json({ ok: true, logs: [] });
+      }
+      const logs = await fetchPaged((from, to) => {
+        let q = db.schema("app_sale").from("giai_trinh")
+          .select("id, ps, customer_id, grp, content, created_by, created_at")
+          .gte("created_at", tu).lt("created_at", den);
+        if (psList) q = q.in("ps", psList);
+        if (grpList.length) q = q.in("grp", grpList);
+        return q.order("id", { ascending: true }).range(from, to);
+      });
+      return json({ ok: true, logs });
+    }
+
     if (action === "saveGiaiTrinh") {
       if (!canEdit) return json({ ok: false, error: "forbidden" }, 403);
       let ps = String(payload.ps || "").trim();
