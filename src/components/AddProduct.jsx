@@ -13,9 +13,19 @@ import { dbCustKey } from './DiaBanView.jsx';
 // Chỉ số danh mục sản phẩm — dựng MỘT LẦN ở App rồi truyền xuống mọi thẻ KH.
 // Nếu để từng thẻ tự filter cả danh mục thì mở 100 KH = hàng trăm nghìn
 // phép lọc mỗi lần render. Ở đây chỉ còn tra Map.
-export function buildCatalogIndex(catalog) {
+// Khoá tên bộ: dm_bo_vat_tu có tên lệch khoảng trắng ("Gối thay lại  - UOC").
+const tenBoKey = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+export function buildCatalogIndex(catalog, boVatTu) {
   const byGrp = new Map();
   const codeMap = new Map();
+  // tên bộ (chuẩn hoá) → mã bộ vật tư theo dm_bo_vat_tu
+  const maBo = new Map();
+  for (const b of boVatTu || []) {
+    const k = tenBoKey(b.mset);
+    if (k && b.ma && !maBo.has(k)) maBo.set(k, b.ma);
+  }
+  const msetCode = new Map(); // `${g}||${m}` → mã bộ trong mapping (dự phòng)
   // bu (nhãn dài "CH&CS"/"CTTM & CTUT"/"THNS & CSVT" từ dm_bo_vat_tu_mapping.bu)
   // → tập nhóm SP thuộc BU đó. Dùng cho form thêm SP: PS chỉ được chọn nhóm
   // trong BU của mình (không giới hạn theo rows kế hoạch hiện có).
@@ -40,7 +50,9 @@ export function buildCatalogIndex(catalog) {
     }
     arr.push(c);
     const code = isLooseSet(m) ? c.maSp || '' : c.maBvt || '';
-    if (code) codeMap.set(`${g}||${m}||${c.prod || ''}`, code);
+    // mapping ghi chữ "Chưa có" thay cho mã trống
+    if (code && tenBoKey(code) !== 'chưa có') codeMap.set(`${g}||${m}||${c.prod || ''}`, code);
+    if (c.maBvt && !msetCode.has(`${g}||${m}`)) msetCode.set(`${g}||${m}`, c.maBvt);
     if (c.bu) {
       let s = grpsByBuLabel.get(c.bu);
       if (!s) {
@@ -74,8 +86,21 @@ export function buildCatalogIndex(catalog) {
       if (m === NO_MSET) return n.noMset;
       return m ? n.msets.get(m) || [] : [];
     },
+    // Mã hiển thị ở cột Mã SP:
+    // - Vật tư riêng lẻ: SP trùng tên một bộ thì lấy mã bộ đó, còn lại mã SP theo mapping.
+    // - Bộ vật tư khác: mã bộ theo dm_bo_vat_tu (kể cả dòng SP = tên bộ, vốn không
+    //   có trong mapping), thiếu thì dùng mã bộ trong mapping.
     codeOf(g, m, p) {
-      return codeMap.get(`${g}||${m}||${p}`) || '';
+      if (m && m !== NO_MSET && !isLooseSet(m)) {
+        return (
+          maBo.get(tenBoKey(m)) ||
+          codeMap.get(`${g}||${m}||${p}`) ||
+          msetCode.get(`${g}||${m}`) ||
+          maBo.get(tenBoKey(p)) ||
+          ''
+        );
+      }
+      return maBo.get(tenBoKey(p)) || codeMap.get(`${g}||${m}||${p}`) || '';
     },
   };
 }

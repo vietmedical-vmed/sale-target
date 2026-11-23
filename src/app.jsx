@@ -223,6 +223,7 @@ function AppInner({ initialAuth, onLogin }) {
   const [custFilter, setCustFilter] = useState([]);
   const [fields, setFields] = useState([]);
   const [catalog, setCatalog] = useState([]);
+  const [boVatTu, setBoVatTu] = useState([]); // [{ mset, ma }] từ shared.dm_bo_vat_tu
   const [customers, setCustomers] = useState([]); // danh mục KH đầy đủ từ dm_khach_hang
   const [psDir, setPsDir] = useState([]); // danh mục PS từ shared.dm_ps
   const [diaBan, setDiaBan] = useState([]); // cấu hình địa bàn (dm_dia_ban)
@@ -518,7 +519,10 @@ function AppInner({ initialAuth, onLogin }) {
   useEffect(() => {
     if (!authed) return;
     api('getCatalog')
-      .then((r) => setCatalog(r.catalog || []))
+      .then((r) => {
+        setCatalog(r.catalog || []);
+        setBoVatTu(r.boVatTu || []);
+      })
       .catch(() => {});
     api('getCustomers')
       .then((r) => setCustomers(r.customers || []))
@@ -1685,7 +1689,7 @@ function AppInner({ initialAuth, onLogin }) {
     custRawRef.current = custIndex.raw;
   }, [custIndex]);
   // Chỉ số danh mục SP dựng 1 lần cho mọi form thêm sản phẩm.
-  const catIdx = useMemo(() => buildCatalogIndex(catalog), [catalog]);
+  const catIdx = useMemo(() => buildCatalogIndex(catalog, boVatTu), [catalog, boVatTu]);
   // PS → miền + nhóm SP mà PS đó đang phụ trách, suy từ chính dữ liệu kế hoạch.
   // rows đã được backend lọc theo quyền/team đang xem nên đây luôn là "trong cùng BU"
   // (chỉ khi admin xem TẤT CẢ team, 1 tên PS trùng ở 2 team mới bị gộp).

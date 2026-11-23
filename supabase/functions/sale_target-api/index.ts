@@ -260,7 +260,15 @@ Deno.serve(async (req) => {
         if (cttm) c.giaDm = g;
         else c.giaGoiY = g;
       }
-      return json({ ok: true, catalog });
+      // Mã bộ vật tư chuẩn (dm_bo_vat_tu): bảng Chi tiết hiển thị mã này cho dòng là bộ
+      // (SP = tên bộ, không có trong mapping) và cho SP thuộc bộ không phải vật tư riêng lẻ.
+      const { data: bvt, error: bvtErr } = await db.schema("shared").from("dm_bo_vat_tu")
+        .select("bo_vat_tu, ma_bo_vat_tu").limit(5000);
+      if (bvtErr) throw new Error(bvtErr.message);
+      const boVatTu = (bvt || [])
+        .filter((r) => r.bo_vat_tu && r.ma_bo_vat_tu)
+        .map((r) => ({ mset: String(r.bo_vat_tu), ma: String(r.ma_bo_vat_tu) }));
+      return json({ ok: true, catalog, boVatTu });
     }
 
     if (action === "getCustomers") {
