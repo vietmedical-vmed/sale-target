@@ -608,7 +608,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
             pOnHand += n;
           } else {
             const d = dotCuaNhom.get(`${q.loai}|${q.dot}`);
-            const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up';
+            const tt = d ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH, undefined, d.coHd) : 'up';
             if (tt === 'het') {
               if (!HIEN_HET_HIEU_LUC) continue; // ẩn: bỏ khỏi cột chính / BS luôn
               hetM += n * pPrice;

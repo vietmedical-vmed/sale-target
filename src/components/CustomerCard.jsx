@@ -88,7 +88,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             if (q.loai === 'cu') { pOnHand += n; }
             else {
               const d = dotCuaNhom.get(`${q.loai}|${q.dot}`);
-              if (d && trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) === 'on') pOnHand += n;
+              if (d && trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH, undefined, d.coHd) === 'on') pOnHand += n;
             }
           }
         }

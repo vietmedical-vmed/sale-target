@@ -451,6 +451,8 @@ export async function fetchQuotaThau(
         fy: r.fy, ps: r.ps, custId: r.cust_id ?? "", grp: r.grp ?? "",
         loai: r.loai, dot: r.dot,
         thang: r.thang ?? "", thoiGian: r.thoi_gian ?? "",
+        // Đợt đã liên kết HĐ: hết hạn = tháng thầu + hiệu lực − 1 (không cộng 3 tháng).
+        coHd: r.co_hd === true,
       });
     } else {
       quotas.push({

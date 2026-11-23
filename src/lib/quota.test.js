@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanPhamAmQuota, buKhaDungBvTu, tyLeDinhMucDot, ganQuotaTheoDot } from "./quota.js";
+import { sanPhamAmQuota, buKhaDungBvTu, tyLeDinhMucDot, ganQuotaTheoDot, hetHanDot } from "./quota.js";
 import { MONTHS } from "../config/constants.js";
 
 const prodKey = (fy, ps, custId, grp, mset, prod) =>
@@ -135,6 +135,21 @@ describe("tyLeDinhMucDot", () => {
     expect(tyLeDinhMucDot("2024-10", 12)).toBe(0); // hết 2025-12
     expect(tyLeDinhMucDot("", 12)).toBe(0);
     expect(tyLeDinhMucDot("2026-09", null)).toBe(0);
+  });
+
+  it("starts at the tender month, without the 3-month wait, once linked to a contract", () => {
+    // 2026-09 .. 2027-08 → 7 tháng trong FY26 (2026-09..2027-03)
+    expect(tyLeDinhMucDot("2026-09", 12, undefined, undefined, true)).toBeCloseTo(7 / 12);
+    // 2025-10 .. 2026-09 → 6 tháng trong FY26
+    expect(tyLeDinhMucDot("2025-10", 12, undefined, undefined, true)).toBeCloseTo(6 / 12);
+  });
+});
+
+describe("hetHanDot", () => {
+  it("adds 3 months only when the round is not linked to a contract", () => {
+    expect(hetHanDot("2026-03", 24)).toBe("2028-05");
+    expect(hetHanDot("2026-03", 24, true)).toBe("2028-02");
+    expect(hetHanDot("2026-03", 0, true)).toBe("");
   });
 });
 

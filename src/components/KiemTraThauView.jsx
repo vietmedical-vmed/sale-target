@@ -478,6 +478,7 @@ export function KiemTraThauView({
             <DotEditor
               thang={d.thang}
               thoiGian={d.thoiGian}
+              coHd={!!d.coHd}
               curMonth={CURRENT_MONTH}
               locked={!canEdit}
               onSave={(thang, thoiGian) => luuDot(d, thang, thoiGian)}

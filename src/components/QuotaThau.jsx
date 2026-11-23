@@ -40,7 +40,7 @@ export const dotDuThongTin = (d) => !!d && THANG_RE.test(d.thang || '') && hieuL
 
 // Ô tháng + hiệu lực của MỘT đợt (hoặc đợt đang thêm). Chỉ lưu khi cả hai hợp lệ;
 // thiếu ô nào thì viền đỏ và chưa gửi lên.
-export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth }) {
+export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth, coHd = false }) {
   const [m, setM] = useState(thang || '');
   const [hl, setHl] = useState(thoiGian == null || thoiGian === '' ? '' : String(Number(thoiGian)));
   useEffect(() => {
@@ -57,8 +57,8 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
     if (mv === (thang || '') && Number(hl) === Number(thoiGian)) return;
     onSave(mv, Number(hl));
   };
-  const het = hetHanDot(m.trim(), hl);
-  const tt = mOk && hlOk ? trangThaiDot(m.trim(), hl, curMonth) : null;
+  const het = hetHanDot(m.trim(), hl, coHd);
+  const tt = mOk && hlOk ? trangThaiDot(m.trim(), hl, curMonth, undefined, coHd) : null;
   const o = (ok) =>
     `text-[12px] px-2 py-1 rounded-md border outline-none ${ok ? 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100' : 'border-red-400 bg-red-50'}`;
   const keyDown = (e) => {
@@ -87,16 +87,25 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
         onKeyDown={keyDown}
         disabled={locked}
         placeholder="vd 24"
-        title="Số tháng hiệu lực của thầu, ví dụ 12, 18, 24 (bắt buộc). Hết hạn = tháng thầu + 3 tháng + hiệu lực − 1"
+        title={
+          coHd
+            ? 'Số tháng hiệu lực của thầu (bắt buộc). Đợt đã liên kết hợp đồng: hết hạn = tháng thầu + hiệu lực − 1'
+            : 'Số tháng hiệu lực của thầu, ví dụ 12, 18, 24 (bắt buộc). Chưa liên kết hợp đồng: hết hạn = tháng thầu + 3 tháng + hiệu lực − 1'
+        }
         className={`w-[46px] text-right ${o(hlOk)}`}
       />
       <span className={nhan}>tháng</span>
       {het && (
         <span
           className={`text-[10.5px] whitespace-nowrap ${HIEN_HET_HIEU_LUC && tt === 'het' ? 'text-red-600 font-semibold' : 'text-slate-400'}`}
-          title="Tháng cuối còn hiệu lực = tháng thầu + 3 tháng + số tháng hiệu lực − 1"
+          title={
+            coHd
+              ? 'Đã liên kết hợp đồng: tháng cuối còn hiệu lực = tháng thầu + số tháng hiệu lực − 1'
+              : 'Chưa liên kết hợp đồng: tháng cuối còn hiệu lực = tháng thầu + 3 tháng + số tháng hiệu lực − 1'
+          }
         >
           {HIEN_HET_HIEU_LUC && tt === 'het' ? `(đã hết hiệu lực từ sau ${het})` : `(hiệu lực đến hết ${het})`}
+          {coHd && <span className="ml-1 text-emerald-700">· theo HĐ</span>}
         </span>
       )}
     </span>
@@ -163,6 +172,7 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
           <DotEditor
             thang={d.thang}
             thoiGian={d.thoiGian}
+            coHd={!!d.coHd}
             locked={locked || busy}
             curMonth={CURRENT_MONTH}
             onSave={(t, h) => sua(loai, d.dot, t, h)}
@@ -205,6 +215,7 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
         <DotEditor
           thang={dotCu?.thang || ''}
           thoiGian={dotCu?.thoiGian ?? ''}
+          coHd={!!dotCu?.coHd}
           locked={locked || busy || !coQuotaCu}
           curMonth={CURRENT_MONTH}
           onSave={(t, h) => sua('cu', 1, t, h)}
@@ -280,7 +291,7 @@ export function QuotaThauModal({
         label: LOAI_LABEL.cu,
         thang: '',
         du: true,
-        infoCu: dotDuThongTin(cu) ? `Từ ${cu.thang} · hiệu lực ${Number(cu.thoiGian)} tháng` : '',
+        infoCu: dotDuThongTin(cu) ? `Từ ${cu.thang} · hiệu lực ${Number(cu.thoiGian)} tháng${cu.coHd ? ' · theo HĐ' : ''}` : '',
       },
     ].concat(
       ds.map((d) => ({
@@ -290,8 +301,9 @@ export function QuotaThauModal({
         thang: d.thang,
         thoiGian: d.thoiGian,
         du: dotDuThongTin(d),
-        het: hetHanDot(d.thang, d.thoiGian),
-        trangThai: dotDuThongTin(d) ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH) : 'up',
+        coHd: !!d.coHd,
+        het: hetHanDot(d.thang, d.thoiGian, d.coHd),
+        trangThai: dotDuThongTin(d) ? trangThaiDot(d.thang, d.thoiGian, CURRENT_MONTH, undefined, d.coHd) : 'up',
         label: dotLabel(d.loai, d.dot, d.loai === 'chinh' ? nChinh : nBs),
       })),
     );
@@ -548,7 +560,7 @@ export function QuotaThauModal({
                       >
                         {!c.du
                           ? 'thiếu tháng thầu / hiệu lực'
-                          : `Từ ${c.thang} · hiệu lực ${Number(c.thoiGian)} tháng${HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? ' · hết HL' : ''}`}
+                          : `Từ ${c.thang} · hiệu lực ${Number(c.thoiGian)} tháng${c.coHd ? ' · theo HĐ' : ''}${HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? ' · hết HL' : ''}`}
                       </div>
                     )}
                   </th>

@@ -6,14 +6,18 @@ const grpKey = (fy, ps, custId, grp) =>
 const prodKey = (fy, ps, custId, grp, mset, prod) =>
   [fy || '', ps || '', custId || '', grp || '', mset || '', prod || ''].join('||');
 
-// Hiệu lực thầu = số tháng (dot_thau.thoi_gian). Tháng cuối còn hiệu lực (hết hạn)
-// = tháng thầu + 3 tháng + hiệu lực − 1 (user chốt 16/10; vd 2026-03, 24 tháng → 2028-05).
+// Hiệu lực thầu = số tháng (dot_thau.thoi_gian). Tháng cuối còn hiệu lực (hết hạn):
+//   đợt CHƯA liên kết HĐ: tháng thầu + 3 tháng + hiệu lực − 1 (user chốt 16/10; vd 2026-03,
+//     24 tháng → 2028-05) — 3 tháng chờ ký hợp đồng;
+//   đợt ĐÃ liên kết HĐ (coHd, app_sale.v_dot_lien_ket_hop_dong): tháng thầu + hiệu lực − 1,
+//     đúng hiệu lực theo hợp đồng (user chốt 23/11).
 export const THANG_CONG_THEM_HIEU_LUC = 3;
-export function hetHanDot(thang, hieuLuc) {
+const congThem = (coHd) => (coHd ? 0 : THANG_CONG_THEM_HIEU_LUC);
+export function hetHanDot(thang, hieuLuc, coHd = false) {
   const n = Number(hieuLuc);
   if (!/^\d{4}-\d{2}$/.test(thang || '') || !(n > 0)) return '';
   const [y, m] = thang.split('-').map(Number);
-  const t = y * 12 + (m - 1) + THANG_CONG_THEM_HIEU_LUC + Math.trunc(n) - 1;
+  const t = y * 12 + (m - 1) + congThem(coHd) + Math.trunc(n) - 1;
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 }
 
@@ -23,8 +27,8 @@ export function hetHanDot(thang, hieuLuc) {
 //   'het' — hết hiệu lực trước đầu năm tài chính (không tính on hand, không vào tổng)
 // Đợt hết hạn giữa năm vẫn tính on hand và tổng: thực hiện YTD đã gồm phần bán theo
 // đợt đó từ đầu năm, bỏ đợt ra thì tổng giảm và khả dụng (on hand − TH YTD) bị âm.
-export function trangThaiDot(thang, hieuLuc, curMonth, fyStart = MONTHS[0]) {
-  const het = hetHanDot(thang, hieuLuc);
+export function trangThaiDot(thang, hieuLuc, curMonth, fyStart = MONTHS[0], coHd = false) {
+  const het = hetHanDot(thang, hieuLuc, coHd);
   if (!het || thang > curMonth) return 'up';
   return het < curMonth && het < fyStart ? 'het' : 'on';
 }
@@ -36,13 +40,14 @@ const thangSo = (s) => {
 
 // Tỷ lệ quota của 1 đợt thầu chính / bổ sung dùng được trong năm tài chính đang xem
 // = số tháng hiệu lực rơi vào năm tài chính / hiệu lực. Cửa sổ hiệu lực giống
-// hetHanDot: [tháng thầu + 3, tháng thầu + 3 + hiệu lực − 1]. Đợt thiếu tháng / hiệu
-// lực → 0. Vd 2026-09, 12 tháng → 2026-12..2027-11, trong FY26 có 4 tháng → 4/12.
-export function tyLeDinhMucDot(thang, hieuLuc, fyStart = MONTHS[0], fyEnd = MONTHS[MONTHS.length - 1]) {
-  const het = hetHanDot(thang, hieuLuc);
+// hetHanDot: [tháng thầu + 3, tháng thầu + 3 + hiệu lực − 1]; đợt đã liên kết HĐ (coHd) thì
+// [tháng thầu, tháng thầu + hiệu lực − 1]. Đợt thiếu tháng / hiệu lực → 0.
+// Vd 2026-09, 12 tháng → 2026-12..2027-11, trong FY26 có 4 tháng → 4/12 (đã liên kết: 7/12).
+export function tyLeDinhMucDot(thang, hieuLuc, fyStart = MONTHS[0], fyEnd = MONTHS[MONTHS.length - 1], coHd = false) {
+  const het = hetHanDot(thang, hieuLuc, coHd);
   if (!het) return 0;
   const hl = Math.trunc(Number(hieuLuc));
-  const tu = Math.max(thangSo(thang) + THANG_CONG_THEM_HIEU_LUC, thangSo(fyStart));
+  const tu = Math.max(thangSo(thang) + congThem(coHd), thangSo(fyStart));
   const den = Math.min(thangSo(het), thangSo(fyEnd));
   return den < tu ? 0 : (den - tu + 1) / hl;
 }
@@ -64,7 +69,7 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
   for (const d of dots || []) {
     const k = grpKey(d.fy, d.ps, d.custId, d.grp);
     if (!thangDot.has(k)) thangDot.set(k, new Map());
-    thangDot.get(k).set(`${d.loai}|${d.dot}`, { thang: d.thang || '', hieuLuc: d.thoiGian });
+    thangDot.get(k).set(`${d.loai}|${d.dot}`, { thang: d.thang || '', hieuLuc: d.thoiGian, coHd: !!d.coHd });
   }
   const quotaTheoGia = new Map(); // prodKey|giá → { onHand, up, het, dinhMuc }
   for (const q of quotas || []) {
@@ -79,11 +84,11 @@ export function ganQuotaTheoDot(rows, dots, quotas, curMonth) {
       o.cu += n;
     } else {
       const d = thangDot.get(gk)?.get(`${q.loai}|${q.dot}`);
-      const tt = d ? trangThaiDot(d.thang, d.hieuLuc, curMonth) : 'up';
+      const tt = d ? trangThaiDot(d.thang, d.hieuLuc, curMonth, undefined, d.coHd) : 'up';
       if (tt === 'on') o.onHand += n;
       else if (tt === 'het') o.het += n;
       else o.up += n;
-      if (d) o.dinhMuc += n * tyLeDinhMucDot(d.thang, d.hieuLuc);
+      if (d) o.dinhMuc += n * tyLeDinhMucDot(d.thang, d.hieuLuc, undefined, undefined, d.coHd);
     }
   }
   const daGan = new Set();
@@ -165,7 +170,7 @@ export function quotaSanPham(dotsByGroup, quotasByProduct, anchor, mset, product
       onHand += n;
     } else {
       const d = dotInfo.get(`${q.loai}|${q.dot}`);
-      const tt = d ? trangThaiDot(d.thang, d.thoiGian, curMonth) : 'up';
+      const tt = d ? trangThaiDot(d.thang, d.thoiGian, curMonth, undefined, d.coHd) : 'up';
       if (tt === 'het') {
         het += n;
         // Đang ẩn phần hết hiệu lực: không cộng vào cột chính / BS để Tổng = cũ + chính + BS.
