@@ -7,7 +7,7 @@ import {
   psInfo, buForPs, mienForPs,
   fetchAll, fetchOopClassify, fetchQuotaThau, absorbOop,
   applyScopeTombstone, taoDotTuThangThau, kiemTraThangHieuLuc,
-  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc, fetchPaged, bumpEpoch,
+  BU_GIA_DANH_MUC, giaDanhMucCttm, giaDanhMuc, fetchPaged, bumpEpoch, chonMaSanPham,
 } from "./helpers.ts";
 
 const QUIET_ACTIONS = new Set(["getChanges", "getRev"]);
@@ -722,9 +722,9 @@ Deno.serve(async (req) => {
       let maSp: string | null = null;
       let maBvt: string | null = null;
       if (prodTrim) {
-        const { data: dvt } = await db.schema("shared").from("dm_vat_tu")
-          .select("ma_san_pham").ilike("san_pham", prodTrim).limit(1);
-        if (dvt && dvt[0]) maSp = dvt[0].ma_san_pham || null;
+        const custIdTrim = String(s.custId || "");
+        const maChon = await chonMaSanPham(db, [{ custId: custIdTrim, prod: prodTrim }]);
+        maSp = maChon.get(`${custIdTrim}\0${prodTrim}`) ?? null;
       }
       if (msetTrim) {
         const { data: dbvt } = await db.schema("shared").from("dm_bo_vat_tu")
@@ -926,15 +926,15 @@ Deno.serve(async (req) => {
 
       const uniqProds = [...new Set(raws.map(c => c.prod).filter(Boolean))];
       const uniqMsets = [...new Set(raws.map(c => c.mset).filter(Boolean))];
+      // Mã vật tư theo khách × tên SP; maSpMap chỉ còn giữ mã bộ (tên SP là tên bộ).
+      const maSpTheoKh = await chonMaSanPham(db, raws.map(c => ({ custId: c.custId, prod: c.prod })));
       const maSpMap = new Map<string, string>();
+      const maSpOf = (c: { custId: string; prod: string }) =>
+        maSpTheoKh.get(`${c.custId}\0${c.prod}`) || maSpMap.get(c.prod) || null;
       const maBvtMap = new Map<string, string>();
-      if (uniqProds.length) {
-        const { data: dvt } = await db.schema("shared").from("dm_vat_tu")
-          .select("san_pham, ma_san_pham").in("san_pham", uniqProds);
-        for (const r of dvt || []) {
-          if (r.san_pham && r.ma_san_pham && !maSpMap.has(r.san_pham))
-            maSpMap.set(r.san_pham, r.ma_san_pham);
-        }
+      for (const c of raws) {
+        const ma = maSpTheoKh.get(`${c.custId}\0${c.prod}`);
+        if (ma && !maSpMap.has(c.prod)) maSpMap.set(c.prod, ma);
       }
       if (uniqMsets.length) {
         const { data: dbvt } = await db.schema("shared").from("dm_bo_vat_tu")
@@ -960,7 +960,7 @@ Deno.serve(async (req) => {
         const giaDm = await giaDanhMucCttm(db);
         for (const c of raws) {
           if (c.bu !== BU_GIA_DANH_MUC) continue;
-          const g = giaDm(c.prod, maSpMap.get(c.prod) || null);
+          const g = giaDm(c.prod, maSpOf(c));
           if (g !== null) c.price = g;
         }
       }
@@ -1006,7 +1006,7 @@ Deno.serve(async (req) => {
           nam_tai_chinh: fy, thang_ke_hoach: mo, mien: c.mien, ps: c.ps,
           khach_hang: c.cust, ma_khach_hang: c.custId, nhom_san_pham: c.grp,
           san_pham: c.prod, bo_vat_tu: c.mset,
-          ma_san_pham: maSpMap.get(c.prod) || null,
+          ma_san_pham: maSpOf(c),
           ma_bo_vat_tu: maBvtMap.get(c.mset) || null,
           don_gia: c.price,
           bu: c.bu, sl_ke_hoach_dau_nam: 0, sl_thuc_hien: 0,

@@ -234,6 +234,83 @@ export async function buForPs(
   return fallback;
 }
 
+// Chọn mã SP cho dòng kế hoạch mới theo tên SP (dm_vat_tu.san_pham).
+// Tên chỉ có 1 mã → mã đó. Nhiều mã (vd "Hút áp lực âm" = bình chứa dịch + 3 cỡ băng bọt)
+// → mã khách đó đã mua nhiều nhất trên hoá đơn; chưa mua mã nào → mã nhỏ nhất theo thứ tự chữ.
+// Trước đây lấy dòng danh mục đầu tiên (limit 1, không thứ tự) nên mã có thể ngẫu nhiên.
+// Trả Map khoá `${custId}\0${prod}`; tên không có trong danh mục thì không có khoá.
+export async function chonMaSanPham(
+  db: ReturnType<typeof createClient>,
+  cap: { custId: string; prod: string }[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const prods = [...new Set(cap.map((c) => c.prod).filter(Boolean))];
+  if (!prods.length) return out;
+  const hopLe = (m: unknown) => {
+    const s = String(m ?? "").trim();
+    return s && s !== "Chưa có" ? s : "";
+  };
+  // Tên (giữ nguyên chữ người dùng gửi) → tập mã.
+  const maTheoTen = new Map<string, Set<string>>();
+  const them = (ten: string, ma: string) => {
+    let s = maTheoTen.get(ten);
+    if (!s) maTheoTen.set(ten, s = new Set());
+    s.add(ma);
+  };
+  const dm = await fetchPaged<{ san_pham: string; ma_san_pham: string }>((from, to) =>
+    db.schema("shared").from("dm_vat_tu").select("san_pham, ma_san_pham")
+      .in("san_pham", prods).order("id", { ascending: true }).range(from, to));
+  for (const r of dm) {
+    const ma = hopLe(r.ma_san_pham);
+    if (ma) them(r.san_pham, ma);
+  }
+  // Tên không khớp đúng chữ: tra không phân biệt hoa thường như cách cũ.
+  for (const p of prods) {
+    if (maTheoTen.has(p)) continue;
+    const { data } = await db.schema("shared").from("dm_vat_tu")
+      .select("ma_san_pham").ilike("san_pham", p);
+    for (const r of data || []) {
+      const ma = hopLe(r.ma_san_pham);
+      if (ma) them(p, ma);
+    }
+  }
+
+  const nhieuMa = prods.filter((p) => (maTheoTen.get(p)?.size ?? 0) > 1);
+  const custs = [...new Set(cap.filter((c) => nhieuMa.includes(c.prod)).map((c) => c.custId).filter(Boolean))];
+  // SL đã mua theo khách × tên × mã.
+  const daMua = new Map<string, number>();
+  if (nhieuMa.length && custs.length) {
+    const hd = await fetchPaged<{ id: number; ma_kh: string; san_pham: string; ma_san_pham: string; so_luong: number }>(
+      (from, to) => db.schema("app_sale").from("hoa_don_bovattu")
+        .select("id, ma_kh, san_pham, ma_san_pham, so_luong")
+        .in("ma_kh", custs).in("san_pham", nhieuMa)
+        .order("id", { ascending: true }).range(from, to),
+    );
+    for (const r of hd) {
+      const ma = hopLe(r.ma_san_pham);
+      if (!ma || !maTheoTen.get(r.san_pham)?.has(ma)) continue;
+      const k = `${r.ma_kh}\0${r.san_pham}\0${ma}`;
+      daMua.set(k, (daMua.get(k) ?? 0) + (Number(r.so_luong) || 0));
+    }
+  }
+
+  for (const c of cap) {
+    const ds = maTheoTen.get(c.prod);
+    if (!ds || !ds.size) continue;
+    const sx = [...ds].sort();
+    let chon = sx[0];
+    if (sx.length > 1) {
+      let best = 0;
+      for (const ma of sx) {
+        const sl = daMua.get(`${c.custId}\0${c.prod}\0${ma}`) ?? 0;
+        if (sl > best) { best = sl; chon = ma; }
+      }
+    }
+    out.set(`${c.custId}\0${c.prod}`, chon);
+  }
+  return out;
+}
+
 // Đơn giá kế hoạch BU CTTM & CTUT lấy theo danh mục: dm_vat_tu.don_gia_thau_moi, giữ
 // nguyên (không trừ VAT) — cùng cách khớp với migration 20261016150000:
 //   1. tên SP; 2. mã SP (bỏ 'Chưa có'); 3. tên không phân biệt hoa thường;
