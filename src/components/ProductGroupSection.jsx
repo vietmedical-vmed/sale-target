@@ -540,6 +540,23 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
     () => products.flatMap((p) => p.monthly.flatMap((c) => c.rows)),
     [products],
   );
+  // Thứ tự hiển thị: mã SP A→Z, SP không có mã xếp cuối; cùng mã giữ thứ tự gốc
+  // (bộ vật tư → tên SP → đơn giá). Mã lấy từ danh mục nên phải sort tại đây.
+  const sortedProducts = useMemo(() => {
+    const withCode = products.map((p, i) => ({
+      p,
+      i,
+      code: (catIdx ? catIdx.codeOf(groupName, p.mset, p.product) : '').trim(),
+    }));
+    withCode.sort((a, b) => {
+      if (!a.code !== !b.code) return a.code ? -1 : 1;
+      return (
+        a.code.localeCompare(b.code, 'vi', { numeric: true, sensitivity: 'base' }) ||
+        a.i - b.i
+      );
+    });
+    return withCode.map((x) => ({ ...x.p, _code: x.code }));
+  }, [products, catIdx, groupName]);
   // Năm tài chính của nhóm, lấy từ chính dữ liệu đang hiển thị — khoá của đợt thầu.
   const quotaCtx = useContext(QuotaThauCtx);
   const grpFy = groupRows.length ? groupRows[0].fy : '';
@@ -671,7 +688,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
       mDtUpd,
     };
   }, [products, quotaCtx, grpFy, ps, custId, groupName]);
-  // products: [{ mset, product, monthly }], đã sort theo mset → product
+  // products: [{ mset, product, monthly }]; bảng hiển thị theo sortedProducts (mã SP A→Z)
   return (
     <div className="border-t border-slate-200">
       <button
@@ -1071,9 +1088,9 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                         : (gs.chenh > 0 ? '+' : '') + fmtTy3(gs.chenh)}
                   </td>
                 </tr>
-                {products.map((p, idx) => {
+                {sortedProducts.map((p, idx) => {
                   const showMset =
-                    idx === 0 || products[idx - 1].mset !== p.mset;
+                    idx === 0 || sortedProducts[idx - 1].mset !== p.mset;
                   return (
                     <ProductRow
                       key={p.mset + '||' + p.product + '||' + (p.pPrice || 0)}
@@ -1088,11 +1105,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                       canEditBasePlan={canEditBasePlan}
                       onDeleteProduct={onDeleteProduct}
                       showBasePlan={showBasePlan}
-                      productCode={
-                        catIdx
-                          ? catIdx.codeOf(groupName, p.mset, p.product)
-                          : ''
-                      }
+                      productCode={p._code}
                       conflicts={conflicts}
                       onResolveConflict={onResolveConflict}
                       onOpenQuota={openQuota}
