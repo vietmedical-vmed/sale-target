@@ -18,6 +18,9 @@ export const TRANG_THAI = {
 
 export const LOAI_DOT = { cu: 'Thầu cũ', chinh: 'Thầu chính', bo_sung: 'Thầu bổ sung' };
 export const khoaDot = (x) => [x.fy, x.ps, x.custId, x.grp, x.loai, x.dot].join('|');
+// Nhãn đợt: thầu cũ chỉ có 1 đợt nên không đánh số.
+export const tenDot = (d, sep = ' ') =>
+  d.loai === 'cu' ? LOAI_DOT.cu : `${LOAI_DOT[d.loai] || d.loai}${sep}đợt ${d.dot}`;
 export const khoaXuLy = (buoc, khoa) => buoc + '|' + khoa;
 
 // Trạng thái hiển thị: bản ghi 'xong' mà việc vẫn còn trong danh sách = tái phát → chưa xử lý.

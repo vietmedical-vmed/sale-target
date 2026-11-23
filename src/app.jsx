@@ -306,6 +306,16 @@ function AppInner({ initialAuth, onLogin }) {
     }
     return m;
   }, [quotas]);
+  // Nhóm SP có quota thầu cũ (> 0): chỉ nhóm này mới mang thông tin thầu cũ (tháng / hiệu lực).
+  const cuByGroup = useMemo(() => {
+    const m = new Map();
+    for (const q of quotas) {
+      if (q.loai !== 'cu' || !(Number(q.qty) > 0)) continue;
+      const k = grpKey(q.fy, q.ps, q.custId, q.grp);
+      m.set(k, (m.get(k) || 0) + Number(q.qty) * (Number(q.price) || 0));
+    }
+    return m;
+  }, [quotas]);
   // Nạp lại riêng đợt + quota (không đụng tới rows).
   const napLaiQuota = useCallback(async () => {
     const r = await api(
@@ -345,12 +355,13 @@ function AppInner({ initialAuth, onLogin }) {
     () => ({
       dotsByGroup,
       quotasByProduct,
+      cuByGroup,
       saveDot,
       deleteDot,
       saveQuota,
       napLai: napLaiQuota,
     }),
-    [dotsByGroup, quotasByProduct, saveDot, deleteDot, saveQuota, napLaiQuota],
+    [dotsByGroup, quotasByProduct, cuByGroup, saveDot, deleteDot, saveQuota, napLaiQuota],
   );
   const applyLogin = (a) => {
     setAuth(a);

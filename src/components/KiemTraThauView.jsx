@@ -8,13 +8,14 @@ import { deaccent, custLabel } from '../lib/text.js';
 import { fmtInt, moneyTy3 } from '../lib/format.js';
 import { api } from '../api/client.js';
 import {
-  BUOC, TRANG_THAI, LOAI_DOT, NHOM_THEO, khoaDot, khoaXuLy, trangThaiCua,
+  BUOC, TRANG_THAI, LOAI_DOT, NHOM_THEO, khoaDot, tenDot, khoaXuLy, trangThaiCua,
   nhomLyDoAm, viecHopDong, tyLeKhopHopDong, gomNhom, banTruoc,
 } from '../lib/kiemTraThau.js';
 import { XuLyPill, XuLyModal, BangNhom, ChiTietKhoaModal, KqPill } from './KiemTraThauParts.jsx';
 
 // Tab "Kiểm tra thông tin thầu" (admin + manager). 3 bước theo thứ tự phụ thuộc:
-//  1. Đợt chính / bổ sung thiếu tháng thầu hoặc hiệu lực: quota không nhập thêm được.
+//  1. Đợt chính / bổ sung thiếu tháng thầu hoặc hiệu lực (quota không nhập thêm được), và
+//     thầu cũ chưa có tháng thầu / hiệu lực (chưa khớp HĐ ký trước năm tài chính).
 //  2. SP trên Chi tiết kế hoạch có quota khả dụng âm (nhiều dòng là do bước 1).
 //  3. Đối chiếu quota ↔ hợp đồng: khoá KH × SP chưa khớp, gom theo nguyên nhân.
 // Mỗi việc có trạng thái xử lý (app_sale.kiem_tra_thau_xu_ly). Việc đang xử lý / bỏ qua mà
@@ -145,25 +146,43 @@ export function KiemTraThauView({
   const dotAll = useMemo(() => {
     if (!ctx) return [];
     const out = [];
+    // Thầu cũ: nhóm có quota thầu cũ mà chưa có tháng / hiệu lực (chưa khớp HĐ). Nhóm chưa có
+    // dòng đợt thầu cũ (vd quota mới nhập, chưa qua lần tự điền đêm) cũng tính là thiếu.
+    const cuChuaCo = new Map();
+    for (const qs of ctx.quotasByProduct.values())
+      for (const x of qs) {
+        if (x.loai !== 'cu' || !(Number(x.qty) > 0)) continue;
+        const d = { fy: x.fy, ps: x.ps, custId: x.custId, grp: x.grp, loai: 'cu', dot: 1, thang: '', thoiGian: '' };
+        cuChuaCo.set(khoaDot(d), d);
+      }
+    const dsDot = [];
     for (const ds of ctx.dotsByGroup.values())
       for (const d of ds) {
-        if (dotDuThongTin(d)) continue;
-        const k = khoaDot(d);
-        const kh = tenKh.get(String(d.custId)) || d.custId;
-        out.push({
-          key: k,
-          buoc: 'dot',
-          ps: d.ps || '',
-          custId: d.custId || '',
-          tenKh: kh,
-          grp: d.grp || '',
-          bu: buOf(d.ps, d.grp),
-          giaTri: giaTriDot.get(k) || 0,
-          nn: LOAI_DOT[d.loai] || d.loai,
-          moTa: `${d.ps} · ${kh} · ${d.grp} · ${LOAI_DOT[d.loai] || d.loai} đợt ${d.dot}`,
-          d,
-        });
+        if (d.loai !== 'cu') dsDot.push(d);
+        else if (cuChuaCo.has(khoaDot(d))) {
+          cuChuaCo.delete(khoaDot(d));
+          dsDot.push(d);
+        }
       }
+    dsDot.push(...cuChuaCo.values());
+    for (const d of dsDot) {
+      if (dotDuThongTin(d)) continue;
+      const k = khoaDot(d);
+      const kh = tenKh.get(String(d.custId)) || d.custId;
+      out.push({
+        key: k,
+        buoc: 'dot',
+        ps: d.ps || '',
+        custId: d.custId || '',
+        tenKh: kh,
+        grp: d.grp || '',
+        bu: buOf(d.ps, d.grp),
+        giaTri: giaTriDot.get(k) || 0,
+        nn: LOAI_DOT[d.loai] || d.loai,
+        moTa: `${d.ps} · ${kh} · ${d.grp} · ${tenDot(d)}`,
+        d,
+      });
+    }
     return out;
   }, [ctx, tenKh, buOf, giaTriDot]);
 
@@ -453,7 +472,7 @@ export function KiemTraThauView({
           {khCell(it)}
           <td className={`${td} text-slate-600`}>{d.grp}</td>
           <td className={`${td} whitespace-nowrap text-slate-600`}>
-            {LOAI_DOT[d.loai] || d.loai} · đợt {d.dot}
+            {tenDot(d, ' · ')}
           </td>
           <td className={td}>
             <DotEditor

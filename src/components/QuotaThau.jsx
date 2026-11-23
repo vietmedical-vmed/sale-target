@@ -116,6 +116,10 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
     all.filter((d) => d.loai === loai).sort((a, b) => a.dot - b.dot);
   const chinh = cua('chinh');
   const bs = cua('bo_sung');
+  // Thầu cũ: 1 đợt duy nhất, chỉ mang tháng thầu / hiệu lực (tự điền theo HĐ đã liên kết,
+  // chưa có thì trống). Quota thầu cũ vẫn tính đủ vào on hand, không theo tháng / hiệu lực.
+  const coQuotaCu = (ctx.cuByGroup?.get(grpKey(fy, ps, custId, grp)) || 0) > 0;
+  const dotCu = cua('cu')[0] || null;
 
   const run = async (fn) => {
     if (busy) return false;
@@ -192,9 +196,37 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
     </div>
   );
 
-  const soThieu = all.filter((d) => !dotDuThongTin(d)).length;
+  const hangCu = () => (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[10.5px] font-semibold text-blue-800 uppercase tracking-wide whitespace-nowrap">
+        {LOAI_LABEL.cu}
+      </span>
+      {coQuotaCu || dotCu ? (
+        <DotEditor
+          thang={dotCu?.thang || ''}
+          thoiGian={dotCu?.thoiGian ?? ''}
+          locked={locked || busy || !coQuotaCu}
+          curMonth={CURRENT_MONTH}
+          onSave={(t, h) => sua('cu', 1, t, h)}
+        />
+      ) : (
+        <span className="text-[11px] text-slate-400">chưa có quota thầu cũ</span>
+      )}
+      {coQuotaCu && !dotDuThongTin(dotCu) && (
+        <span
+          className="text-[11px] text-amber-700"
+          title="Chưa khớp được hợp đồng ký trước năm tài chính cho nhóm này. Điền tay hoặc xử lý ở tab Kiểm tra thông tin thầu."
+        >
+          chưa khớp HĐ
+        </span>
+      )}
+    </div>
+  );
+
+  const soThieu = all.filter((d) => d.loai !== 'cu' && !dotDuThongTin(d)).length;
   return (
     <div className="flex flex-col gap-1.5">
+      {hangCu()}
       {hang('chinh', chinh)}
       {hang('bo_sung', bs)}
       {soThieu > 0 && (
@@ -234,12 +266,23 @@ export function QuotaThauModal({
   );
   // Cột: thầu cũ luôn có (không thuộc đợt nào), rồi tới từng đợt đã khai báo / đang thêm.
   const cols = useMemo(() => {
-    const ds = [...dots, ...moi.map((m) => ({ ...m, moi: true }))].sort((a, b) =>
+    // Đợt thầu cũ (chỉ mang tháng / hiệu lực) gắn vào cột thầu cũ cố định, không thành cột riêng.
+    const cu = dots.find((d) => d.loai === 'cu');
+    const ds = [...dots.filter((d) => d.loai !== 'cu'), ...moi.map((m) => ({ ...m, moi: true }))].sort((a, b) =>
       a.loai === b.loai ? a.dot - b.dot : a.loai === 'chinh' ? -1 : 1,
     );
     const nChinh = ds.filter((d) => d.loai === 'chinh').length;
     const nBs = ds.filter((d) => d.loai === 'bo_sung').length;
-    return [{ loai: 'cu', dot: 1, label: LOAI_LABEL.cu, thang: '', du: true }].concat(
+    return [
+      {
+        loai: 'cu',
+        dot: 1,
+        label: LOAI_LABEL.cu,
+        thang: '',
+        du: true,
+        infoCu: dotDuThongTin(cu) ? `Từ ${cu.thang} · hiệu lực ${Number(cu.thoiGian)} tháng` : '',
+      },
+    ].concat(
       ds.map((d) => ({
         loai: d.loai,
         dot: d.dot,
@@ -491,6 +534,11 @@ export function QuotaThauModal({
                           />
                           tháng
                         </span>
+                      </div>
+                    )}
+                    {c.infoCu && (
+                      <div className="text-[10px] font-normal text-slate-400" title="Thông tin thầu cũ (theo HĐ ký trước năm tài chính)">
+                        {c.infoCu}
                       </div>
                     )}
                     {c.loai !== 'cu' && !c.moi && (
