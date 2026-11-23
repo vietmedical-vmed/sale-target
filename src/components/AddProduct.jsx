@@ -90,7 +90,9 @@ export function buildCatalogIndex(catalog, boVatTu) {
     // - Vật tư riêng lẻ: SP trùng tên một bộ thì lấy mã bộ đó, còn lại mã SP theo mapping.
     // - Bộ vật tư khác: mã bộ theo dm_bo_vat_tu (kể cả dòng SP = tên bộ, vốn không
     //   có trong mapping), thiếu thì dùng mã bộ trong mapping.
-    codeOf(g, m, p) {
+    // rowCode: mã SP ghi trên chính dòng kế hoạch (sale_target.ma_san_pham), chỉ dùng
+    // lấp chỗ trống cho vật tư riêng lẻ không có trong mapping.
+    codeOf(g, m, p, rowCode) {
       if (m && m !== NO_MSET && !isLooseSet(m)) {
         return (
           maBo.get(tenBoKey(m)) ||
@@ -100,7 +102,11 @@ export function buildCatalogIndex(catalog, boVatTu) {
           ''
         );
       }
-      return maBo.get(tenBoKey(p)) || codeMap.get(`${g}||${m}||${p}`) || '';
+      return (
+        maBo.get(tenBoKey(p)) ||
+        codeMap.get(`${g}||${m}||${p}`) ||
+        (rowCode && tenBoKey(rowCode) !== 'chưa có' ? String(rowCode).trim() : '')
+      );
     },
   };
 }

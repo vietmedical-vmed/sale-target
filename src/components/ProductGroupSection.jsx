@@ -543,10 +543,25 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
   // Thứ tự hiển thị: mã SP A→Z, SP không có mã xếp cuối; cùng mã giữ thứ tự gốc
   // (bộ vật tư → tên SP → đơn giá). Mã lấy từ danh mục nên phải sort tại đây.
   const sortedProducts = useMemo(() => {
+    // Mã SP ghi trên các dòng của SP (nhiều tháng) — lấy mã xuất hiện nhiều nhất.
+    const maDong = (p) => {
+      const dem = new Map();
+      p.monthly.forEach((cell) =>
+        cell.rows.forEach((r) => {
+          const ma = String(r.maSp || '').trim();
+          if (ma && ma.toLowerCase() !== 'chưa có') dem.set(ma, (dem.get(ma) || 0) + 1);
+        }),
+      );
+      let best = '', n = 0;
+      dem.forEach((v, k) => {
+        if (v > n) [best, n] = [k, v];
+      });
+      return best;
+    };
     const withCode = products.map((p, i) => ({
       p,
       i,
-      code: (catIdx ? catIdx.codeOf(groupName, p.mset, p.product) : '').trim(),
+      code: (catIdx ? catIdx.codeOf(groupName, p.mset, p.product, maDong(p)) : '').trim(),
     }));
     withCode.sort((a, b) => {
       if (!a.code !== !b.code) return a.code ? -1 : 1;

@@ -5,11 +5,14 @@ export const COL: Record<string, string> = {
   revUpd: "sl_ke_hoach_update", price: "don_gia",
   act: "sl_thuc_hien", dtAct: "doanh_thu_thuc_hien",
   dt: "doanh_thu_kh_dau_nam", bu: "bu", oop: "ngoai_ke_hoach",
+  maSp: "ma_san_pham",
 };
 
+// maSp (chỉ đọc, trigger điền theo danh mục): mã SP từng dòng, để hiện mã cho vật tư
+// riêng lẻ không có trong dm_bo_vat_tu_mapping. Thêm cột thì nối vào CUỐI — client đọc theo tên.
 export const FIELDS = [
   "fy","mo","region","ps","cust","custId","grp","prod","mset",
-  "rev","revUpd","price","act","dtAct","dt","bu","oop",
+  "rev","revUpd","price","act","dtAct","dt","bu","oop","maSp",
 ];
 
 // Quota / tháng / thời gian thầu nằm ở quota_thau / dot_thau; sale_target không còn các cột đó.
