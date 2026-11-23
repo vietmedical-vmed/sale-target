@@ -287,6 +287,18 @@ const soThang = (tu, den) => {
   return n >= 1 && n <= 120 ? n : null;
 };
 
+// Mã dưới tên SP / hàng hoá, cùng định dạng cho dòng quota và dòng HĐ để dễ so: mã chung
+// (danh mục HĐ) + mã SP (danh mục kế hoạch). Mã nào không tra được trong danh mục thì '—'.
+function HaiMa({ maChung, maSp }) {
+  return (
+    <div className="text-[10.5px] text-slate-400 whitespace-nowrap">
+      <span title="Mã chung (dm_vat_tu / dm_bo_vat_tu)">MC: {maChung || '—'}</span>
+      <span className="mx-1">·</span>
+      <span title="Mã sản phẩm / mã bộ">Mã SP: {maSp || '—'}</span>
+    </div>
+  );
+}
+
 export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDaDoi, onSuaQuota, dotsOf, onQuotaDoi }) {
   const r = viec.row;
   const [data, setData] = useState(null);
@@ -554,9 +566,11 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                           <td className={td}>{q.thang || '—'}</td>
                           <td className={td}>{TT_QUOTA[q.tt] || q.tt}</td>
                           <td className="px-2 py-1">
-                            {q.sp}
-                            <span className="text-slate-400"> · {q.maSp || '—'}</span>
-                            {q.bung && <span className="text-slate-400"> · bộ bung ×{fmtInt(q.dinhMuc)}</span>}
+                            <div>
+                              {q.sp}
+                              {q.bung && <span className="text-slate-400"> · bộ bung ×{fmtInt(q.dinhMuc)}</span>}
+                            </div>
+                            <HaiMa maChung={q.maChung} maSp={q.maSp} />
                           </td>
                           <td className={`${td} text-right tabular-nums`}>{slTxt(q.sl)}</td>
                           <td className={`${td} text-right tabular-nums`}>{fmtInt(q.donGia)}</td>
@@ -616,8 +630,8 @@ export function ChiTietKhoaModal({ viec, hdRows, isAdmin, canEdit, onClose, onDa
                           <td className={td}>{h.thoiHan || '—'}</td>
                           <td className={td}>{CUA_SO_HD[h.cuaSo] || h.cuaSo}</td>
                           <td className="px-2 py-1">
-                            {h.ten}
-                            <span className="text-slate-400"> · {h.maChung}</span>
+                            <div>{h.ten}</div>
+                            <HaiMa maChung={h.maChung} maSp={h.maSp} />
                           </td>
                           <td className={`${td} text-right tabular-nums`}>{slTxt(h.soLuong)}</td>
                           <td className={`${td} text-right tabular-nums`}>{h.cuaSo === 'truoc' ? slTxt(h.conLai) : '—'}</td>
