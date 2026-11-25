@@ -1915,6 +1915,11 @@ function AppInner({ initialAuth, onLogin }) {
     () => new Set(customers.filter((c) => c.loaiBv === 'Tư').map((c) => String(c.custId))),
     [customers],
   );
+  // Mã KH → 'Công' | 'Tư' cho tag cạnh tên bệnh viện ở thẻ KH màn chi tiết.
+  const loaiBvTheoKh = useMemo(
+    () => new Map(customers.filter((c) => c.loaiBv).map((c) => [String(c.custId), c.loaiBv])),
+    [customers],
+  );
   // Thêm khách hàng: chỉ ở màn chi tiết, cần quyền sửa + có danh mục để chọn
   const canAddCust =
     canEdit && catalog.length > 0 && custSource.length > 0 && tab === 'detail';
@@ -3227,6 +3232,7 @@ function AppInner({ initialAuth, onLogin }) {
                       <CustomerCard
                         key={cardKey(c)}
                         {...c}
+                        loaiBv={loaiBvTheoKh.get(String(c.custId || ''))}
                         pendingKeys={draftKeys}
                         onCommit={commit}
                         canEdit={canEdit}
@@ -3338,6 +3344,7 @@ function AppInner({ initialAuth, onLogin }) {
                       <OopCustomerCard
                         key={k}
                         oop={e}
+                        loaiBv={loaiBvTheoKh.get(String(e.custId || ''))}
                         open={openCards.has(k)}
                         onToggle={() =>
                           setOpenCards((prev) => {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus } from './icons.jsx';
+import { LoaiBvTag } from './LoaiBvTag.jsx';
 import { LY_DO_LABEL, MASK_MONEY, MONTHS, MONTH_LABELS, OOP_CUST, NO_MSET } from '../config/constants.js';
 import { fmtFull, moneyTy3 } from '../lib/format.js';
 
@@ -261,6 +262,7 @@ export function OopBlock({ oop, embedded, canAdd, isAdmin, busy, onAdd, onAddAll
 // Thẻ cho KH có thực hiện nhưng KHÔNG có dòng kế hoạch nào (theo bộ lọc hiện tại).
 export const OopCustomerCard = React.memo(function OopCustomerCard({
   oop,
+  loaiBv,
   open,
   onToggle,
   ...rest
@@ -278,9 +280,12 @@ export const OopCustomerCard = React.memo(function OopCustomerCard({
             ) : (
               <ChevronRight size={16} className="text-slate-400 flex-shrink-0" />
             )}
-            <h3 className="flex-1 min-w-0 text-[14px] font-semibold text-slate-900 truncate">
-              {oop.cust}
-            </h3>
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+              <h3 className="text-[14px] font-semibold text-slate-900 truncate">
+                {oop.cust}
+              </h3>
+              <LoaiBvTag loaiBv={loaiBv} />
+            </div>
             <div className="text-right flex-shrink-0">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">
                 DThu TH ngoài KH

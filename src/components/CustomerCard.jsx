@@ -8,12 +8,14 @@ import { ProductPickerForm } from './AddProduct.jsx';
 import { QuotaThauCtx, grpKey, prodKey } from './QuotaThau.jsx';
 import { trangThaiDot } from '../lib/quota.js';
 import { OopBlock, OopChip } from './OopBlock.jsx';
+import { LoaiBvTag } from './LoaiBvTag.jsx';
 
 
 // ============ CUSTOMER CARD ============
 export const CustomerCard = React.memo(function CustomerCard({
   customer,
   custId,
+  loaiBv,
   psList,
   region,
   groups,
@@ -162,6 +164,7 @@ export const CustomerCard = React.memo(function CustomerCard({
               <h3 className="text-[14px] font-semibold text-slate-900 truncate">
                 {customer}
               </h3>
+              <LoaiBvTag loaiBv={loaiBv} />
               {oop && <OopChip oop={oop} />}
             </div>
             <div className="hidden md:flex items-center gap-5 flex-shrink-0">
