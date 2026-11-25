@@ -279,11 +279,13 @@ export const KqPill = ({ kq }) => (
 // trong năm ('trong'). Gắn khác cửa sổ = dấu hiệu quota bị phân loại nhầm.
 const khacCuaSo = (ttQuota, cuaSoHd) =>
   (ttQuota === 'cu' && cuaSoHd === 'trong') || (ttQuota !== 'cu' && cuaSoHd === 'truoc');
+// Hiệu lực theo HĐ = số tháng tính cả tháng ký lẫn tháng hết hạn, để tháng hết hiệu lực
+// (tháng thầu + HL − 1) trùng tháng hết hạn HĐ (migration 20261125110000).
 const soThang = (tu, den) => {
   if (!tu || !den) return null;
   const [y1, m1] = tu.split('-').map(Number);
   const [y2, m2] = den.split('-').map(Number);
-  const n = y2 * 12 + m2 - (y1 * 12 + m1);
+  const n = y2 * 12 + m2 - (y1 * 12 + m1) + 1;
   return n >= 1 && n <= 120 ? n : null;
 };
 
