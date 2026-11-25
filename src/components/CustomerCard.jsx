@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from './icons.jsx';
-import { CURRENT_MONTH, MASK_MONEY, MONTHS, NO_MSET, isYtdMonth } from '../config/constants.js';
+import { CURRENT_MONTH, MASK_MONEY, MONTHS, NO_MSET, isYtdMonth, duKienThang } from '../config/constants.js';
 import { fmtTy3, moneyTy3 } from '../lib/format.js';
 import { Modal } from './Modal.jsx';
 import { ProductGroupSection } from './ProductGroupSection.jsx';
@@ -23,6 +23,7 @@ export const CustomerCard = React.memo(function CustomerCard({
   onCommit,
   canEdit,
   isAdmin,
+  suaThangDangTH,
   canEditBasePlan,
   onDeleteProduct,
   open,
@@ -107,9 +108,6 @@ export const CustomerCard = React.memo(function CustomerCard({
             const pr = Number(r.price) || 0;
             const act = Number(r.act) || 0;
             const dtActR = Number(r.dtAct) || 0;
-            const useAct =
-              MONTHS[i] < CURRENT_MONTH ||
-              (MONTHS[i] === CURRENT_MONTH && act !== 0);
             const d = (Number(r.rev) || 0) * pr;
             dt += d;
             monthlyDt[i] += d;
@@ -121,7 +119,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
               ? Number(r.revUpd) || 0
               : Number(r.rev) || 0;
-            dtUpd += useAct ? dtActR : rawUpd * pr;
+            dtUpd += duKienThang(MONTHS[i], dtActR, rawUpd * pr);
           });
         });
       });
@@ -288,6 +286,7 @@ export const CustomerCard = React.memo(function CustomerCard({
               onCommit={onCommit}
               canEdit={canEdit}
               isAdmin={isAdmin}
+              suaThangDangTH={suaThangDangTH}
               canEditBasePlan={canEditBasePlan}
               onDeleteProduct={onDeleteProduct}
               showBasePlan={showBasePlan}

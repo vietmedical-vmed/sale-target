@@ -310,7 +310,7 @@ Mỗi việc có trạng thái (chưa xử lý / đang xử lý / bỏ qua kèm 
 |---|---|
 | TH YTD | Σ thực hiện các tháng ≤ tháng hiện tại (`isYtdMonth(mo)` = `mo <= CURRENT_MONTH`) |
 | KH còn lại | Σ SL KH update từ tháng sau tháng hiện tại |
-| DThu dự kiến | Thực hiện các tháng đã qua (`dtAct`) + KH update × đơn giá các tháng còn lại |
+| DThu dự kiến | Thực hiện các tháng đã qua (`dtAct`) + max(thực hiện, KH update × đơn giá) tháng hiện tại + KH update × đơn giá các tháng sau (`duKienThang`) |
 | Tổng quota | On hand + Upcoming |
 | Khả dụng | On hand − TH YTD; BV tư âm tính là 0 ở mọi cấp |
 | Quota định mức | Quota 1.4 (100%) + quota chính/BS × số tháng hiệu lực rơi vào FY / hiệu lực |

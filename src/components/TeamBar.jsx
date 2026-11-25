@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown } from './icons.jsx';
-import { TEAMS, TEAM_ALL, MONTHS, CURRENT_MONTH } from '../config/constants.js';
+import { TEAMS, TEAM_ALL, MONTHS, CURRENT_MONTH, duKienThang } from '../config/constants.js';
 import { moneyTy3 } from '../lib/format.js';
 
 export function TeamSwitcher({ value, onChange }) {
@@ -66,17 +66,13 @@ export function TeamSummaryBar({ rows, oopRows, value, onChange }) {
       if (idx < 0) return;
       const pr = Number(r.price) || 0;
       const rev = Number(r.rev) || 0;
-      const act = Number(r.act) || 0;
       const dtActR = Number(r.dtAct) || 0;
       const rawUpd =
         r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
           ? Number(r.revUpd) || 0
           : rev;
-      const useAct =
-        MONTHS[idx] < CURRENT_MONTH ||
-        (MONTHS[idx] === CURRENT_MONTH && act !== 0);
       const inYtd = MONTHS[idx] <= CURRENT_MONTH;
-      const upd = useAct ? dtActR : rawUpd * pr;
+      const upd = duKienThang(MONTHS[idx], dtActR, rawUpd * pr);
       const dDt = rev * pr;
       const actDt = dtActR;
       const khDt = rawUpd * pr;

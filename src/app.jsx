@@ -14,7 +14,7 @@ import {
 } from './components/icons.jsx';
 import {
   MONTHS, MONTH_LABELS, CURRENT_MONTH, setCurrentMonth, setDeadlineDay,
-  getCurIdx, getNoteMonth, isYtdMonth, NO_MSET, TOK_KEY,
+  getCurIdx, getNoteMonth, isYtdMonth, duKienThang, NO_MSET, TOK_KEY,
   TEAMS, canSwitchTeam, OOP_CUST,
   setMaskMoney as setGlobalMaskMoney, ALIAS_MAP, setAliasMap,
 } from './config/constants.js';
@@ -2036,17 +2036,12 @@ function AppInner({ initialAuth, onLogin }) {
           p.monthly.forEach((cell, i) => {
             cell.rows.forEach((r) => {
               const pr = Number(r.price) || 0;
-              const act = Number(r.act) || 0;
               const dtActR = Number(r.dtAct) || 0;
-              const useAct =
-                MONTHS[i] < CURRENT_MONTH ||
-                (MONTHS[i] === CURRENT_MONTH && act !== 0);
-              const upd = useAct
-                ? dtActR
-                : (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
-                    ? Number(r.revUpd) || 0
-                    : Number(r.rev) || 0) * pr;
-              v += upd;
+              const khDt =
+                (r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+                  ? Number(r.revUpd) || 0
+                  : Number(r.rev) || 0) * pr;
+              v += duKienThang(MONTHS[i], dtActR, khDt);
             });
           });
         }),
@@ -2092,13 +2087,11 @@ function AppInner({ initialAuth, onLogin }) {
               p.monthly.forEach((cell, i) =>
                 cell.rows.forEach((r) => {
                   const pr = Number(r.price) || 0;
-                  const act = Number(r.act) || 0;
                   const dtActR = Number(r.dtAct) || 0;
                   gdt += (Number(r.rev) || 0) * pr;
-                  const useAct = MONTHS[i] < CURRENT_MONTH || (MONTHS[i] === CURRENT_MONTH && act !== 0);
                   const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
                     ? Number(r.revUpd) || 0 : Number(r.rev) || 0;
-                  gdtUpd += useAct ? dtActR : rawUpd * pr;
+                  gdtUpd += duKienThang(MONTHS[i], dtActR, rawUpd * pr);
                 }),
               ),
             );
@@ -2163,17 +2156,13 @@ function AppInner({ initialAuth, onLogin }) {
             cell.rows.forEach((r) => {
               const pr = Number(r.price) || 0;
               const rev = Number(r.rev) || 0;
-              const act = Number(r.act) || 0;
               const dtActR = Number(r.dtAct) || 0;
               const rawUpd =
                 r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
                   ? Number(r.revUpd) || 0
                   : rev;
-              const useAct =
-                MONTHS[i] < CURRENT_MONTH ||
-                (MONTHS[i] === CURRENT_MONTH && act !== 0);
               dt += rev * pr;
-              dtUpd += useAct ? dtActR : rawUpd * pr;
+              dtUpd += duKienThang(MONTHS[i], dtActR, rawUpd * pr);
               if (inYtd) {
                 dtYtd += dtActR;
                 khYtdDt += rawUpd * pr;
@@ -2208,11 +2197,7 @@ function AppInner({ initialAuth, onLogin }) {
       if (!inSel(groupFilter, r.grp)) continue;
       if (!matchSearch(r, q)) continue;
       const pr = Number(r.price) || 0;
-      const act = Number(r.act) || 0;
       const dtActR = Number(r.dtAct) || 0;
-      const past =
-        (r.mo || '') < CURRENT_MONTH ||
-        ((r.mo || '') === CURRENT_MONTH && act !== 0);
       const inYtd = isYtdMonth(r.mo);
       const rev = Number(r.rev) || 0;
       const rawUpd =
@@ -2220,7 +2205,7 @@ function AppInner({ initialAuth, onLogin }) {
           ? Number(r.revUpd) || 0
           : rev;
       dt += rev * pr;
-      dtUpd += past ? dtActR : rawUpd * pr;
+      dtUpd += duKienThang(r.mo, dtActR, rawUpd * pr);
       if (inYtd) {
         dtYtd += dtActR;
         grpAcc(r.grp || '').th += dtActR;
@@ -3237,6 +3222,7 @@ function AppInner({ initialAuth, onLogin }) {
                         onCommit={commit}
                         canEdit={canEdit}
                         isAdmin={isAdmin}
+                        suaThangDangTH={isAdmin || auth.role === 'manager'}
                         canEditBasePlan={canEditBasePlan}
                         onDeleteProduct={deleteProduct}
                         open={openCards.has(cardKey(c))}

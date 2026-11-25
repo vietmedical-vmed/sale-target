@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Filter } from './icons.jsx';
 import {
-  MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY, isYtdMonth, HIEN_HET_HIEU_LUC,
+  MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY, isYtdMonth, duKienThang, HIEN_HET_HIEU_LUC,
 } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
@@ -47,7 +47,6 @@ export function ProductSummaryView({
         matchSearch(r, q),
     );
     const planCusts = planCustKeys(rows);
-    const curIdx = Math.max(0, MONTHS.indexOf(CURRENT_MONTH));
     const blank = () => ({
       moKh: MONTHS.map(() => 0),
       moAct: MONTHS.map(() => 0),
@@ -96,9 +95,8 @@ export function ProductSummaryView({
         r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
           ? Number(r.revUpd) || 0
           : Number(r.rev) || 0;
-      // Tháng đã qua, hoặc tháng hiện tại đã có thực hiện → lấy thực hiện (giống màn PS).
-      const useAct = i < curIdx || (i === curIdx && actQty !== 0);
-      const updQty = useAct ? actQty : planUpd;
+      // Tháng qua = TH, tháng hiện tại = max(TH, KH update), tháng sau = KH update (giống màn PS).
+      const updQty = duKienThang(r.mo, actQty, planUpd);
       const dOnHand = Number(r._qOnHand) || 0;
       const dUpcoming = Number(r._qUp) || 0;
       const dQuota = dOnHand + dUpcoming;
@@ -138,7 +136,7 @@ export function ProductSummaryView({
         o.slDauNam += dSlDauNam;
         o.dt += dSlDauNam * price;
         o.slUpd += updQty;
-        o.dtUpd += useAct ? dtActVal : updQty * price;
+        o.dtUpd += duKienThang(r.mo, dtActVal, planUpd * price);
         if (isPast) {
           o.thYtd += actQty;
           o.dtYtd += dtActVal;

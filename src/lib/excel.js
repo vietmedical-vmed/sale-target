@@ -1,4 +1,4 @@
-import { MONTHS, MONTH_LABELS, CURRENT_MONTH, HIEN_HET_HIEU_LUC, NO_MSET, isYtdMonth } from '../config/constants.js';
+import { MONTHS, MONTH_LABELS, CURRENT_MONTH, HIEN_HET_HIEU_LUC, NO_MSET, isYtdMonth, duKienThang } from '../config/constants.js';
 import { quotaSanPham } from './quota.js';
 
 let _XLSX = null;
@@ -500,8 +500,7 @@ export async function exportChiTietKeHoach(tree, quota) {
         const dn = [], upd = [];
         p.monthly.forEach((cell, i) => {
           const mo = MONTHS[i];
-          const daTH = mo < CURRENT_MONTH || (mo === CURRENT_MONTH && cell.hasAct);
-          const u = daTH ? cell.act : cell.hasUpd ? cell.revUpd : cell.rev;
+          const u = duKienThang(mo, cell.act, cell.hasUpd ? cell.revUpd : cell.rev);
           dn.push(cell.rev);
           upd.push(u);
           slDn += cell.rev;
@@ -510,14 +509,12 @@ export async function exportChiTietKeHoach(tree, quota) {
           cell.rows.forEach((r) => {
             const pr = Number(r.price) || 0;
             const act = Number(r.act) || 0;
-            const useAct = mo < CURRENT_MONTH || (mo === CURRENT_MONTH && act !== 0);
             dtBase += (Number(r.rev) || 0) * pr;
-            const v = useAct
-              ? act
-              : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+            const kh =
+              r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
                 ? Number(r.revUpd) || 0
                 : Number(r.rev) || 0;
-            dtUpd += v * pr;
+            dtUpd += duKienThang(mo, act, kh) * pr;
             if (isYtdMonth(mo)) dtThYtd += Number(r.dtAct) || 0;
           });
         });

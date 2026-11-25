@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Trash2, Clock } from './icons.jsx';
-import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth, HIEN_HET_HIEU_LUC, isKhUpdateLocked } from '../config/constants.js';
+import { CURRENT_MONTH, MASK_MONEY, MONTHS, MONTH_LABELS, isYtdMonth, duKienThang, HIEN_HET_HIEU_LUC, isKhUpdateLocked } from '../config/constants.js';
 import { fmtInt, fmtTy3, moneyTy3 } from '../lib/format.js';
 import { EditableCell, PriceCell } from './EditableCell.jsx';
 import { QuotaThauCtx, DotThauPanel, QuotaThauModal, QuotaCell, prodKey, grpKey } from './QuotaThau.jsx';
@@ -69,6 +69,7 @@ const ProductRow = React.memo(function ProductRow({
   onCommit,
   canEdit,
   isAdmin,
+  suaThangDangTH,
   canEditBasePlan,
   onDeleteProduct,
   showBasePlan,
@@ -117,17 +118,12 @@ const ProductRow = React.memo(function ProductRow({
       c.rows.forEach((r) => {
         const pr = Number(r.price) || 0;
         const act = Number(r.act) || 0;
-        const dtActR = Number(r.dtAct) || 0;
-        const useAct =
-          MONTHS[i] < CURRENT_MONTH ||
-          (MONTHS[i] === CURRENT_MONTH && act !== 0);
         dtBase += (Number(r.rev) || 0) * pr;
-        const upd = useAct
-          ? act
-          : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
+        const kh =
+          r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
             ? Number(r.revUpd) || 0
             : Number(r.rev) || 0;
-        dtUpd += upd * pr;
+        dtUpd += duKienThang(MONTHS[i], act, kh) * pr;
       });
     });
     if (qInfo) {
@@ -373,8 +369,9 @@ const ProductRow = React.memo(function ProductRow({
       </td>
       {MONTHS.map((mo, i) => {
         const cell = monthly[i];
-        const isPast = mo < CURRENT_MONTH;
-        if (isPast || (mo === CURRENT_MONTH && cell.hasAct)) {
+        // Tháng đã qua, hoặc tháng hiện tại đã có thực hiện (trừ admin/manager): hiện TH, khoá
+        // — không cho sửa KH khi đang thực hiện. Admin/manager vẫn thấy và sửa KH update tháng này.
+        if (mo < CURRENT_MONTH || (mo === CURRENT_MONTH && cell.hasAct && !suaThangDangTH)) {
           return (
             <EditableCell
               key={'u' + mo}
@@ -460,6 +457,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
   onCommit,
   canEdit,
   isAdmin,
+  suaThangDangTH,
   canEditBasePlan,
   onDeleteProduct,
   showBasePlan,
@@ -667,9 +665,6 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           const pr = Number(r.price) || 0;
           const act = Number(r.act) || 0;
           const dtActR = Number(r.dtAct) || 0;
-          const useAct =
-            MONTHS[i] < CURRENT_MONTH ||
-            (MONTHS[i] === CURRENT_MONTH && act !== 0);
           const rb = (Number(r.rev) || 0) * pr;
           dt += rb;
           mDtBase[i] += rb;
@@ -680,7 +675,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
           const rawUpd = r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
             ? Number(r.revUpd) || 0
             : Number(r.rev) || 0;
-          const ru = useAct ? dtActR : rawUpd * pr;
+          const ru = duKienThang(MONTHS[i], dtActR, rawUpd * pr);
           dtUpd += ru;
           mDtUpd[i] += ru;
         });
@@ -1117,6 +1112,7 @@ export const ProductGroupSection = React.memo(function ProductGroupSection({
                       onCommit={onCommit}
                       canEdit={canEdit}
                       isAdmin={isAdmin}
+                      suaThangDangTH={suaThangDangTH}
                       canEditBasePlan={canEditBasePlan}
                       onDeleteProduct={onDeleteProduct}
                       showBasePlan={showBasePlan}

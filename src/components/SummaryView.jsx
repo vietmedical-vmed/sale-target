@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Filter } from './icons.jsx';
 import {
   MONTHS, MONTH_LABELS, CURRENT_MONTH, OOP_CUST, MASK_MONEY, HIEN_HET_HIEU_LUC,
-  getCurIdx, isYtdMonth,
+  getCurIdx, isYtdMonth, duKienThang,
 } from '../config/constants.js';
 import { fmtTy3, moneyTy3, moneyPrice } from '../lib/format.js';
 import { inSel, planCustKeys, custInPlan, matchSearch } from '../lib/text.js';
@@ -127,25 +127,19 @@ export function SummaryView({
       const price = Number(r.price) || 0; // đơn giá TỪNG DÒNG
       const dtActVal = Number(r.dtAct) || 0;
       const mi = MONTHS.indexOf(r.mo); // vị trí tháng (−1 nếu ngoài 12 tháng)
-      const isPast =
-        (r.mo || '') < CURRENT_MONTH ||
-        ((r.mo || '') === CURRENT_MONTH && (Number(r.act) || 0) !== 0);
       const inYtd = isYtdMonth(r.mo); // luỹ kế YTD gồm cả tháng hiện tại
       const actQty = Number(r.act) || 0;
-      const updQty = isPast
-        ? actQty
-        : r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
-          ? Number(r.revUpd) || 0
-          : Number(r.rev) || 0;
       // KH update THÔ theo tháng (KHÔNG ép tháng đã qua = thực hiện) → giống màn SP, để % TH có nghĩa
       const planUpd =
         r.revUpd !== undefined && r.revUpd !== '' && r.revUpd !== null
           ? Number(r.revUpd) || 0
           : Number(r.rev) || 0;
+      // SL dự kiến: tháng qua = TH, tháng hiện tại = max(TH, KH update), tháng sau = KH update
+      const updQty = duKienThang(r.mo, actQty, planUpd);
       // Delta của DÒNG này — dùng chung cho cả 3 cấp: KH → Nhóm SP → Sản phẩm
       const dSl = Number(r.rev) || 0;
       const dDt = dSl * price;
-      const dDtUpd = isPast ? dtActVal : updQty * price;
+      const dDtUpd = duKienThang(r.mo, dtActVal, planUpd * price);
       // On-hand / upcoming đã tính sẵn theo tháng đợt thầu (lib/quota.js).
       const dQ14 = Number(r._qOnHand) || 0;
       const dQUpcoming = Number(r._qUp) || 0;

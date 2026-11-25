@@ -14,6 +14,18 @@ export const getCurIdx = () => MONTHS.indexOf(CURRENT_MONTH);
 export const getNoteMonth = () => MONTHS[Math.max(0, getCurIdx() - 1)];
 export const isYtdMonth = (mo) => (mo || '') <= CURRENT_MONTH;
 
+// Giá trị "dự kiến cả năm" (DThu hoặc SL) của 1 dòng × tháng mo:
+//   tháng đã qua      → thực hiện (th)
+//   tháng hiện tại    → max(thực hiện, KH update): tháng đang chạy, thực hiện còn dở nên lấy
+//                       KH update; nhưng nếu đã bán vượt KH (hoặc dòng ngoài KH, KH = 0) thì giữ TH
+//   tháng sau         → KH update (kh)
+export function duKienThang(mo, th, kh) {
+  const m = mo || '';
+  if (m < CURRENT_MONTH) return th;
+  if (m === CURRENT_MONTH) return Math.max(th, kh);
+  return kh;
+}
+
 // Hạn chót sale điền KH update (shared.app_config.deadline_day). Tháng M khoá sửa SL KH update
 // từ ngày DEADLINE_DAY + 1 của chính tháng M (giờ VN) — bản ghi kế hoạch tháng đã chụp lúc
 // 23:59 ngày hạn chót — và mọi tháng trước tháng lịch hiện tại. Admin không bị khoá.
