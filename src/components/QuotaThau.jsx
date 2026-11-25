@@ -38,9 +38,103 @@ const hieuLucHopLe = (v) => {
 // Đợt đủ thông tin = có tháng thầu + hiệu lực (số tháng). Thiếu thì không nhập quota được.
 export const dotDuThongTin = (d) => !!d && THANG_RE.test(d.thang || '') && hieuLucHopLe(d.thoiGian);
 
+// ============ LIÊN KẾT QUOTA ↔ HỢP ĐỒNG (app_sale.quota_hop_dong) ============
+// Tải lazy theo nhóm SP qua ctx.taiHopDongNhom (RPC get_quota_hop_dong_nhom). Chỉ tải
+// khi nhóm có đợt đã liên kết HĐ (coHd): không có thì chắc chắn không có liên kết nào.
+const lineKey = (mset, prod, price) => `${mset || ''}||${prod || ''}||${Number(price) || 0}`;
+const ngan = (s, n = 18) => (!s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s);
+const thangNam = (d) => (d && /^\d{4}-\d{2}/.test(d) ? `${d.slice(5, 7)}/${d.slice(0, 4)}` : '');
+const soHd = (r) => r.so_hd || r.ma_hd || '';
+
+export function useHopDongNhom(fy, ps, custId, grp, bat) {
+  const ctx = useContext(QuotaThauCtx);
+  const tai = ctx && ctx.taiHopDongNhom;
+  const [st, setSt] = useState({ rows: null, err: '' });
+  useEffect(() => {
+    if (!tai || !bat) {
+      setSt({ rows: null, err: '' });
+      return undefined;
+    }
+    let huy = false;
+    tai(fy, ps, custId, grp).then(
+      (rows) => !huy && setSt({ rows, err: '' }),
+      (e) => !huy && setSt({ rows: null, err: e.message || 'Không tải được hợp đồng' }),
+    );
+    return () => {
+      huy = true;
+    };
+  }, [tai, bat, fy, ps, custId, grp]);
+  return useMemo(() => ({ ...tomTatHopDong(st.rows), err: st.err }), [st]);
+}
+
+// Gom liên kết: theo dòng quota (SP × mức giá) và theo đợt.
+function tomTatHopDong(rows) {
+  const theoDong = new Map(); // lineKey -> [link]
+  const theoO = new Map(); // lineKey|loai|dot -> { sl, hds: Set }
+  const theoDot = new Map(); // loai|dot -> { hds: Map ma_hd -> {...}, dongs: Set lineKey }
+  for (const r of rows || []) {
+    const lk = lineKey(r.mset, r.prod, r.price);
+    if (!theoDong.has(lk)) theoDong.set(lk, []);
+    theoDong.get(lk).push(r);
+    const ok = `${lk}|${r.loai}|${r.dot}`;
+    const o = theoO.get(ok) || { sl: 0, hds: new Set() };
+    o.sl += Number(r.sl_quota) || 0;
+    o.hds.add(soHd(r));
+    theoO.set(ok, o);
+    const dk = `${r.loai}|${r.dot}`;
+    const d = theoDot.get(dk) || { hds: new Map(), dongs: new Set() };
+    d.dongs.add(lk);
+    const h = d.hds.get(r.ma_hd) || {
+      soHd: soHd(r),
+      ngayKy: r.ngay_ky,
+      thoiHan: r.thoi_han,
+      giaTri: 0,
+    };
+    h.giaTri += (Number(r.sl_quota) || 0) * (Number(r.price) || 0);
+    d.hds.set(r.ma_hd, h);
+    theoDot.set(dk, d);
+  }
+  // HĐ chính của đợt = giá trị gắn lớn nhất, hoà thì HĐ ký sau (giống dien_dot_cu_tu_hop_dong).
+  for (const d of theoDot.values()) {
+    d.ds = [...d.hds.values()].sort(
+      (a, b) => b.giaTri - a.giaTri || String(b.ngayKy || '').localeCompare(String(a.ngayKy || '')),
+    );
+  }
+  return { co: !!rows, theoDong, theoO, theoDot };
+}
+
+// Nhãn HĐ của 1 đợt: "HĐ <số> · ký mm/yyyy · hết mm/yyyy · phủ a/b SP".
+// soSp = số dòng (SP × mức giá) có quota > 0 trong đợt; undefined thì bỏ phần "phủ".
+export function DotHopDongTag({ info, soSp, gon = false }) {
+  if (!info || !info.ds || !info.ds.length) return null;
+  const h = info.ds[0];
+  const them = info.ds.length - 1;
+  const phu = info.dongs.size;
+  const title = info.ds
+    .map((x) => `${x.soHd} · ký ${thangNam(x.ngayKy) || '?'} · hết ${thangNam(x.thoiHan) || '?'}`)
+    .join('\n');
+  const du = soSp == null || phu >= soSp;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border whitespace-nowrap ${du ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}
+      title={`Hợp đồng đã gắn với quota của đợt:\n${title}`}
+    >
+      <span className="font-semibold">HĐ {ngan(h.soHd, gon ? 14 : 22)}</span>
+      {them > 0 && <span>+{them}</span>}
+      {!gon && h.ngayKy && <span>· ký {thangNam(h.ngayKy)}</span>}
+      {!gon && h.thoiHan && <span>· hết {thangNam(h.thoiHan)}</span>}
+      {soSp != null && soSp > 0 && (
+        <span>
+          · phủ {Math.min(phu, soSp)}/{soSp} SP
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Ô tháng + hiệu lực của MỘT đợt (hoặc đợt đang thêm). Chỉ lưu khi cả hai hợp lệ;
 // thiếu ô nào thì viền đỏ và chưa gửi lên.
-export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth, coHd = false }) {
+export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth, coHd = false, hdTag = null }) {
   const [m, setM] = useState(thang || '');
   const [hl, setHl] = useState(thoiGian == null || thoiGian === '' ? '' : String(Number(thoiGian)));
   useEffect(() => {
@@ -105,9 +199,10 @@ export function DotEditor({ thang, thoiGian, locked, onSave, autoFocus, curMonth
           }
         >
           {HIEN_HET_HIEU_LUC && tt === 'het' ? `(đã hết hiệu lực từ sau ${het})` : `(hiệu lực đến hết ${het})`}
-          {coHd && <span className="ml-1 text-emerald-700">· theo HĐ</span>}
+          {coHd && !hdTag && <span className="ml-1 text-emerald-700">· theo HĐ</span>}
         </span>
       )}
+      {hdTag}
     </span>
   );
 }
@@ -119,8 +214,21 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
   const ctx = useContext(QuotaThauCtx);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const all = (ctx && ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp))) || [];
+  const hd = useHopDongNhom(fy, ps, custId, grp, all.some((d) => d.coHd));
   if (!ctx) return null;
-  const all = ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || [];
+  // Số dòng (SP × mức giá) có quota > 0 của từng đợt, để ghi "phủ a/b SP".
+  const soSpDot = new Map();
+  for (const q of ctx.quotasByGroup?.get(grpKey(fy, ps, custId, grp)) || []) {
+    if (!(Number(q.qty) > 0)) continue;
+    const k = `${q.loai}|${q.dot}`;
+    if (!soSpDot.has(k)) soSpDot.set(k, new Set());
+    soSpDot.get(k).add(lineKey(q.mset, q.prod, q.price));
+  }
+  const tagDot = (loai, dot) => {
+    const info = hd.theoDot.get(`${loai}|${dot}`);
+    return info ? <DotHopDongTag info={info} soSp={soSpDot.get(`${loai}|${dot}`)?.size || 0} /> : null;
+  };
   const cua = (loai) =>
     all.filter((d) => d.loai === loai).sort((a, b) => a.dot - b.dot);
   const chinh = cua('chinh');
@@ -173,6 +281,7 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
             thang={d.thang}
             thoiGian={d.thoiGian}
             coHd={!!d.coHd}
+            hdTag={d.coHd ? tagDot(loai, d.dot) : null}
             locked={locked || busy}
             curMonth={CURRENT_MONTH}
             onSave={(t, h) => sua(loai, d.dot, t, h)}
@@ -216,6 +325,7 @@ export function DotThauPanel({ fy, ps, custId, grp, locked, onThemDot }) {
           thang={dotCu?.thang || ''}
           thoiGian={dotCu?.thoiGian ?? ''}
           coHd={!!dotCu?.coHd}
+          hdTag={dotCu?.coHd ? tagDot('cu', 1) : null}
           locked={locked || busy || !coQuotaCu}
           curMonth={CURRENT_MONTH}
           onSave={(t, h) => sua('cu', 1, t, h)}
@@ -268,6 +378,16 @@ export function QuotaThauModal({
   const dots = ctx
     ? ctx.dotsByGroup.get(grpKey(fy, ps, custId, grp)) || []
     : [];
+  const coLienKet = dots.some((d) => d.coHd);
+  const hd = useHopDongNhom(fy, ps, custId, grp, coLienKet);
+  const [moRong, setMoRong] = useState(() => new Set()); // lineKey đang bung chi tiết HĐ
+  const doiMoRong = (k) =>
+    setMoRong((s) => {
+      const n = new Set(s);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
   // Đợt đang thêm trong modal: chưa có trên DB, lưu cùng quota của nó khi bấm Lưu.
   // Số đợt chốt lúc thêm (max + 1) để khoá ô nhập không đổi khi bỏ đợt khác.
   const [moi, setMoi] = useState(() =>
@@ -553,6 +673,11 @@ export function QuotaThauModal({
                         {c.infoCu}
                       </div>
                     )}
+                    {!c.moi && hd.theoDot.get(`${c.loai}|${c.dot}`) && (
+                      <div className="mt-0.5 font-normal">
+                        <DotHopDongTag info={hd.theoDot.get(`${c.loai}|${c.dot}`)} gon />
+                      </div>
+                    )}
                     {c.loai !== 'cu' && !c.moi && (
                       <div
                         className={`text-[10px] font-normal ${!c.du ? 'text-red-600' : HIEN_HET_HIEU_LUC && c.trangThai === 'het' ? 'text-red-500' : 'text-slate-400'}`}
@@ -565,9 +690,19 @@ export function QuotaThauModal({
                     )}
                   </th>
                 ))}
-                <th className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-slate-200 bg-white">
+                <th className="px-2 py-1.5 text-right font-semibold text-slate-600 border-b border-r border-slate-200 bg-white">
                   Tổng
                 </th>
+                {coLienKet && (
+                  <th
+                    className="px-2 py-1.5 text-left font-semibold text-slate-600 border-b border-slate-200 bg-white whitespace-nowrap"
+                    title="Hợp đồng đã gắn với quota on hand của dòng. Bấm vào ô để xem từng dòng hợp đồng."
+                  >
+                    Hợp đồng
+                    {!hd.co && !hd.err && <div className="text-[10px] font-normal text-slate-400">đang tải…</div>}
+                    {hd.err && <div className="text-[10px] font-normal text-red-600">{hd.err}</div>}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -576,9 +711,11 @@ export function QuotaThauModal({
                 for (const c of cols) tong += Number(val(line, c)) || 0;
                 const dangXem = laDongDangXem(line);
                 const doiSp = i === 0 || lines[i - 1].prod !== line.prod;
+                const lk = lineKey(line.mset, line.prod, line.price);
+                const oHd = (c) => hd.theoO.get(`${lk}|${c.loai}|${c.dot}`);
                 return (
+                  <React.Fragment key={key(line, { loai: '_', dot: 0 })}>
                   <tr
-                    key={key(line, { loai: '_', dot: 0 })}
                     ref={
                       dangXem
                         ? (el) =>
@@ -612,35 +749,66 @@ export function QuotaThauModal({
                         </span>
                       )}
                     </td>
-                    {cols.map((c) => (
-                      <td
-                        key={c.loai + c.dot}
-                        className="px-1 py-1 border-b border-r border-slate-100"
-                      >
-                        <input
-                          value={val(line, c)}
-                          disabled={locked || busy || (!c.du && cell(line, c) === '')}
-                          title={
-                            c.moi && !c.du
-                              ? 'Điền tháng thầu và hiệu lực ở đầu cột trước'
-                              : !c.du
-                                ? 'Đợt chưa đủ tháng thầu / hiệu lực: chỉ xoá hoặc đưa về 0 được'
-                                : undefined
-                          }
-                          onChange={(e) =>
-                            setDraft((d) => ({
-                              ...d,
-                              [key(line, c)]: e.target.value,
-                            }))
-                          }
-                          className="w-[74px] text-[12px] text-right px-1.5 py-1 rounded border border-slate-200 tabular-nums outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50"
-                        />
-                      </td>
-                    ))}
-                    <td className="px-2 py-1 text-right tabular-nums font-semibold text-slate-800 border-b border-slate-100">
+                    {cols.map((c) => {
+                      // Ô đã gắn HĐ: viền xanh nếu SL gắn đủ quota đã lưu, vàng nếu một phần.
+                      const o = c.moi ? null : oHd(c);
+                      const q = Number(cell(line, c)) || 0;
+                      const vien = !o ? 'border-slate-200' : o.sl >= q - 1e-9 ? 'border-emerald-400 bg-emerald-50/40' : 'border-amber-400 bg-amber-50/40';
+                      return (
+                        <td
+                          key={c.loai + c.dot}
+                          className="px-1 py-1 border-b border-r border-slate-100"
+                        >
+                          <input
+                            value={val(line, c)}
+                            disabled={locked || busy || (!c.du && cell(line, c) === '')}
+                            title={
+                              c.moi && !c.du
+                                ? 'Điền tháng thầu và hiệu lực ở đầu cột trước'
+                                : !c.du
+                                  ? 'Đợt chưa đủ tháng thầu / hiệu lực: chỉ xoá hoặc đưa về 0 được'
+                                  : o
+                                    ? `Đã gắn HĐ: ${[...o.hds].join(', ')} · SL gắn ${fmtInt(o.sl)}/${fmtInt(q)}`
+                                    : undefined
+                            }
+                            onChange={(e) =>
+                              setDraft((d) => ({
+                                ...d,
+                                [key(line, c)]: e.target.value,
+                              }))
+                            }
+                            className={`w-[74px] text-[12px] text-right px-1.5 py-1 rounded border ${vien} tabular-nums outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50`}
+                          />
+                        </td>
+                      );
+                    })}
+                    <td className={`px-2 py-1 text-right tabular-nums font-semibold text-slate-800 border-b border-slate-100 ${coLienKet ? 'border-r' : ''}`}>
                       {fmtInt(tong)}
                     </td>
+                    {coLienKet && (
+                      <td className="px-2 py-1 border-b border-slate-100 whitespace-nowrap">
+                        <ChipHopDong
+                          hd={hd}
+                          lk={lk}
+                          cols={cols}
+                          qtyCua={(c) => Number(cell(line, c)) || 0}
+                          mo={moRong.has(lk)}
+                          onClick={() => doiMoRong(lk)}
+                        />
+                      </td>
+                    )}
                   </tr>
+                  {coLienKet && moRong.has(lk) && (
+                    <tr>
+                      <td colSpan={cols.length + 4} className="px-3 py-2 bg-slate-50 border-b border-slate-200">
+                        {/* Bảng quota cuộn ngang: giữ chi tiết HĐ bám mép trái khung cuộn. */}
+                        <div className="sticky left-3 w-fit">
+                          <ChiTietHopDong links={hd.theoDong.get(lk) || []} cols={cols} />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -671,6 +839,129 @@ export function QuotaThauModal({
       </div>
     </Modal>,
     document.body,
+  );
+}
+
+// Chip HĐ của 1 dòng quota (SP × mức giá). Tỷ lệ phủ = SL đã gắn / SL quota của các ô
+// on hand (thầu cũ + đợt đang hiệu lực) và các ô có liên kết. Đợt upcoming chưa có HĐ
+// không kéo tỷ lệ xuống.
+function ChipHopDong({ hd, lk, cols, qtyCua, mo, onClick }) {
+  if (!hd.co) return <span className="text-[11px] text-slate-300">…</span>;
+  const links = hd.theoDong.get(lk) || [];
+  let qOn = 0;
+  let qLk = 0;
+  for (const c of cols) {
+    if (c.moi) continue;
+    const q = qtyCua(c);
+    const o = hd.theoO.get(`${lk}|${c.loai}|${c.dot}`);
+    if (!o && !(c.loai === 'cu' || c.trangThai === 'on')) continue;
+    qOn += q;
+    qLk += Math.min(o ? o.sl : 0, q);
+  }
+  if (!links.length) {
+    return qOn > 0 ? (
+      <span
+        className="inline-flex items-center text-[11px] px-1.5 py-0.5 rounded border border-dashed border-slate-300 text-slate-400"
+        title="Quota on hand của dòng này chưa gắn hợp đồng nào. Xử lý ở tab Kiểm tra thông tin thầu."
+      >
+        chưa có HĐ
+      </span>
+    ) : (
+      <span className="text-[11px] text-slate-300" title="Chỉ có quota upcoming, chưa cần hợp đồng">
+        —
+      </span>
+    );
+  }
+  const hds = [...new Set(links.map(soHd))];
+  const tyLe = qOn > 0 ? qLk / qOn : 1;
+  const du = tyLe >= 0.999;
+  const lech = links.some((r) => (r.loai === 'cu') !== (r.cua_so === 'quota_1_4'));
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${hds.join('\n')}\nĐã gắn ${fmtInt(qLk)}/${fmtInt(qOn)} quota on hand. Bấm để ${mo ? 'thu gọn' : 'xem từng dòng hợp đồng'}.`}
+      className={`inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border ${du ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100' : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'}`}
+    >
+      <span className="font-semibold">{hds.length > 1 ? `${hds.length} HĐ` : ngan(hds[0])}</span>
+      {!du && <span>· {Math.round(tyLe * 100)}%</span>}
+      {lech && <span className="text-red-600" title="Có liên kết lệch cửa sổ (thầu cũ ↔ HĐ ký trong năm)">⚠</span>}
+      <span className="text-slate-400">{mo ? '▴' : '▾'}</span>
+    </button>
+  );
+}
+
+// Bảng chi tiết dòng HĐ của 1 dòng quota: gộp theo đợt × HĐ × mã chung.
+function ChiTietHopDong({ links, cols }) {
+  const nhom = new Map();
+  for (const r of links) {
+    const k = `${r.loai}|${r.dot}|${r.ma_hd}|${r.ma_chung || ''}`;
+    const g = nhom.get(k) || { ...r, slGan: 0, cach: new Set() };
+    g.slGan += Number(r.sl_quota) || 0;
+    g.cach.add(r.cach_gan);
+    nhom.set(k, g);
+  }
+  const ds = [...nhom.values()];
+  const nhanDot = (r) => cols.find((c) => c.loai === r.loai && c.dot === r.dot)?.label || r.loai;
+  const th = 'px-2 py-1 text-left font-semibold text-slate-500 whitespace-nowrap';
+  const td = 'px-2 py-1 border-t border-slate-200 whitespace-nowrap';
+  return (
+    <table className="text-[11px] border-collapse">
+      <thead>
+        <tr>
+          <th className={th}>Đợt</th>
+          <th className={th}>Số HĐ</th>
+          <th className={th}>Ký</th>
+          <th className={th}>Hết hạn</th>
+          <th className={th}>Hàng hoá trên HĐ</th>
+          <th className={`${th} text-right`}>SL gắn</th>
+          <th className={`${th} text-right`}>SL dòng HĐ</th>
+          <th className={`${th} text-right`}>Đã bán</th>
+          <th className={`${th} text-right`}>Còn lại</th>
+          <th className={`${th} text-right`}>Giá HĐ</th>
+          <th className={th}>Nguồn</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ds.map((r) => {
+          const lech = (r.loai === 'cu') !== (r.cua_so === 'quota_1_4');
+          const dong = r.sl_hd_dong == null ? null : Number(r.sl_hd_dong);
+          const ban = Number(r.sl_da_ban) || 0;
+          return (
+            <tr key={`${r.loai}|${r.dot}|${r.ma_hd}|${r.ma_chung || ''}`}>
+              <td className={td}>{nhanDot(r)}</td>
+              <td className={`${td} font-semibold text-slate-700`} title={r.ma_hd}>
+                {soHd(r)}
+              </td>
+              <td className={td}>{thangNam(r.ngay_ky)}</td>
+              <td className={td}>{thangNam(r.thoi_han)}</td>
+              <td className={`${td} max-w-[260px]`}>
+                <div className="truncate" title={`${r.ma_chung || ''} · ${r.ten_hang_hoa || ''}`}>
+                  <span className="text-slate-500">{r.ma_chung || '—'}</span>
+                  {r.ten_hang_hoa ? ` · ${r.ten_hang_hoa}` : ''}
+                </div>
+              </td>
+              <td className={`${td} text-right tabular-nums`}>{fmtInt(r.slGan)}</td>
+              <td className={`${td} text-right tabular-nums`}>{dong == null ? '—' : fmtInt(dong)}</td>
+              <td className={`${td} text-right tabular-nums`}>{fmtInt(ban)}</td>
+              <td className={`${td} text-right tabular-nums`}>{dong == null ? '—' : fmtInt(dong - ban)}</td>
+              <td className={`${td} text-right tabular-nums`}>{r.gia_hd == null ? '—' : fmtInt(Number(r.gia_hd))}</td>
+              <td className={td}>
+                {r.cach.has('tay') ? 'gắn tay' : 'tự động'}
+                {lech && (
+                  <span
+                    className="ml-1 text-red-600"
+                    title="Lệch cửa sổ: thầu cũ gắn HĐ ký trong năm, hoặc thầu chính / bổ sung gắn HĐ ký trước năm. Xử lý ở tab Kiểm tra thông tin thầu."
+                  >
+                    ⚠ lệch cửa sổ
+                  </span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 

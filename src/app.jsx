@@ -352,17 +352,51 @@ function AppInner({ initialAuth, onLogin }) {
     },
     [napLaiQuota],
   );
+  const quotasByGroup = useMemo(() => {
+    const m = new Map();
+    for (const q of quotas) {
+      const k = grpKey(q.fy, q.ps, q.custId, q.grp);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(q);
+    }
+    return m;
+  }, [quotas]);
+  // Liên kết quota ↔ hợp đồng của 1 nhóm SP: chỉ tải khi mở nhóm / popup (lazy), nhớ theo
+  // nhóm. Cache mới mỗi lần đợt / quota nạp lại vì id quota và liên kết có thể đã đổi.
+  // Tạo cache trong useMemo (không phải useEffect) để component con không đọc cache cũ.
+  const hdCache = useMemo(() => new Map(), [dots, quotas, loadScope]);
+  const taiHopDongNhom = useCallback(
+    (fy, ps, custId, grp) => {
+      const k = grpKey(fy, ps, custId, grp);
+      let p = hdCache.get(k);
+      if (!p) {
+        p = api('getHopDongNhom', {
+          fy,
+          ps,
+          custId,
+          grp,
+          ...(canSwitchTeam(auth.role) ? { bu: loadScope } : {}),
+        }).then((r) => (Array.isArray(r.rows) ? r.rows : []));
+        p.catch(() => hdCache.delete(k));
+        hdCache.set(k, p);
+      }
+      return p;
+    },
+    [hdCache, auth.role, loadScope],
+  );
   const quotaThauCtx = useMemo(
     () => ({
       dotsByGroup,
       quotasByProduct,
+      quotasByGroup,
       cuByGroup,
       saveDot,
       deleteDot,
       saveQuota,
       napLai: napLaiQuota,
+      taiHopDongNhom,
     }),
-    [dotsByGroup, quotasByProduct, cuByGroup, saveDot, deleteDot, saveQuota, napLaiQuota],
+    [dotsByGroup, quotasByProduct, quotasByGroup, cuByGroup, saveDot, deleteDot, saveQuota, napLaiQuota, taiHopDongNhom],
   );
   const applyLogin = (a) => {
     setAuth(a);

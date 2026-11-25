@@ -1,7 +1,7 @@
 import { getAllowedOrigin, corsHeaders, json as _json } from "../_shared/cors.ts";
 import { verifyToken, signToken } from "../_shared/auth.ts";
 import { COL, FIELDS, EDITABLE, ADMIN_EDITABLE, MANAGER_EDITABLE, PAGE, PLAN_MONTHS, PLAN_FY, onlyPlanMonths } from "./config.ts";
-import { applyScope, scopeParams, parseGroups, mienScope, auditScopeParams } from "./scope.ts";
+import { applyScope, scopeParams, readScopeParams, parseGroups, mienScope, auditScopeParams } from "./scope.ts";
 import {
   admin, getRev, writeAuditLog, diaBanErr, kiemTraPsThemDiaBan,
   psInfo, buForPs, mienForPs,
@@ -213,6 +213,23 @@ Deno.serve(async (req) => {
     if (action === "getQuotaThau") {
       const { dots, quotas } = await fetchQuotaThau(db, sess, payload);
       return json({ ok: true, dots, quotas });
+    }
+
+    // Contract links of one product group (Quota thầu popup + round bar). Same scope
+    // as getQuotaThau: the RPC only returns links of quota the session can see.
+    if (action === "getHopDongNhom") {
+      const fy = String(payload.fy || "").trim();
+      const ps = String(payload.ps || "").trim();
+      if (!fy || !ps) return json({ ok: false, error: "thieu_tham_so" }, 400);
+      const { data, error } = await db.rpc("get_quota_hop_dong_nhom", {
+        p_fy: fy,
+        p_ps_nhom: ps,
+        p_cust: String(payload.custId ?? ""),
+        p_grp: String(payload.grp ?? ""),
+        ...readScopeParams(sess, payload),
+      });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, rows: data || [] });
     }
 
     if (action === "getCatalog") {
